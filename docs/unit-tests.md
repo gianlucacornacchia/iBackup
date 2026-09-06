@@ -1,6 +1,9 @@
 # iPhone Archive — Unit Test Plan
 
-Status: Draft for review (Phase 0 documentation)
+Status: **Implemented for Phase 1** — 179 tests green, 91% total coverage
+(ruff + mypy clean). Only `tests/test_gui.py` remains, and it is blocked behind
+the UI-sketch approval gate. Note that `browse/gallery.py` ships the album/asset
+read models; the optional static HTML gallery was not built.
 
 This document lists the unit tests to run, what each covers, and how to execute
 them. Tests use **pytest**. Device access is mocked with a fake source so the

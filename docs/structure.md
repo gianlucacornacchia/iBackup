@@ -53,7 +53,7 @@ ibackup/
         recycle.py               # move to / restore from / purge the Deleted/ folder
       browse/
         __init__.py
-        gallery.py               # album listing + optional static HTML gallery
+        gallery.py               # album/asset read models for the CLI and GUI
         thumbnails.py            # generate + cache thumbnails (HEIC via pillow-heif)
       gui/                       # PySide6 GUI — thin adapter over service/
         __init__.py
@@ -141,8 +141,8 @@ rules.
 | `core/reclaim.py` | Determine eligible phone files; delete on confirm. |
 | `core/phone_diff.py` | Compare catalog to the latest phone scan; list assets deleted from the phone. |
 | `core/recycle.py` | Move assets from `Photos/` to `Deleted/`, restore, and permanently purge; keep catalog `archive_state`/`asset_files.location` in sync. |
-| `browse/gallery.py` | List albums/counts; optionally build HTML gallery. |
-| `browse/thumbnails.py` | Generate and cache thumbnails under `.ibackup/thumbnails/` (HEIC via `pillow-heif`); serve them to the GUI grid and HTML gallery. |
+| `browse/gallery.py` | Album/asset read models: list albums with counts, list/page assets, unsorted and recycled views. |
+| `browse/thumbnails.py` | Generate and cache JPEG previews under `.ibackup/thumbnails/<sha256>_<size>.jpg` (HEIC via `pillow-heif`); originals are only read. Unsupported media (video) reports a placeholder result. |
 | `cli.py` | Thin adapter: map subcommands to `service/` calls; format output. |
 | `gui/` | PySide6 thin adapter: bind widgets to the same `service/` calls; thumbnail grid, album navigation, multi-select, move/delete/mark, reclaim view, progress/cancel. |
 

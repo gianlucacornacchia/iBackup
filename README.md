@@ -5,8 +5,10 @@ A **Windows** desktop application (CLI **and** GUI) that creates a permanent,
 is stored as **plain files in album folders**, browsable in File Explorer
 without the app. The archive — not the phone — is the source of truth.
 
-> Status: **Phase 0 (documentation)**. No application code yet. See
-> `docs/plan.md` for the build plan and `docs/progress.md` for current status.
+> Status: **Phase 1 complete** — the core engine and the full `ibackup` CLI are
+> implemented and tested (179 tests, 91% coverage). The GUI is next and is
+> **blocked on UI-sketch approval**. See `docs/plan.md` for the build plan and
+> `docs/progress.md` for current status.
 
 ## Documentation
 
@@ -35,13 +37,20 @@ pytest
 
 ## Quick start (users)
 
-See [`docs/readme-user.md`](docs/readme-user.md).
+```powershell
+ibackup init D:\iphone-archive
+ibackup import --archive D:\iphone-archive
+ibackup verify --archive D:\iphone-archive
+```
+
+See [`docs/readme-user.md`](docs/readme-user.md) for the full command reference.
 
 ## Tech stack
 
-- Python 3.11+ · PySide6 (GUI) · `pymobiledevice3` (iPhone/AFC) ·
-  SQLite · `pillow-heif` (HEIC thumbnails) · pytest / pytest-qt · PyInstaller.
+- Python 3.11+ · Typer (CLI) · PySide6 (GUI, pending) · `pymobiledevice3`
+  (iPhone/AFC) · SQLite · Pillow + `pillow-heif` (HEIC thumbnails) ·
+  pytest / hypothesis / pytest-qt · ruff · mypy · PyInstaller.
 
 ## License
 
-TBD.
+MIT.
