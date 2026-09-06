@@ -1,0 +1,407 @@
+"""Command-line interface.
+
+Thin adapter over ``AppService``: it parses arguments, prints results, and sets
+exit codes. All behaviour lives in the service layer, which is what keeps the
+CLI and the GUI at exact feature parity. Destructive commands are dry-run or
+confirmation-gated by default.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import typer
+
+from .browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
+from .core.archive_layout import LINK_MODE_COPY
+from .device.afc_device import AfcDevice
+from .device.fake_device import FakeDevice
+from .device.interface import DeviceError, MediaSource
+from .logging_setup import logging_setup_configure
+from .service.app_service import AppService, ArchiveNotFoundError
+from .service.marks import TARGET_ALBUM, TARGET_ASSET
+from .service.progress import ProgressEvent, ProgressHandle
+
+ARCHIVE_ENV_VAR = "IBACKUP_ARCHIVE"
+FAKE_DEVICE_ENV_VAR = "IBACKUP_FAKE_DEVICE"
+
+EXIT_OK = 0
+EXIT_FAILURE = 1
+
+app = typer.Typer(
+    help="iPhone Archive - permanent, append-only backups of iPhone photos and videos.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+deleted_app = typer.Typer(help="Review archived assets that no longer exist on the phone.")
+marks_app = typer.Typer(help="Stage, review, and commit mark-for-delete requests.")
+app.add_typer(deleted_app, name="deleted-on-phone")
+app.add_typer(marks_app, name="marks")
+
+ArchiveOption = typer.Option(None, "--archive", "-a", help="Archive root folder.")
+
+
+def cli_resolve_archive(archive: Path | None) -> Path:
+    """Resolve the archive root from the option, environment, or cwd.
+
+    archive: the explicit ``--archive`` value, or None.
+    Returns the archive root to operate on.
+    """
+    if archive is not None:
+        return archive
+    from_env = os.environ.get(ARCHIVE_ENV_VAR)
+    return Path(from_env) if from_env else Path.cwd()
+
+
+def cli_open_service(archive: Path | None) -> AppService:
+    """Open the archive, exiting with a clear message when it is missing.
+
+    archive: the explicit ``--archive`` value, or None.
+    Returns an opened ``AppService``.
+    """
+    service = AppService(cli_resolve_archive(archive))
+    try:
+        service.app_service_open()
+    except ArchiveNotFoundError as error:
+        cli_fail(f"{error}\nRun 'ibackup init <folder>' first.")
+    return service
+
+
+def cli_fail(message: str) -> None:
+    """Print an error and terminate with a failure exit code.
+
+    message: the error text shown to the user.
+    Returns None; always raises ``typer.Exit``.
+    """
+    typer.secho(message, fg=typer.colors.RED, err=True)
+    raise typer.Exit(EXIT_FAILURE)
+
+
+def cli_build_source(udid: str | None = None) -> MediaSource:
+    """Build the media source for phone operations.
+
+    udid: optional device identifier to target a specific phone.
+    Returns a ``MediaSource``. When ``IBACKUP_FAKE_DEVICE`` points at a folder,
+    an offline fake device backed by that folder is used instead of USB.
+    """
+    fake_dir = os.environ.get(FAKE_DEVICE_ENV_VAR)
+    if fake_dir:
+        return cli_fake_source(Path(fake_dir))
+    device = AfcDevice(requested_udid=udid)
+    try:
+        device.afc_device_connect()
+    except DeviceError as error:
+        cli_fail(str(error))
+    return device
+
+
+def cli_fake_source(folder: Path) -> FakeDevice:
+    """Build an offline media source from a folder of files.
+
+    folder: a directory whose files stand in for the phone's media.
+    Returns a ``FakeDevice`` holding that folder's contents.
+    """
+    items: dict[str, bytes] = {}
+    for entry in sorted(folder.rglob("*")):
+        if entry.is_file():
+            items["/DCIM/" + entry.relative_to(folder).as_posix()] = entry.read_bytes()
+    return FakeDevice(items)
+
+
+def cli_progress(verbose: bool) -> ProgressHandle:
+    """Build a progress handle that optionally echoes each step.
+
+    verbose: print per-item progress when True.
+    Returns the configured ``ProgressHandle``.
+    """
+
+    def echo_event(event: ProgressEvent) -> None:
+        """Print a single progress event."""
+        typer.echo(f"  {event.operation} {event.current}/{event.total} {event.message}")
+
+    return ProgressHandle(echo_event if verbose else None)
+
+
+@app.command("init")
+def cli_init(
+    archive_root: Path = typer.Argument(..., help="Folder to initialize as an archive."),
+) -> None:
+    """Create the archive folder structure and catalog."""
+    service = AppService(archive_root)
+    paths = service.app_service_initialize()
+    service.app_service_close()
+    typer.echo(f"Initialized archive at {paths.root}")
+
+
+@app.command("device-info")
+def cli_device_info() -> None:
+    """Show the connected iPhone and how many media items it holds."""
+    source = cli_build_source()
+    count = sum(1 for _ in source.device_enumerate())
+    typer.echo(f"Device: {source.device_udid()}")
+    typer.echo(f"Media items: {count}")
+
+
+@app.command("import")
+def cli_import(
+    archive: Path = ArchiveOption,
+    link_mode: str = typer.Option(
+        LINK_MODE_COPY, "--album-link-mode", help="How extra album copies are stored."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Print per-item progress."),
+) -> None:
+    """Import new photos and videos from the phone (incremental, append-only)."""
+    service = cli_open_service(archive)
+    result = service.app_service_import(cli_build_source(), cli_progress(verbose), link_mode)
+    typer.echo(
+        f"Added {result.added_count}, skipped {result.skipped_count}, "
+        f"duplicates {result.duplicate_count}, errors {result.error_count}"
+    )
+    if result.error_count:
+        raise typer.Exit(EXIT_FAILURE)
+
+
+@app.command("verify")
+def cli_verify(
+    archive: Path = ArchiveOption,
+    limit: int | None = typer.Option(None, "--limit", help="Verify at most this many files."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Print per-file progress."),
+) -> None:
+    """Re-hash archived files and report any corruption or missing copies."""
+    service = cli_open_service(archive)
+    result = service.app_service_verify(cli_progress(verbose), limit)
+    typer.echo(
+        f"Checked {result.checked_count}, ok {result.ok_count}, "
+        f"mismatched {result.mismatch_count}, missing {result.missing_count}"
+    )
+    if not result.passed:
+        raise typer.Exit(EXIT_FAILURE)
+
+
+@app.command("dedup")
+def cli_dedup(archive: Path = ArchiveOption) -> None:
+    """Report duplicate content and the storage cost of multi-album copies."""
+    service = cli_open_service(archive)
+    result = service.app_service_dedup_report()
+    typer.echo(f"Unique assets: {result.asset_count}")
+    typer.echo(f"Stored files: {result.file_count}")
+    typer.echo(f"Assets in several albums: {len(result.multi_copy_groups)}")
+    typer.echo(f"Extra bytes from album copies: {result.reclaimable_bytes}")
+
+
+@app.command("albums")
+def cli_albums(archive: Path = ArchiveOption) -> None:
+    """List albums and how many assets each one holds."""
+    service = cli_open_service(archive)
+    summaries = service.app_service_list_albums()
+    if not summaries:
+        typer.echo("No albums yet.")
+    for summary in summaries:
+        typer.echo(f"{summary.album_id:>5}  {summary.asset_count:>6}  {summary.name}")
+
+
+@app.command("list")
+def cli_list(
+    archive: Path = ArchiveOption,
+    album_id: int | None = typer.Option(None, "--album", help="Restrict to one album id."),
+    unsorted: bool = typer.Option(False, "--unsorted", help="Only assets in no album."),
+    recycled: bool = typer.Option(False, "--recycled", help="Only assets in Deleted/."),
+    limit: int | None = typer.Option(None, "--limit", help="Maximum rows to print."),
+) -> None:
+    """List archived assets."""
+    service = cli_open_service(archive)
+    if recycled:
+        views = service.app_service_list_recycled()
+    elif unsorted:
+        views = service.app_service_list_unsorted()
+    else:
+        views = service.app_service_list_assets(album_id=album_id, limit=limit)
+    for view in views:
+        location = view.paths[0] if view.paths else "(no stored copy)"
+        typer.echo(f"{view.asset_id:>6}  {view.sha256[:12]}  {view.size:>10}  {location}")
+    typer.echo(f"{len(views)} asset(s)")
+
+
+@app.command("stats")
+def cli_stats(archive: Path = ArchiveOption) -> None:
+    """Show headline archive counts."""
+    service = cli_open_service(archive)
+    for key, value in service.app_service_stats().items():
+        typer.echo(f"{key:>26}: {value}")
+
+
+@app.command("scan-phone")
+def cli_scan_phone(archive: Path = ArchiveOption) -> None:
+    """Refresh which archived assets are still present on the phone."""
+    service = cli_open_service(archive)
+    service.app_service_scan_phone(cli_build_source())
+    typer.echo(f"Deleted on phone: {service.app_service_deleted_on_phone().count}")
+
+
+@deleted_app.command("list")
+def cli_deleted_list(
+    archive: Path = ArchiveOption,
+    rescan: bool = typer.Option(False, "--rescan", help="Scan the phone before listing."),
+) -> None:
+    """List archived assets that no longer exist on the phone."""
+    service = cli_open_service(archive)
+    if rescan:
+        service.app_service_scan_phone(cli_build_source())
+    result = service.app_service_deleted_on_phone()
+    for item in result.items:
+        typer.echo(f"{item.asset_id:>6}  {item.sha256[:12]}  {item.original_name}")
+    typer.echo(f"{result.count} asset(s) deleted on phone, still safe in the archive")
+
+
+@deleted_app.command("to-deleted")
+def cli_deleted_to_deleted(
+    asset_ids: list[int] = typer.Argument(..., help="Asset ids to move."),
+    archive: Path = ArchiveOption,
+) -> None:
+    """Move assets into the reversible Deleted/ recycle bin."""
+    service = cli_open_service(archive)
+    result = service.app_service_move_to_deleted(asset_ids)
+    typer.echo(f"Moved {result.moved_count}, skipped {result.skipped_count}")
+
+
+@deleted_app.command("restore")
+def cli_deleted_restore(
+    asset_ids: list[int] = typer.Argument(..., help="Asset ids to restore."),
+    archive: Path = ArchiveOption,
+) -> None:
+    """Restore assets from Deleted/ back into the browsable album tree."""
+    service = cli_open_service(archive)
+    result = service.app_service_restore(asset_ids)
+    typer.echo(f"Restored {result.restored_count}, skipped {result.skipped_count}")
+
+
+@deleted_app.command("purge")
+def cli_deleted_purge(
+    asset_ids: list[int] = typer.Argument(..., help="Asset ids to delete permanently."),
+    archive: Path = ArchiveOption,
+    confirm: bool = typer.Option(False, "--confirm", help="Required; without it nothing happens."),
+) -> None:
+    """Permanently delete assets from the archive. This cannot be undone."""
+    service = cli_open_service(archive)
+    result = service.app_service_purge(asset_ids, confirmed=confirm)
+    if not confirm:
+        typer.echo(f"Dry run: {len(asset_ids)} asset(s) would be purged. Re-run with --confirm.")
+    else:
+        typer.echo(f"Purged {result.purged_count}, skipped {result.skipped_count}")
+
+
+@app.command("reclaim")
+def cli_reclaim(
+    archive: Path = ArchiveOption,
+    confirm: bool = typer.Option(False, "--confirm", help="Delete from the phone for real."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Print per-item progress."),
+) -> None:
+    """Free space on the phone by deleting only archived, re-verified assets."""
+    service = cli_open_service(archive)
+    result = service.app_service_reclaim(cli_build_source(), confirm, cli_progress(verbose))
+    if result.dry_run:
+        typer.echo(
+            f"Dry run: {len(result.candidates)} item(s), {result.reclaimable_bytes} bytes "
+            "could be freed. Re-run with --confirm."
+        )
+    else:
+        typer.echo(f"Deleted {result.deleted_count} item(s) from the phone")
+    if result.skipped_count:
+        typer.echo(f"Skipped {result.skipped_count} unverified item(s)")
+
+
+@marks_app.command("add")
+def cli_marks_add(
+    target_id: int = typer.Argument(..., help="Asset or album id to mark."),
+    archive: Path = ArchiveOption,
+    album: bool = typer.Option(False, "--album", help="Treat the id as an album id."),
+    reason: str | None = typer.Option(None, "--reason", help="Optional note."),
+) -> None:
+    """Stage a mark-for-delete. Nothing is deleted until you commit."""
+    service = cli_open_service(archive)
+    target_type = TARGET_ALBUM if album else TARGET_ASSET
+    mark_id = service.app_service_mark(target_type, target_id, reason)
+    typer.echo(f"Marked {target_type} {target_id} (mark {mark_id})")
+
+
+@marks_app.command("list")
+def cli_marks_list(archive: Path = ArchiveOption) -> None:
+    """List staged, uncommitted marks."""
+    service = cli_open_service(archive)
+    pending = service.app_service_list_marks()
+    for mark in pending:
+        typer.echo(f"{mark.mark_id:>5}  {mark.target_type:>5} {mark.target_id:>6}  {mark.reason}")
+    typer.echo(f"{len(pending)} pending mark(s)")
+
+
+@marks_app.command("remove")
+def cli_marks_remove(
+    mark_id: int = typer.Argument(..., help="Mark id to cancel."),
+    archive: Path = ArchiveOption,
+) -> None:
+    """Cancel a staged mark."""
+    service = cli_open_service(archive)
+    service.app_service_unmark(mark_id)
+    typer.echo(f"Removed mark {mark_id}")
+
+
+@marks_app.command("commit")
+def cli_marks_commit(
+    archive: Path = ArchiveOption,
+    confirm: bool = typer.Option(False, "--confirm", help="Required; without it nothing happens."),
+    purge: bool = typer.Option(False, "--purge", help="Delete permanently instead of recycling."),
+) -> None:
+    """Apply staged marks by recycling them, or purging with --purge."""
+    service = cli_open_service(archive)
+    if not confirm:
+        pending = len(service.app_service_list_marks())
+        typer.echo(f"Dry run: {pending} mark(s) pending. Re-run with --confirm.")
+        return
+    result = service.app_service_commit_marks(confirmed=True, purge=purge)
+    typer.echo(f"Recycled {result.moved_count}, purged {result.purged_count}")
+
+
+@app.command("move")
+def cli_move(
+    album_name: str = typer.Argument(..., help="Destination album name."),
+    asset_ids: list[int] = typer.Argument(..., help="Asset ids to move."),
+    archive: Path = ArchiveOption,
+) -> None:
+    """Move a selection of assets into another album."""
+    service = cli_open_service(archive)
+    result = service.app_service_move_selection(asset_ids, album_name)
+    typer.echo(f"Moved {result.affected_count}, skipped {result.skipped_count}")
+
+
+@app.command("thumbnail")
+def cli_thumbnail(
+    asset_id: int = typer.Argument(..., help="Asset id to preview."),
+    archive: Path = ArchiveOption,
+    size: int = typer.Option(DEFAULT_THUMBNAIL_SIZE, "--size", help="Longest edge in pixels."),
+) -> None:
+    """Generate and cache a preview image for an asset."""
+    service = cli_open_service(archive)
+    result = service.app_service_thumbnail(asset_id, size)
+    if not result.available:
+        cli_fail(f"No thumbnail: {result.error}")
+    typer.echo(str(result.path))
+
+
+def main() -> int:
+    """Entry point for the ``ibackup`` console script.
+
+    Returns the process exit code.
+    """
+    logging_setup_configure()
+    exit_code = EXIT_OK
+    try:
+        app()
+    except SystemExit as error:
+        exit_code = int(error.code or EXIT_OK)
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
