@@ -10,6 +10,9 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 > - **Keep docs up to date while coding:** `development.md`, `readme-user.md`,
 >   `structure.md`, `unit-tests.md`, root `README.md`, and any other affected doc.
 > - **Update `progress.md`** whenever a todo changes state (resume point).
+> - **Commit incrementally** with clear messages so the project story is
+>   readable in git history — one logical commit per step, not one dump at the
+>   end. Keep the repo updated as you go, but **do not push**.
 
 ## Phase 0 — Documentation (done)
 

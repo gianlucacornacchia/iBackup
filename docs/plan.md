@@ -126,6 +126,10 @@ See `todos.md` for the full checklist with dependencies and status.
   other relevant doc.
 - **Save progress for resumability.** Update `progress.md` (and `todos.md`)
   whenever a todo changes state, so work can resume after any interruption.
+- **Commit incrementally.** Make one logical git commit per step with a clear
+  message so a developer can follow the project story from history — never a
+  single code dump at the end. Keep the repo updated as work proceeds, but
+  **do not push** (local commits only).
 - The `tests` todo is the final full-suite gate, but targeted tests run
   continuously during Phase 1/2.
 - pytest suite (with `pytest-qt` for the GUI) runs offline with a fake device and
