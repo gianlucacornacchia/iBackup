@@ -1,0 +1,26 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Archive internals (never version-control a user's archive)
+.ibackup/
+
+# Stray tool report dumps
+report.*.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
