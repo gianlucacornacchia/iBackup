@@ -59,7 +59,11 @@ pip install -e ".[dev]"          # editable install + dev extras
 |---|---|
 | `pytest` | Test runner. |
 | `pytest-qt` | GUI widget tests (Qt). |
-| `pytest-cov` | Optional coverage. |
+| `pytest-cov` | Coverage measurement (enforced by CI, see §9). |
+| `hypothesis` | Property-based tests for `name_safety` and hashing. |
+| `ruff` | Linter + formatter (run via pre-commit and CI). |
+| `mypy` | Static type checking (`--strict` on `core/` + `catalog/`). |
+| `pre-commit` | Git hook runner (lint/format/type checks before each commit). |
 | `PyInstaller` | Build the portable Windows `.exe`. |
 
 > Keep the tables above in sync with `pyproject.toml` whenever dependencies
@@ -111,3 +115,34 @@ pyinstaller packaging\ibackup.spec   # spec added during the packaging todo
 - No business logic in `cli.py` / `gui/` — call the `service/` layer.
 - Update the relevant docs (`development.md`, `readme-user.md`, `structure.md`,
   `unit-tests.md`, `progress.md`) as part of each change.
+- **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `test:`,
+  `chore:`, `refactor:`…) so the project story is readable in git history.
+- Record every significant decision as an ADR under `docs/adr/` (see its README).
+
+## 9. Quality gates: pre-commit and CI
+
+**Pre-commit hooks** run the fast checks locally before every commit. Enable once
+per clone:
+
+```powershell
+pip install pre-commit
+pre-commit install                  # installs the git hook
+pre-commit run --all-files          # run against the whole tree on demand
+```
+
+Configured in `.pre-commit-config.yaml` (added during scaffold): `ruff` (lint +
+format), `mypy`, and hygiene hooks (trailing whitespace, end-of-file, large-file
+guard, merge-conflict check).
+
+**Continuous integration** runs on a **`windows-latest`** GitHub Actions runner
+(`.github/workflows/ci.yml`, added during scaffold) on every push / PR:
+
+1. set up Python 3.11, create the venv, `pip install -e ".[dev]"`;
+2. `ruff check` + `ruff format --check`;
+3. `mypy` (`--strict` on `core/` and `catalog/`);
+4. `pytest` (GUI headless via `QT_QPA_PLATFORM=offscreen`) with
+   `--cov=iphone_archive`;
+5. **coverage gate:** fail the build if total coverage drops below the configured
+   threshold (target ~85%, with `core/` + `catalog/` held highest).
+
+The same commands can be run locally before pushing to reproduce CI results.
