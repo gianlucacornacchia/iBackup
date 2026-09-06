@@ -2,8 +2,8 @@
 
 This is the authoritative, consolidated plan. It reflects all decisions to date.
 Companion docs: `specifications.md`, `readme-user.md`, `user-stories.md`,
-`structure.md`, `unit-tests.md`, `development.md`, `progress.md`, the root
-`README.md`, and the build checklist in `todos.md`.
+`structure.md`, `unit-tests.md`, `development.md`, `progress.md`, the ADRs under
+`adr/`, the root `README.md`, and the build checklist in `todos.md`.
 
 ## 1. Summary
 
@@ -129,7 +129,19 @@ See `todos.md` for the full checklist with dependencies and status.
 - **Commit incrementally.** Make one logical git commit per step with a clear
   message so a developer can follow the project story from history — never a
   single code dump at the end. Keep the repo updated as work proceeds, but
-  **do not push** (local commits only).
+  **do not push** (local commits only). Use **Conventional Commits**
+  (`feat:`/`fix:`/`docs:`/`test:`/`chore:`…).
+- **Quality gates (adopted).**
+  - **Pre-commit hooks** (`.pre-commit-config.yaml`): `ruff` (lint + format),
+    `mypy`, and hygiene hooks run before every commit.
+  - **CI** on `windows-latest` (`.github/workflows/ci.yml`): venv + install →
+    ruff → `mypy --strict` (core/catalog) → `pytest` (GUI headless) with
+    coverage; **coverage gate** ~85% (core/catalog highest).
+  - **Property-based tests** (`hypothesis`) for `name_safety` + hashing.
+  - **Golden end-to-end + crash-resume test** (`tests/test_e2e.py`) over the fake
+    device, asserting append-only/catalog invariants and idempotent resume.
+  - **ADRs** under `docs/adr/` record every significant decision.
+  These are created during `project-scaffold` (config/CI) and grow with the code.
 - The `tests` todo is the final full-suite gate, but targeted tests run
   continuously during Phase 1/2.
 - pytest suite (with `pytest-qt` for the GUI) runs offline with a fake device and

@@ -43,6 +43,13 @@ _Last updated: 2026-09-07 (Phase 0)._
 
 ## Change log
 
+- 2026-09-07 — Adopted **architect top-5 workflow additions**: Windows CI
+  (ruff + `mypy --strict` + pytest + **coverage gate**), **pre-commit** hooks,
+  **ADR folder** (`docs/adr/`, migrated 8 existing decisions), **`hypothesis`**
+  property tests for name-safety + hashing, and a **golden E2E + crash-resume**
+  test (`tests/test_e2e.py`). Remaining recommendations saved as `future-*`
+  backlog todos (schema migrations, audit log, catalog repair, release
+  checklist, dependency hygiene, destructive-op guardrails).
 - 2026-09-07 — Initialized **git version control**; committed docs in logical,
   story-telling steps (gitignore → README/development → progress → workflow
   rules). Adopted **incremental-commit / no-push** rule. Stray `report.*.json`

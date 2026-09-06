@@ -30,8 +30,12 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 ## Phase 1 — Core + CLI (after docs approval)
 
 - [ ] **project-scaffold** — create `.venv`, pyproject.toml (runtime + dev
-  extras), `src/iphone_archive/` layout, root README, `.gitignore`, lint/test
-  tooling. _Depends on: docs-approval-gate._
+  extras incl. ruff, mypy, hypothesis, pre-commit, pytest-cov),
+  `src/iphone_archive/` layout, root README, `.gitignore`,
+  `.pre-commit-config.yaml` (ruff + mypy + hygiene), and
+  `.github/workflows/ci.yml` (windows-latest: ruff, `mypy --strict` on
+  core/catalog, pytest headless + coverage gate ~85%).
+  _Depends on: docs-approval-gate._
 - [ ] **config-logging** — `config.py`, `logging_setup.py`.
   _Depends on: project-scaffold._
 - [ ] **name-safety** — Windows-safe album/file names, collisions, no symlinks.
@@ -92,7 +96,22 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 
 ## Verification
 
-- [ ] **tests** — pytest suite (unit + mocked device + pytest-qt GUI), **run
+- [ ] **tests** — pytest suite (unit + mocked device + pytest-qt GUI +
+  `hypothesis` property tests + golden E2E/crash-resume `test_e2e.py`), **run
   after each module during development** and as a final full-suite gate.
   _Depends on: archive-edit, dedup, gui-frontend, hashing-layout, importer,
   name-safety, phone-diff, recycle-bin, service-layer, thumbnails, verifier._
+
+## Future backlog (agreed, not scheduled)
+
+Architect recommendations captured for later — not part of the current build:
+
+- [ ] **future-schema-migrations** — versioned SQLite migrations + upgrade test.
+- [ ] **future-audit-log** — structured logging + append-only operation audit log
+  in `.ibackup/logs/` (import/delete/reclaim/purge with hashes).
+- [ ] **future-catalog-repair** — rebuild/repair `catalog.sqlite` from sidecars.
+- [ ] **future-release-checklist** — CHANGELOG/SECURITY/CONTRIBUTING/LICENSE,
+  signed reproducible PyInstaller build, `.exe` smoke test, version tagging.
+- [ ] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
+- [ ] **future-destructive-guardrails** — extend dry-run + explicit-confirm to
+  every destructive op (purge/delete/move-to-Deleted).
