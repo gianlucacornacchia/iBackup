@@ -43,6 +43,10 @@ _Last updated: 2026-09-07 (Phase 0)._
 
 ## Change log
 
+- 2026-09-07 — Initialized **git version control**; committed docs in logical,
+  story-telling steps (gitignore → README/development → progress → workflow
+  rules). Adopted **incremental-commit / no-push** rule. Stray `report.*.json`
+  tool dumps are git-ignored.
 - 2026-09-07 — Target set to **Windows-only**; stack fixed to **Python +
   PySide6**; added deleted-from-phone review + `Deleted/` recycle bin; added
   performance/scalability analysis and import fast-skip; added dev-docs
