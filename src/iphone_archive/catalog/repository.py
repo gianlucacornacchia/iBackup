@@ -96,6 +96,18 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
     return repository_last_row_id(cursor)
 
 
+def repository_get_asset(connection: sqlite3.Connection, asset_id: int) -> Asset | None:
+    """Return the asset with the given identifier, or None.
+
+    connection: an open catalog connection.
+    asset_id: the catalog identifier to look up.
+    Returns the matching ``Asset`` or None when absent.
+    """
+    row = connection.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
+    result = repository_row_to_asset(row) if row is not None else None
+    return result
+
+
 def repository_get_asset_by_hash(connection: sqlite3.Connection, sha256: str) -> Asset | None:
     """Return the asset with the given content hash, or None.
 
