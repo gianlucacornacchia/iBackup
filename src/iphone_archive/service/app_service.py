@@ -12,7 +12,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from ..browse import gallery
+from ..browse import gallery, thumbnails
 from ..catalog import database, repository
 from ..config import ArchivePaths, config_initialize_archive, config_is_archive
 from ..core import albums, dedup, importer, phone_diff, reclaim, recycle, verifier
@@ -307,6 +307,40 @@ class AppService:
             "unsorted": albums.albums_unsorted_count(connection),
             "deleted_on_phone": len(repository.repository_list_deleted_from_phone(connection)),
         }
+
+    def app_service_thumbnail(
+        self,
+        asset_id: int,
+        size: int = thumbnails.DEFAULT_THUMBNAIL_SIZE,
+        refresh: bool = False,
+    ) -> thumbnails.ThumbnailResult:
+        """Return a cached preview image for an asset, generating it if needed.
+
+        asset_id: the asset to preview.
+        size: bounding-box size in pixels for the longest edge.
+        refresh: regenerate the preview even when one is already cached.
+        Returns a ``ThumbnailResult``; unsupported media report an error instead.
+        """
+        connection, paths = self.app_service_require()
+        asset = repository.repository_get_asset(connection, asset_id)
+        if asset is None:
+            result = thumbnails.ThumbnailResult("", None, False, "unknown asset")
+        else:
+            files = repository.repository_list_asset_files(connection, asset_id)
+            if not files:
+                result = thumbnails.ThumbnailResult(asset.sha256, None, False, "no stored copy")
+            else:
+                source = paths.root / files[0].path
+                result = thumbnails.thumbnails_get(paths, asset.sha256, source, size, refresh)
+        return result
+
+    def app_service_clear_thumbnails(self) -> int:
+        """Delete the whole thumbnail cache.
+
+        Returns the number of cached preview files removed.
+        """
+        _, paths = self.app_service_require()
+        return thumbnails.thumbnails_clear_cache(paths)
 
 
 def app_service_fake_source(items: dict[str, bytes]) -> MediaSource:
