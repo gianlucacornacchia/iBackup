@@ -2,7 +2,8 @@
 
 This is the authoritative, consolidated plan. It reflects all decisions to date.
 Companion docs: `specifications.md`, `readme-user.md`, `user-stories.md`,
-`structure.md`, `unit-tests.md`, and the build checklist in `todos.md`.
+`structure.md`, `unit-tests.md`, `development.md`, `progress.md`, the root
+`README.md`, and the build checklist in `todos.md`.
 
 ## 1. Summary
 
@@ -113,9 +114,18 @@ See `todos.md` for the full checklist with dependencies and status.
 
 ## 9. Testing & development workflow
 
+- **Use a Python virtual environment** (`.venv/`, git-ignored) for all
+  development; never install into the global interpreter. Setup in
+  `development.md`.
 - **Run tests after writing code.** Every module is implemented together with its
   unit tests, and `pytest` is **run after each code change / todo** — not only at
   the end. A todo is not "done" until its tests pass locally.
+- **Keep docs up to date while coding.** In the same change, update the living
+  docs affected: `development.md` (setup / libraries / how to run tests),
+  `readme-user.md`, `structure.md`, `unit-tests.md`, the root `README.md`, and any
+  other relevant doc.
+- **Save progress for resumability.** Update `progress.md` (and `todos.md`)
+  whenever a todo changes state, so work can resume after any interruption.
 - The `tests` todo is the final full-suite gate, but targeted tests run
   continuously during Phase 1/2.
 - pytest suite (with `pytest-qt` for the GUI) runs offline with a fake device and

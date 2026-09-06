@@ -3,9 +3,13 @@
 Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 [!] blocked/gate · [ ] pending. "Depends on" must complete first.
 
-> **Workflow rule:** run `pytest` **after writing code for every module/todo**.
-> A todo is not done until its targeted tests pass; run the full suite before
-> completing a phase.
+> **Workflow rules (apply throughout):**
+> - Use a **Python virtual environment** (`.venv/`) — never the global interpreter.
+> - Run `pytest` **after writing code for every module/todo**; a todo is not done
+>   until its targeted tests pass (full suite before completing a phase).
+> - **Keep docs up to date while coding:** `development.md`, `readme-user.md`,
+>   `structure.md`, `unit-tests.md`, root `README.md`, and any other affected doc.
+> - **Update `progress.md`** whenever a todo changes state (resume point).
 
 ## Phase 0 — Documentation (done)
 
@@ -14,13 +18,17 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 - [x] **doc-user-stories** — `docs/user-stories.md`.
 - [x] **doc-structure** — `docs/structure.md`.
 - [x] **doc-unit-tests** — `docs/unit-tests.md`.
+- [x] **doc-development** — `docs/development.md` (venv, libraries, tests).
+- [x] **doc-readme-root** — root `README.md` (overview + docs index).
+- [x] **doc-progress** — `docs/progress.md` (resumable progress log).
 - [!] **docs-approval-gate** — STOP: await explicit user approval of the docs
   before any code. _Depends on: all doc-* above._
 
 ## Phase 1 — Core + CLI (after docs approval)
 
-- [ ] **project-scaffold** — pyproject.toml, `src/iphone_archive/` layout,
-  README, lint/test tooling. _Depends on: docs-approval-gate._
+- [ ] **project-scaffold** — create `.venv`, pyproject.toml (runtime + dev
+  extras), `src/iphone_archive/` layout, root README, `.gitignore`, lint/test
+  tooling. _Depends on: docs-approval-gate._
 - [ ] **config-logging** — `config.py`, `logging_setup.py`.
   _Depends on: project-scaffold._
 - [ ] **name-safety** — Windows-safe album/file names, collisions, no symlinks.
