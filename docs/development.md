@@ -50,8 +50,9 @@ pip install -e ".[dev]"          # editable install + dev extras
 |---|---|
 | `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`). |
 | `PySide6` | Qt GUI (thumbnail grid, multi-select, dialogs, threading). |
-| `pillow-heif` (+ `Pillow`) | Decode HEIC/HEIF to generate cached thumbnails. |
-| (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json`, `argparse` | Catalog, hashing, paths, sidecars, CLI. |
+| `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
+| `typer` | CLI argument parsing, subcommands, and help text. |
+| (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json` | Catalog, hashing, paths, sidecars. |
 
 ### Dev / test libraries
 
@@ -86,6 +87,21 @@ $env:QT_QPA_PLATFORM="offscreen"; pytest tests\test_gui.py
 
 The suite runs **offline** with a fake device and temporary archives — no real
 iPhone required.
+
+### Exercising the CLI without an iPhone
+
+Set `IBACKUP_FAKE_DEVICE` to a folder of ordinary files and every phone-side
+command (`import`, `device-info`, `scan-phone`, `reclaim`) uses that folder as a
+stand-in device. `IBACKUP_ARCHIVE` sets the default archive root, so `--archive`
+can be omitted:
+
+```powershell
+$env:IBACKUP_ARCHIVE = "C:\temp\arch"
+$env:IBACKUP_FAKE_DEVICE = "C:\temp\fakephone"
+ibackup init C:\temp\arch
+ibackup import -v
+ibackup list
+```
 
 ## 5. Running the app during development
 

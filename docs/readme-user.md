@@ -114,17 +114,38 @@ Just open a folder and view the pictures like any other files.
 | Command | What it does |
 |---|---|
 | `ibackup init <path>` | Create and initialize a new archive. |
-| `ibackup device-info` | Detect the iPhone and show its status. |
-| `ibackup import --archive <path>` | Import new photos/videos and organize by album. |
-| `ibackup verify --archive <path>` | Re-check that archived files are intact. |
-| `ibackup dedup --archive <path> --report` | Show duplicate and storage statistics. |
-| `ibackup albums list --archive <path>` | List album folders and counts. |
-| `ibackup gallery <album> --archive <path>` | (Optional) build a static HTML gallery for an album. |
-| `ibackup reclaim --archive <path> --dry-run` | List phone photos that are safe to delete. |
-| `ibackup reclaim --archive <path> --confirm` | Delete those photos from the phone (asks first). |
-| `ibackup deleted-on-phone list --archive <path>` | Show archived photos that no longer exist on the phone. |
-| `ibackup deleted-on-phone purge --archive <path>` | Delete selected such photos from the local archive (asks first). |
-| `ibackup deleted-on-phone to-deleted --archive <path>` | Move selected such photos into the `Deleted\` recycle-bin folder. |
+| `ibackup device-info` | Detect the iPhone and show how many items it holds. |
+| `ibackup import` | Import new photos/videos and organize them by album. |
+| `ibackup verify` | Re-check that archived files are intact. |
+| `ibackup dedup` | Show duplicate and storage statistics. |
+| `ibackup albums` | List albums and their photo counts. |
+| `ibackup list` | List archived photos (`--album`, `--unsorted`, `--recycled`, `--limit`). |
+| `ibackup stats` | Show headline archive counts. |
+| `ibackup scan-phone` | Refresh which archived photos are still on the phone. |
+| `ibackup thumbnail <asset-id>` | Generate a cached preview image for a photo. |
+| `ibackup move <album> <asset-ids...>` | Move a selection of photos into another album. |
+| `ibackup reclaim` | List phone photos that are safe to delete (dry run). |
+| `ibackup reclaim --confirm` | Delete those photos from the phone. |
+| `ibackup deleted-on-phone list` | Show archived photos that no longer exist on the phone. |
+| `ibackup deleted-on-phone to-deleted <asset-ids...>` | Move selected photos into the `Deleted\` recycle-bin folder. |
+| `ibackup deleted-on-phone restore <asset-ids...>` | Restore photos from `Deleted\` back into the album tree. |
+| `ibackup deleted-on-phone purge <asset-ids...> --confirm` | Permanently delete selected photos from the archive. |
+| `ibackup marks add <id> [--album]` | Stage a photo or album for deletion (nothing is deleted yet). |
+| `ibackup marks list` | Show staged marks. |
+| `ibackup marks remove <mark-id>` | Cancel a staged mark. |
+| `ibackup marks commit --confirm [--purge]` | Apply staged marks: recycle them, or delete permanently with `--purge`. |
+
+Every command accepts `--archive <path>`. To avoid repeating it, set the
+`IBACKUP_ARCHIVE` environment variable once per session:
+
+```powershell
+$env:IBACKUP_ARCHIVE = "D:\iphone-archive"
+ibackup import
+```
+
+Commands that delete anything are **safe by default**: `reclaim`,
+`deleted-on-phone purge`, and `marks commit` only report what *would* happen
+until you add `--confirm`.
 
 ### Import options
 
@@ -142,7 +163,7 @@ After a successful backup you can reclaim space:
 
 ```powershell
 # See what could be deleted (nothing is deleted yet)
-ibackup reclaim --archive D:\iphone-archive --dry-run
+ibackup reclaim --archive D:\iphone-archive
 
 # Actually delete from the phone (you will be asked to confirm)
 ibackup reclaim --archive D:\iphone-archive --confirm
@@ -160,8 +181,8 @@ Because the archive keeps everything, photos you delete on the phone stay in the
 archive. You can review those and decide what to do with each one:
 
 ```powershell
-# Show archived photos that are no longer on the phone
-ibackup deleted-on-phone list --archive D:\iphone-archive
+# Show archived photos that are no longer on the phone (--rescan checks the phone first)
+ibackup deleted-on-phone list --rescan --archive D:\iphone-archive
 ```
 
 For the ones you select, choose either:
@@ -169,7 +190,7 @@ For the ones you select, choose either:
 - **Move to the Deleted folder (safe, reversible):**
 
   ```powershell
-  ibackup deleted-on-phone to-deleted --archive D:\iphone-archive
+  ibackup deleted-on-phone to-deleted 12 13 14 --archive D:\iphone-archive
   ```
 
   The photos are moved out of `Photos\` into a `Deleted\` folder (a recycle bin).
@@ -178,7 +199,7 @@ For the ones you select, choose either:
 - **Delete from the local archive (permanent):**
 
   ```powershell
-  ibackup deleted-on-phone purge --archive D:\iphone-archive
+  ibackup deleted-on-phone purge 12 13 14 --confirm --archive D:\iphone-archive
   ```
 
   This permanently removes those photos from the archive after you confirm.

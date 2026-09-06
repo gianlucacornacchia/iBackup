@@ -24,57 +24,56 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 - [x] **doc-development** — `docs/development.md` (venv, libraries, tests).
 - [x] **doc-readme-root** — root `README.md` (overview + docs index).
 - [x] **doc-progress** — `docs/progress.md` (resumable progress log).
-- [!] **docs-approval-gate** — STOP: await explicit user approval of the docs
-  before any code. _Depends on: all doc-* above._
+- [x] **docs-approval-gate** — docs approved by the user; Phase 1 unblocked. _Depends on: all doc-* above._
 
-## Phase 1 — Core + CLI (after docs approval)
+## Phase 1 — Core + CLI (docs approved — complete)
 
-- [ ] **project-scaffold** — create `.venv`, pyproject.toml (runtime + dev
+- [x] **project-scaffold** — create `.venv`, pyproject.toml (runtime + dev
   extras incl. ruff, mypy, hypothesis, pre-commit, pytest-cov),
   `src/iphone_archive/` layout, root README, `.gitignore`,
   `.pre-commit-config.yaml` (ruff + mypy + hygiene), and
   `.github/workflows/ci.yml` (windows-latest: ruff, `mypy --strict` on
   core/catalog, pytest headless + coverage gate ~85%).
   _Depends on: docs-approval-gate._
-- [ ] **config-logging** — `config.py`, `logging_setup.py`.
+- [x] **config-logging** — `config.py`, `logging_setup.py`.
   _Depends on: project-scaffold._
-- [ ] **name-safety** — Windows-safe album/file names, collisions, no symlinks.
+- [x] **name-safety** — Windows-safe album/file names, collisions, no symlinks.
   _Depends on: project-scaffold._
-- [ ] **device-access** — `pymobiledevice3` AFC wrapper, device detection,
+- [x] **device-access** — `pymobiledevice3` AFC wrapper, device detection,
   media enumeration (DCIM + PhotoData). _Depends on: project-scaffold._
-- [ ] **catalog-schema** — SQLite schema (assets, asset_files, albums,
+- [x] **catalog-schema** — SQLite schema (assets, asset_files, albums,
   asset_albums, import_sessions, deletion_marks), models, repository.
   _Depends on: project-scaffold._
-- [ ] **hashing-layout** — streaming SHA-256 + album-folder layout, atomic
+- [x] **hashing-layout** — streaming SHA-256 + album-folder layout, atomic
   copy/hardlink placement. _Depends on: name-safety, project-scaffold._
-- [ ] **sidecar** — per-asset JSON sidecar read/write. _Depends on:
+- [x] **sidecar** — per-asset JSON sidecar read/write. _Depends on:
   catalog-schema._
-- [ ] **importer** — incremental import (copy→verify→place→sidecar→commit),
+- [x] **importer** — incremental import (copy→verify→place→sidecar→commit),
   append-only album growth. _Depends on: catalog-schema, device-access,
   hashing-layout, sidecar._
-- [ ] **dedup** — duplicate detection + report. _Depends on: catalog-schema,
+- [x] **dedup** — duplicate detection + report. _Depends on: catalog-schema,
   hashing-layout._
-- [ ] **verifier** — re-hash all on-disk copies vs catalog. _Depends on:
+- [x] **verifier** — re-hash all on-disk copies vs catalog. _Depends on:
   catalog-schema, hashing-layout._
-- [ ] **albums** — parse `Photos.sqlite`, map to album folders; `_Unsorted`
+- [x] **albums** — parse `Photos.sqlite`, map to album folders; `_Unsorted`
   fallback. _Depends on: catalog-schema, device-access, name-safety._
-- [ ] **phone-diff** — detect archived assets no longer on the phone
+- [x] **phone-diff** — detect archived assets no longer on the phone
   (read-only). _Depends on: catalog-schema, device-access, importer._
-- [ ] **reclaim** — verify-before-delete phone space reclamation
+- [x] **reclaim** — verify-before-delete phone space reclamation
   (dry-run/confirm). _Depends on: device-access, importer, verifier._
-- [ ] **recycle-bin** — `Deleted/` folder: move/restore/purge; keep catalog in
+- [x] **recycle-bin** — `Deleted/` folder: move/restore/purge; keep catalog in
   sync. _Depends on: archive-edit, catalog-schema, hashing-layout._
-- [ ] **browse-gallery** — album listing/counts + optional HTML gallery.
+- [x] **browse-gallery** — album listing/counts + optional HTML gallery.
   _Depends on: catalog-schema._
-- [ ] **thumbnails** — generate + cache thumbnails under `.ibackup/thumbnails/`
+- [x] **thumbnails** — generate + cache thumbnails under `.ibackup/thumbnails/`
   (HEIC via `pillow-heif`), reuse cache, never modify originals. _Depends on:
   hashing-layout._
-- [ ] **service-layer** — headless facade (`app_service.py`) + progress/cancel
+- [x] **service-layer** — headless facade (`app_service.py`) + progress/cancel
   + result DTOs, exposing all operations. _Depends on: albums, browse-gallery,
   dedup, importer, phone-diff, reclaim, recycle-bin, thumbnails, verifier._
-- [ ] **archive-edit** — multi-select move/delete + mark-for-delete queue.
+- [x] **archive-edit** — multi-select move/delete + mark-for-delete queue.
   _Depends on: catalog-schema, hashing-layout, service-layer._
-- [ ] **cli-wiring** — wire all subcommands to the service layer. _Depends on:
+- [x] **cli-wiring** — wire all subcommands to the service layer. _Depends on:
   albums, archive-edit, browse-gallery, dedup, importer, reclaim,
   service-layer, verifier._
 
@@ -96,11 +95,13 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 
 ## Verification
 
-- [ ] **tests** — pytest suite (unit + mocked device + pytest-qt GUI +
+- [~] **tests** — pytest suite (unit + mocked device + pytest-qt GUI +
   `hypothesis` property tests + golden E2E/crash-resume `test_e2e.py`), **run
   after each module during development** and as a final full-suite gate.
   _Depends on: archive-edit, dedup, gui-frontend, hashing-layout, importer,
   name-safety, phone-diff, recycle-bin, service-layer, thumbnails, verifier._
+  Status: **179 tests green, 91% coverage** for core + catalog + service + CLI;
+  `test_gui.py` still to be written after the GUI exists.
 
 ## Future backlog (agreed, not scheduled)
 
