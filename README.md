@@ -23,6 +23,7 @@ without the app. The archive — not the phone — is the source of truth.
 | [`docs/plan.md`](docs/plan.md) | Consolidated implementation plan. |
 | [`docs/todos.md`](docs/todos.md) | Build checklist with dependencies/status. |
 | [`docs/progress.md`](docs/progress.md) | Resumable progress log (update as you work). |
+| [`docs/ui-sketch/`](docs/ui-sketch/README.md) | GUI wireframes — **awaiting approval** before any GUI code. |
 
 ## Quick start (developers)
 
