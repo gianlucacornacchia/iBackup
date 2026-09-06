@@ -79,7 +79,7 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 
 ## UI sketch gate (before any GUI code)
 
-- [ ] **ui-sketch** — produce UI sketch/wireframe (main window, album nav,
+- [x] **ui-sketch** — written at `docs/ui-sketch/README.md`; produce UI sketch/wireframe (main window, album nav,
   picture grid + multi-select, deleted-on-phone review, reclaim, progress) under
   `docs/ui-sketch/`. _Depends on: service-layer._
 - [!] **ui-sketch-approval-gate** — STOP: await explicit user approval of the

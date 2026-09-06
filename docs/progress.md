@@ -13,9 +13,11 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
 - **State:** docs approved. All core, catalog, device, service, browse and CLI
   modules are implemented, tested and committed. **179 tests green, 91%
   coverage.** `ibackup` runs end to end against a fake device offline.
-- **Next action on resume:** produce the **UI sketch** under `docs/ui-sketch/`
-  (todo `ui-sketch`), then **STOP** at the UI-sketch approval gate. No GUI code
-  may be written before that approval.
+- **Next action on resume:** the **UI sketch is written**
+  (`docs/ui-sketch/README.md`) and the project is **holding at the UI-sketch
+  approval gate**. On approval, implement `gui-frontend` (PySide6) exactly as
+  sketched, then `tests/test_gui.py`. No GUI code may be written before that
+  approval.
 - **Not yet validated:** real-iPhone behaviour (`AfcDevice` has never run
   against hardware), the Windows `.exe` packaging, and the Windows CI workflow —
   development happened on Linux against the offline fake device.
@@ -40,12 +42,17 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
       structure, unit-tests, development, plan, todos, progress).
 - [x] Docs approved.
 - [x] Phase 1 — core + CLI.
-- [ ] UI sketch produced and approved.
+- [~] UI sketch produced (`docs/ui-sketch/`); **approval pending**.
 - [ ] Phase 2 — GUI.
 - [ ] Full test suite green.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
+
+- 2026-09-07 — Wrote the **UI sketch** (`docs/ui-sketch/README.md`): main window,
+  import progress, deleted-on-phone review, reclaim, destructive confirmation,
+  marks queue, single-photo viewer, plus a full **CLI-to-GUI parity map**.
+  **Holding at the UI-sketch approval gate.**
 
 - 2026-09-07 — **Phase 1 delivered.** Implemented, in dependency order and each
   with its own tests + commit: project scaffold, name-safety, hashing, catalog
