@@ -21,6 +21,7 @@ consequences.
 | [0006](0006-sha256-integrity-and-dedup.md) | SHA-256 for integrity and dedup | Accepted |
 | [0007](0007-append-only-with-recycle-bin.md) | Append-only archive with a `Deleted/` recycle bin | Accepted |
 | [0008](0008-pymobiledevice3-device-access.md) | Device access via `pymobiledevice3` (AFC) | Accepted |
+| [0010](0010-windows11-fluent-look.md) | Windows 11 Fluent look without a GPL widget library | Accepted |
 | [0009](0009-headless-service-layer.md) | Headless `service/` layer shared by CLI and GUI | Accepted |
 
 ## Conventions

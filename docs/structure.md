@@ -59,8 +59,10 @@ ibackup/
       gui/                       # PySide6 GUI — thin adapter over service/
         __init__.py
         app.py                   # QApplication bootstrap; ibackup-gui entry point
-        main_window.py           # main window: albums sidebar + picture grid + toolbar
-        album_list_view.py       # album navigation (list/tree) with counts
+        theme.py                 # Windows 11 Fluent design tokens + scoped QSS (ADR-0010)
+        win32_effects.py         # DWM: Mica backdrop, rounded corners, dark caption
+        main_window.py           # main window: navigation pane + command bar + grid
+        navigation_pane.py       # NavigationView-style album/library nav with counts
         picture_grid_view.py     # QListView icon-mode thumbnail grid, multi-select
         thumbnail_loader.py      # background thumbnail loading from archive files
         operations_controller.py # binds UI actions to service/ calls; progress/cancel
@@ -147,6 +149,8 @@ rules.
 | `browse/thumbnails.py` | Generate and cache JPEG previews under `.ibackup/thumbnails/<sha256>_<size>.jpg` (HEIC via `pillow-heif`); originals are only read. Unsupported media (video) reports a placeholder result. |
 | `cli.py` | Thin adapter: map subcommands to `service/` calls; format output. |
 | `gui/` | PySide6 thin adapter: bind widgets to the same `service/` calls; thumbnail grid, album navigation, multi-select, move/delete/mark, reclaim view, progress/cancel. |
+| `gui/theme.py` | Windows 11 Fluent design tokens (type ramp, radii, light/dark color tokens, accent) and the narrowly scoped QSS applied on top of Qt's native `windows11` style. Pure data + string building, so it is unit-testable without a display. |
+| `gui/win32_effects.py` | `ctypes` calls to `DwmSetWindowAttribute` for the Mica backdrop, rounded corners and dark title bar, each guarded by a Windows build check and failing silently to a solid-color fallback. |
 
 ## 4. Data flow — import
 

@@ -87,11 +87,19 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 
 ## Phase 2 — GUI (after sketch approval)
 
-- [ ] **gui-frontend** — PySide6 `gui/` (main_window, album_list_view,
-  picture_grid_view w/ multi-select, thumbnail_loader, operations_controller,
-  reclaim_view, deleted_on_phone_view, Qt models); `ibackup-gui` entry point;
-  progress/cancel via QThread. _Depends on: archive-edit, browse-gallery,
-  phone-diff, recycle-bin, service-layer, ui-sketch-approval-gate._
+- [ ] **gui-theme** — Windows 11 Fluent look (ADR-0010): a throwaway **Mica
+  probe** on Win11 22H2 first, then `gui/theme.py` (WinUI design tokens: type
+  ramp, 4/8px radii, light+dark color tokens, system accent, scoped QSS over
+  Qt's native `windows11` style) and `gui/win32_effects.py` (DWM Mica, rounded
+  corners, dark caption, each build-guarded). Requires PySide6>=6.7.
+  _Depends on: ui-sketch-approval-gate._
+- [ ] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
+  command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
+  operations_controller, reclaim_view, deleted_on_phone_view, marks_view,
+  settings_dialog, Qt models); `ibackup-gui` entry point; progress/cancel via
+  QThread. **No menu bar** — NavigationView + command bar per the sketch.
+  _Depends on: archive-edit, browse-gallery, gui-theme, phone-diff,
+  recycle-bin, service-layer, ui-sketch-approval-gate._
 
 ## Verification
 

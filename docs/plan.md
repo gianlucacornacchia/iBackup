@@ -18,9 +18,12 @@ Key decisions:
 - **Language:** Python 3.11+.
 - **Frontends:** CLI (`ibackup`) + GUI (`ibackup-gui`), both thin adapters over a
   headless `service/` layer, guaranteeing full parity.
-- **GUI framework:** PySide6 (Qt for Python, LGPL). Native WinUI/C# rejected
-  because it would require rewriting the whole Python core (incl.
+- **GUI framework:** PySide6 **6.7+** (Qt for Python, LGPL). Native WinUI/C#
+  rejected because it would require rewriting the whole Python core (incl.
   `pymobiledevice3`).
+- **GUI look:** a **modern Windows 11 Fluent** app, not a default Qt window —
+  Qt's native `windows11` style + our own WinUI design tokens + DWM Mica /
+  rounded corners / dark caption. No GPL widget library (ADR-0010).
 - **Device access:** `pymobiledevice3` over USB (Apple Mobile Device driver from
   iTunes / "Apple Devices").
 - **Catalog:** SQLite (source of truth) + per-asset JSON sidecars in hidden
@@ -31,10 +34,12 @@ Key decisions:
 ## 2. Delivery gates (hard stops)
 
 1. **Phase 0 — Documentation only.** All docs under `docs/`, then **STOP for
-   approval**. No source code. (Status: DONE, awaiting approval.)
+   approval**. No source code. (Status: **DONE, approved**.)
 2. **Phase 1 — Build core + CLI.** Only after docs are approved.
+   (Status: **DONE** — 205 tests, 91% coverage.)
 3. **UI sketch gate.** Before any GUI code, produce a **UI sketch/wireframe**
    under `docs/ui-sketch/` and **STOP for explicit approval**.
+   (Status: **sketch written, HOLDING HERE**.)
 4. **Phase 2 — Build GUI.** Only after the UI sketch is approved.
 
 ## 3. Archive layout (plain, album-organized, append-only)
@@ -89,10 +94,10 @@ tests/
 
 ## 6. CLI commands (first release)
 
-`init`, `device-info`, `import [--album-link-mode ...]`, `verify [--full]`,
-`dedup --report`, `albums list`, `gallery <album>`,
-`reclaim --dry-run|--confirm`,
-`deleted-on-phone list|purge|to-deleted`.
+Shipped: `init`, `device-info`, `import [--album-link-mode ...]`, `verify`,
+`dedup`, `albums`, `list`, `stats`, `scan-phone`, `thumbnail`, `move`,
+`reclaim [--confirm]`, `deleted-on-phone list|to-deleted|restore|purge`,
+`marks add|list|remove|commit`, `config get|set|list|reset|path|forget`.
 
 ## 7. Feature: review of assets deleted from the phone
 
@@ -108,7 +113,9 @@ tests/
 scaffold → name-safety → device-access → catalog-schema → hashing-layout →
 sidecar → importer → dedup → verifier → albums → phone-diff → reclaim →
 recycle-bin → browse-gallery → thumbnails → service-layer → archive-edit →
-cli-wiring → **UI sketch (gate)** → gui-frontend → tests.
+cli-wiring → settings-store → **UI sketch (gate)** → gui-theme
+(`theme.py` + `win32_effects.py`, preceded by a Mica probe) → gui-frontend →
+tests.
 
 See `todos.md` for the full checklist with dependencies and status.
 
@@ -163,5 +170,14 @@ See `todos.md` for the full checklist with dependencies and status.
 
 ## 11. Progress
 
-- **Phase 0 (docs): DONE**, holding at the documentation approval gate.
-- Phase 1/2: not started (blocked on approvals).
+- **Phase 0 (docs): DONE and approved.**
+- **Phase 1 (core + CLI): DONE.** All core, catalog, device, service, browse,
+  settings and CLI modules implemented and committed. **205 tests, 91%
+  coverage**, ruff + mypy clean. Runs end to end offline against a fake device.
+- **UI sketch: written** (`docs/ui-sketch/`), including the Windows 11 Fluent
+  visual spec. **Holding at the UI-sketch approval gate.**
+- **Phase 2 (GUI): blocked** on that approval. First task on approval is the
+  theming layer plus a Mica probe, then the views.
+- Deferred by agreement: the 6 `future-*` backlog items.
+
+See `progress.md` for the detailed, resumable status.
