@@ -49,6 +49,11 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
 
 ## Change log
 
+- 2026-09-07 — Noted a gap: **there is no configuration UI and no persisted
+  settings**; all options are per-invocation flags or env vars. Sketched a
+  Settings dialog (`docs/ui-sketch/` §7b) and added the `settings-store` todo
+  (settings.py + `ibackup config` command + dialog). Not yet scheduled.
+
 - 2026-09-07 — Wrote the **UI sketch** (`docs/ui-sketch/README.md`): main window,
   import progress, deleted-on-phone review, reclaim, destructive confirmation,
   marks queue, single-photo viewer, plus a full **CLI-to-GUI parity map**.

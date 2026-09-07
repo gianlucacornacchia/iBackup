@@ -201,6 +201,52 @@ Used by purge, mark-commit and reclaim — the GUI mirror of `--confirm`.
 
 ---
 
+## 7b. Settings / Preferences  *(proposed — not yet built)*
+
+There is currently **no configuration UI and no persisted settings**: every
+option is passed per-invocation (`--archive`, `--album-link-mode`, `--size`) or
+read from an environment variable. This dialog, plus a small settings store,
+would fix that.
+
+```
++-------------------------------------------------------------+
+|  Settings                                            [X]     |
++--------------+----------------------------------------------+
+| Archive      |  Default archive                             |
+| Import       |  [ D:\iphone-archive              ] [Browse] |
+| Thumbnails   |  [x] Reopen this archive on startup          |
+| Safety       |                                              |
+| Advanced     |  Recent archives:                            |
+|              |    D:\iphone-archive                         |
+|              |    E:\backup-2025                 [ Forget ] |
++--------------+----------------------------------------------+
+|                                  [ Cancel ]  [ Save ]        |
++-------------------------------------------------------------+
+```
+
+Panels:
+
+- **Archive** — default archive root, reopen-on-startup, recent archives list.
+- **Import** — album link mode (`copy` / `hardlink` with automatic exFAT
+  fallback), and whether to scan the phone automatically after each import.
+- **Thumbnails** — preview size (128 / 256 / 512 px), on-disk cache size with a
+  **Clear cache** button (`app_service_clear_thumbnails`).
+- **Safety** — require typing `DELETE` for permanent deletion (default on),
+  default the deleted-on-phone action to *Move to Deleted folder*, keep reclaim
+  in dry-run until explicitly confirmed. These only ever *add* friction; they
+  cannot disable a confirmation entirely.
+- **Advanced** — log level and a **Open logs folder** shortcut.
+
+Design notes:
+
+- Settings are **user preferences (defaults), never archive semantics**. Nothing
+  here can weaken the append-only guarantee or auto-delete anything.
+- Stored per-user outside the archive (`%APPDATA%\ibackup\settings.json`) so the
+  archive folder stays a pure, portable data directory.
+- Would need a new `settings.py` + `app_service_get_settings` /
+  `app_service_update_settings`, and a matching `ibackup config get|set|list`
+  command so the CLI keeps full parity.
+
 ## 8. CLI ↔ GUI parity map
 
 Every CLI command has a GUI surface, and both call the same service method.
@@ -230,6 +276,7 @@ Every CLI command has a GUI surface, and both call the same service method.
 | Commit marks | `marks commit --confirm` | §6 buttons + §5 dialog | `app_service_commit_marks` |
 | Move selection | `move` | **Move to album...** | `app_service_move_selection` |
 | Thumbnail | `thumbnail` | Grid tiles (implicit) | `app_service_thumbnail` |
+| Settings | *(none yet)* | §7b dialog *(proposed)* | *(needs `settings.py`)* |
 
 ---
 

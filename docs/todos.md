@@ -114,5 +114,12 @@ Architect recommendations captured for later — not part of the current build:
 - [ ] **future-release-checklist** — CHANGELOG/SECURITY/CONTRIBUTING/LICENSE,
   signed reproducible PyInstaller build, `.exe` smoke test, version tagging.
 - [ ] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
+- [ ] **settings-store** — persisted user preferences
+  (`%APPDATA%\ibackup\settings.json`): default archive + recent archives, album
+  link mode, thumbnail size, safety defaults, log level. Needs `settings.py`,
+  `app_service_get_settings` / `app_service_update_settings`, an
+  `ibackup config get|set|list` command (CLI parity) and the §7b Settings
+  dialog. Preferences only — must never weaken the append-only guarantee.
+  _Depends on: service-layer. Sketched in `docs/ui-sketch/` §7b._
 - [ ] **future-destructive-guardrails** — extend dry-run + explicit-confirm to
   every destructive op (purge/delete/move-to-Deleted).
