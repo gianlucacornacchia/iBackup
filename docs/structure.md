@@ -18,7 +18,8 @@ ibackup/
     iphone_archive/
       __init__.py
       cli.py                     # command entry points (thin adapter over service/)
-      config.py                  # settings & archive-root resolution
+      config.py                  # archive-root and folder-path resolution
+      settings.py                # persisted user preferences (%APPDATA%\ibackup\settings.json)
       logging_setup.py           # logging configuration
       service/                   # headless application API for both frontends (CLI + GUI)
         __init__.py
@@ -117,7 +118,8 @@ rules.
 
 | Module | Responsibility |
 |---|---|
-| `config.py` | Resolve archive root and settings; validate the archive. |
+| `config.py` | Resolve the archive root and every folder inside it; validate the archive. |
+| `settings.py` | Persisted user preferences stored per-user *outside* the archive: default/recent archives, album link mode, thumbnail size, safety defaults, log level. Preferences only — validation refuses any value that would weaken a safety guarantee. |
 | `logging_setup.py` | Configure logging to console and `.ibackup/logs/`. |
 | `service/app_service.py` | Headless facade: exposes every operation (import, verify, dedup, albums, browse/query, select, mark-for-delete, move, delete, reclaim, deleted-on-phone review + purge/move-to-Deleted/restore) as UI-agnostic calls used by both the CLI and the GUI. |
 | `service/progress.py` | Progress-reporting and cancellation interfaces for long operations (import/verify/reclaim), consumable by a CLI progress bar or a GUI progress dialog. |

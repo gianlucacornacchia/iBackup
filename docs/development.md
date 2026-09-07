@@ -93,7 +93,9 @@ iPhone required.
 Set `IBACKUP_FAKE_DEVICE` to a folder of ordinary files and every phone-side
 command (`import`, `device-info`, `scan-phone`, `reclaim`) uses that folder as a
 stand-in device. `IBACKUP_ARCHIVE` sets the default archive root, so `--archive`
-can be omitted:
+can be omitted. `IBACKUP_CONFIG_DIR` redirects the user settings file, which is
+how the test suite stays isolated from your real profile (an autouse fixture in
+`conftest.py` sets it for every test):
 
 ```powershell
 $env:IBACKUP_ARCHIVE = "C:\temp\arch"

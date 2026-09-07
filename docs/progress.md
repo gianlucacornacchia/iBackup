@@ -11,8 +11,9 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
 
 - **Phase:** Phase 1 — core + CLI. **Complete.**
 - **State:** docs approved. All core, catalog, device, service, browse and CLI
-  modules are implemented, tested and committed. **179 tests green, 91%
-  coverage.** `ibackup` runs end to end against a fake device offline.
+  modules are implemented, tested and committed, including persisted user
+  settings. **205 tests green.** `ibackup` runs end to end against a fake
+  device offline.
 - **Next action on resume:** the **UI sketch is written**
   (`docs/ui-sketch/README.md`) and the project is **holding at the UI-sketch
   approval gate**. On approval, implement `gui-frontend` (PySide6) exactly as
@@ -49,10 +50,15 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
 
 ## Change log
 
-- 2026-09-07 — Noted a gap: **there is no configuration UI and no persisted
-  settings**; all options are per-invocation flags or env vars. Sketched a
-  Settings dialog (`docs/ui-sketch/` §7b) and added the `settings-store` todo
-  (settings.py + `ibackup config` command + dialog). Not yet scheduled.
+- 2026-09-07 — Closed the configuration gap: added **`settings.py`** (persisted
+  preferences in `%APPDATA%\ibackup\settings.json`, outside the archive),
+  `app_service_get_settings` / `app_service_update_settings`, and the
+  **`ibackup config get|set|list|reset|path|forget`** command. The first archive
+  created becomes the default, so `--archive` can be omitted. Validation refuses
+  any value that would weaken safety (`confirm_word_required` cannot be turned
+  off). An autouse fixture isolates tests from the real user profile.
+  **205 tests green.** Only the §7b Settings *dialog* remains, blocked with the
+  rest of the GUI.
 
 - 2026-09-07 — Wrote the **UI sketch** (`docs/ui-sketch/README.md`): main window,
   import progress, deleted-on-phone review, reclaim, destructive confirmation,
