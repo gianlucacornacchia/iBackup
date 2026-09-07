@@ -24,3 +24,9 @@ report.*.json
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+
+# Coverage data
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
