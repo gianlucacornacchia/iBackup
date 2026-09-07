@@ -114,7 +114,8 @@ Architect recommendations captured for later — not part of the current build:
 - [ ] **future-release-checklist** — CHANGELOG/SECURITY/CONTRIBUTING/LICENSE,
   signed reproducible PyInstaller build, `.exe` smoke test, version tagging.
 - [ ] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
-- [ ] **settings-store** — persisted user preferences
+- [~] **settings-store** — **store + CLI done**; only the §7b Settings dialog
+  remains (blocked with the rest of the GUI). Persisted user preferences
   (`%APPDATA%\ibackup\settings.json`): default archive + recent archives, album
   link mode, thumbnail size, safety defaults, log level. Needs `settings.py`,
   `app_service_get_settings` / `app_service_update_settings`, an

@@ -14,8 +14,6 @@ from pathlib import Path
 
 import typer
 
-from .browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
-from .core.archive_layout import LINK_MODE_COPY
 from .device.afc_device import AfcDevice
 from .device.fake_device import FakeDevice
 from .device.interface import DeviceError, MediaSource
@@ -23,6 +21,16 @@ from .logging_setup import logging_setup_configure
 from .service.app_service import AppService, ArchiveNotFoundError
 from .service.marks import TARGET_ALBUM, TARGET_ASSET
 from .service.progress import ProgressEvent, ProgressHandle
+from .settings import (
+    SettingsError,
+    settings_field_names,
+    settings_forget_archive,
+    settings_get,
+    settings_load,
+    settings_path,
+    settings_reset,
+    settings_set,
+)
 
 ARCHIVE_ENV_VAR = "IBACKUP_ARCHIVE"
 FAKE_DEVICE_ENV_VAR = "IBACKUP_FAKE_DEVICE"
@@ -37,8 +45,10 @@ app = typer.Typer(
 )
 deleted_app = typer.Typer(help="Review archived assets that no longer exist on the phone.")
 marks_app = typer.Typer(help="Stage, review, and commit mark-for-delete requests.")
+config_app = typer.Typer(help="Read and change persisted user preferences.")
 app.add_typer(deleted_app, name="deleted-on-phone")
 app.add_typer(marks_app, name="marks")
+app.add_typer(config_app, name="config")
 
 ArchiveOption = typer.Option(None, "--archive", "-a", help="Archive root folder.")
 
@@ -52,7 +62,10 @@ def cli_resolve_archive(archive: Path | None) -> Path:
     if archive is not None:
         return archive
     from_env = os.environ.get(ARCHIVE_ENV_VAR)
-    return Path(from_env) if from_env else Path.cwd()
+    if from_env:
+        return Path(from_env)
+    configured = settings_load().default_archive
+    return Path(configured) if configured else Path.cwd()
 
 
 def cli_open_service(archive: Path | None) -> AppService:
@@ -147,14 +160,19 @@ def cli_device_info() -> None:
 @app.command("import")
 def cli_import(
     archive: Path = ArchiveOption,
-    link_mode: str = typer.Option(
-        LINK_MODE_COPY, "--album-link-mode", help="How extra album copies are stored."
+    link_mode: str | None = typer.Option(
+        None, "--album-link-mode", help="How extra album copies are stored."
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Print per-item progress."),
 ) -> None:
     """Import new photos and videos from the phone (incremental, append-only)."""
     service = cli_open_service(archive)
-    result = service.app_service_import(cli_build_source(), cli_progress(verbose), link_mode)
+    preferences = settings_load()
+    effective_mode = link_mode if link_mode is not None else preferences.album_link_mode
+    source = cli_build_source()
+    result = service.app_service_import(source, cli_progress(verbose), effective_mode)
+    if preferences.scan_phone_after_import and not result.cancelled:
+        service.app_service_scan_phone(source)
     typer.echo(
         f"Added {result.added_count}, skipped {result.skipped_count}, "
         f"duplicates {result.duplicate_count}, errors {result.error_count}"
@@ -379,14 +397,70 @@ def cli_move(
 def cli_thumbnail(
     asset_id: int = typer.Argument(..., help="Asset id to preview."),
     archive: Path = ArchiveOption,
-    size: int = typer.Option(DEFAULT_THUMBNAIL_SIZE, "--size", help="Longest edge in pixels."),
+    size: int | None = typer.Option(None, "--size", help="Longest edge in pixels."),
 ) -> None:
     """Generate and cache a preview image for an asset."""
     service = cli_open_service(archive)
-    result = service.app_service_thumbnail(asset_id, size)
+    effective_size = size if size is not None else settings_load().thumbnail_size
+    result = service.app_service_thumbnail(asset_id, effective_size)
     if not result.available:
         cli_fail(f"No thumbnail: {result.error}")
     typer.echo(str(result.path))
+
+
+@config_app.command("list")
+def cli_config_list() -> None:
+    """Show every setting and its current value."""
+    settings = settings_load()
+    for name in settings_field_names():
+        typer.echo(f"{name:>24}: {getattr(settings, name)}")
+    typer.echo(f"\nStored in {settings_path()}")
+
+
+@config_app.command("get")
+def cli_config_get(
+    key: str = typer.Argument(..., help="Setting name, as shown by 'config list'."),
+) -> None:
+    """Show one setting."""
+    try:
+        typer.echo(str(settings_get(key)))
+    except SettingsError as error:
+        cli_fail(str(error))
+
+
+@config_app.command("set")
+def cli_config_set(
+    key: str = typer.Argument(..., help="Setting name, as shown by 'config list'."),
+    value: str = typer.Argument(..., help="New value."),
+) -> None:
+    """Change one setting. Invalid values are rejected and nothing is written."""
+    try:
+        settings_set(key, value)
+    except SettingsError as error:
+        cli_fail(str(error))
+    typer.echo(f"{key} = {value}")
+
+
+@config_app.command("reset")
+def cli_config_reset() -> None:
+    """Restore every setting to its default."""
+    settings_reset()
+    typer.echo("Settings restored to defaults.")
+
+
+@config_app.command("path")
+def cli_config_path() -> None:
+    """Show where the settings file lives."""
+    typer.echo(str(settings_path()))
+
+
+@config_app.command("forget")
+def cli_config_forget(
+    archive_root: Path = typer.Argument(..., help="Archive to drop from the recent list."),
+) -> None:
+    """Forget an archive. Only the preference is removed; no files are touched."""
+    settings_forget_archive(archive_root)
+    typer.echo(f"Forgot {archive_root}. No files were changed.")
 
 
 def main() -> int:

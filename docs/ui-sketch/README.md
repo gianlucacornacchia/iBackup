@@ -201,12 +201,12 @@ Used by purge, mark-commit and reclaim — the GUI mirror of `--confirm`.
 
 ---
 
-## 7b. Settings / Preferences  *(proposed — not yet built)*
+## 7b. Settings / Preferences  *(backend built; dialog pending approval)*
 
-There is currently **no configuration UI and no persisted settings**: every
-option is passed per-invocation (`--archive`, `--album-link-mode`, `--size`) or
-read from an environment variable. This dialog, plus a small settings store,
-would fix that.
+The settings **store and CLI now exist** (`settings.py` + `ibackup config
+get|set|list|reset|path|forget`), so this dialog is a thin editor over
+`app_service_get_settings` / `app_service_update_settings`. It is the only part
+of the settings feature still to be built, and it waits on this approval.
 
 ```
 +-------------------------------------------------------------+
@@ -243,9 +243,11 @@ Design notes:
   here can weaken the append-only guarantee or auto-delete anything.
 - Stored per-user outside the archive (`%APPDATA%\ibackup\settings.json`) so the
   archive folder stays a pure, portable data directory.
-- Would need a new `settings.py` + `app_service_get_settings` /
-  `app_service_update_settings`, and a matching `ibackup config get|set|list`
-  command so the CLI keeps full parity.
+- Backed by `settings.py` and exposed through `app_service_get_settings` /
+  `app_service_update_settings`; the CLI equivalent is `ibackup config`.
+- Invalid values are refused by the service, so the dialog only has to surface
+  the `SettingsError` message. `confirm_word_required` is intentionally shown
+  but not switchable off.
 
 ## 8. CLI ↔ GUI parity map
 
@@ -276,7 +278,7 @@ Every CLI command has a GUI surface, and both call the same service method.
 | Commit marks | `marks commit --confirm` | §6 buttons + §5 dialog | `app_service_commit_marks` |
 | Move selection | `move` | **Move to album...** | `app_service_move_selection` |
 | Thumbnail | `thumbnail` | Grid tiles (implicit) | `app_service_thumbnail` |
-| Settings | *(none yet)* | §7b dialog *(proposed)* | *(needs `settings.py`)* |
+| Settings | `config list` / `get` / `set` | §7b dialog *(pending)* | `app_service_get_settings` / `app_service_update_settings` |
 
 ---
 

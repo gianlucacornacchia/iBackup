@@ -8,6 +8,17 @@ from pathlib import Path
 import pytest
 
 from iphone_archive.catalog import database
+from iphone_archive.settings import SETTINGS_DIR_ENV_VAR
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect user settings into tmp_path so tests never touch the real profile."""
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv(SETTINGS_DIR_ENV_VAR, str(config_dir))
+    monkeypatch.delenv("IBACKUP_ARCHIVE", raising=False)
+    monkeypatch.delenv("IBACKUP_FAKE_DEVICE", raising=False)
+    return config_dir
 
 
 @pytest.fixture

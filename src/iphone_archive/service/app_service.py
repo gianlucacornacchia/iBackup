@@ -19,6 +19,13 @@ from ..core import albums, dedup, importer, phone_diff, reclaim, recycle, verifi
 from ..core.archive_layout import LINK_MODE_COPY
 from ..device.fake_device import FakeDevice
 from ..device.interface import MediaSource
+from ..settings import (
+    Settings,
+    settings_load,
+    settings_remember_archive,
+    settings_save,
+    settings_validate,
+)
 from . import marks, selection
 from .progress import ProgressHandle
 
@@ -48,6 +55,7 @@ class AppService:
         connection = database.database_connect(self.paths.catalog_path)
         database.database_initialize(connection)
         self.connection = connection
+        settings_remember_archive(self.paths.root)
         return self.paths
 
     def app_service_open(self) -> ArchivePaths:
@@ -307,6 +315,24 @@ class AppService:
             "unsorted": albums.albums_unsorted_count(connection),
             "deleted_on_phone": len(repository.repository_list_deleted_from_phone(connection)),
         }
+
+    def app_service_get_settings(self) -> Settings:
+        """Read the persisted user preferences.
+
+        Returns the stored ``Settings``. No archive needs to be open.
+        """
+        return settings_load()
+
+    def app_service_update_settings(self, settings: Settings) -> Settings:
+        """Persist user preferences after validating them.
+
+        settings: the preferences to store.
+        Returns the saved ``Settings``. Raises ``SettingsError`` when a value is
+        not supported, in which case nothing is written.
+        """
+        settings_validate(settings)
+        settings_save(settings)
+        return settings
 
     def app_service_thumbnail(
         self,

@@ -135,6 +135,34 @@ Just open a folder and view the pictures like any other files.
 | `ibackup marks remove <mark-id>` | Cancel a staged mark. |
 | `ibackup marks commit --confirm [--purge]` | Apply staged marks: recycle them, or delete permanently with `--purge`. |
 
+| `ibackup config list` | Show all settings and where they are stored. |
+| `ibackup config get <key>` | Show one setting. |
+| `ibackup config set <key> <value>` | Change one setting. |
+| `ibackup config reset` | Restore all settings to their defaults. |
+| `ibackup config path` | Show the settings file location. |
+| `ibackup config forget <path>` | Drop an archive from the recent list (no files are touched). |
+
+### Settings
+
+The first archive you create becomes your default, so you can drop `--archive`
+entirely. Settings live in `%APPDATA%\ibackup\settings.json` — outside the
+archive, so the archive folder stays portable.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `default_archive` | *(first archive created)* | Archive used when `--archive` is omitted. |
+| `reopen_last_archive` | `true` | Reopen the last archive on startup. |
+| `recent_archives` | *(managed)* | Recently opened archives; set automatically. |
+| `album_link_mode` | `copy` | `copy` or `hardlink` for photos in several albums. |
+| `scan_phone_after_import` | `true` | Refresh the deleted-on-phone list after each import. |
+| `thumbnail_size` | `256` | Preview size: 128, 256 or 512 px. |
+| `confirm_word_required` | `true` | Require typing `DELETE` for permanent deletion. **Cannot be turned off.** |
+| `default_deleted_action` | `recycle` | Pre-selected action in the deleted-on-phone review. |
+| `log_level` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
+
+Settings are **preferences only** — none of them can weaken the append-only
+guarantee or cause anything to be deleted automatically.
+
 Every command accepts `--archive <path>`. To avoid repeating it, set the
 `IBACKUP_ARCHIVE` environment variable once per session:
 
