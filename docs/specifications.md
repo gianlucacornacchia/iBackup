@@ -282,6 +282,13 @@ review, reclaim, progress dialog) is produced and saved under `docs/ui-sketch/`.
 Implementation of the PySide6 GUI **must not begin until the user explicitly
 approves the sketch**. This is a hard gate in the build plan.
 
+The sketch also fixes the **visual language: a modern Windows 11 Fluent
+application** — Qt's native `windows11` style, DWM Mica backdrop, rounded
+corners, system dark mode and accent color, the WinUI type ramp and color
+tokens, and a NavigationView + command bar layout with **no classic menu bar**.
+No GPL-licensed widget library is used. See `ui-sketch/README.md` §0 and
+ADR-0010.
+
 ## 17. Archive Editing: Move, Delete, and Mark-for-Delete
 
 These are **explicit, user-initiated** operations, distinct from the append-only

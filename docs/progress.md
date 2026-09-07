@@ -50,6 +50,18 @@ _Last updated: 2026-09-07 (Phase 1 — core + CLI complete)._
 
 ## Change log
 
+- 2026-09-07 — **UI direction set: modern Windows 11 Fluent, not stock Qt.**
+  Researched and recorded **ADR-0010**. Key findings: Qt **6.7** ships a native
+  `windows11` QStyle (and defaults to it on Win11), so the dependency floor was
+  raised from PySide6 6.6 to **6.7**; **qfluentwidgets is GPLv3**, so it is
+  rejected as license-incompatible with this MIT app; **Segoe Fluent Icons may
+  not be redistributed**, so MIT `fluentui-system-icons` is used instead.
+  Sketch §0 now specifies the Mica/rounded-corner/dark-caption DWM calls, the
+  WinUI type ramp, 4/8px radii and exact light/dark color tokens, and the
+  layout idiom (**menu bar removed**, NavigationView + command bar). Added a
+  `gui-theme` todo that must land before `gui-frontend`, starting with a Mica
+  probe. Still holding at the UI-sketch approval gate.
+
 - 2026-09-07 — Closed the configuration gap: added **`settings.py`** (persisted
   preferences in `%APPDATA%\ibackup\settings.json`, outside the archive),
   `app_service_get_settings` / `app_service_update_settings`, and the

@@ -49,7 +49,8 @@ pip install -e ".[dev]"          # editable install + dev extras
 | Library | Purpose |
 |---|---|
 | `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`). |
-| `PySide6` | Qt GUI (thumbnail grid, multi-select, dialogs, threading). |
+| `PySide6` | Qt GUI (thumbnail grid, multi-select, dialogs, threading). **6.7+ required** for the native `windows11` style — see ADR-0010. |
+| `darkdetect` | Detect the Windows light/dark setting so the GUI follows the system theme. |
 | `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
 | `typer` | CLI argument parsing, subcommands, and help text. |
 | (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json` | Catalog, hashing, paths, sidecars. |
