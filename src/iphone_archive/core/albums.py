@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..catalog import repository
-from ..catalog.models import ArchiveState
+from ..catalog.models import ArchiveState, FileLocation
 
 # Candidate queries for the album tables across iOS Photos.sqlite versions.
 ALBUM_QUERIES = (
@@ -92,12 +92,11 @@ def albums_list(connection: sqlite3.Connection) -> list[AlbumSummary]:
             continue
         row = connection.execute(
             """
-            SELECT COUNT(*) AS total
-            FROM asset_albums
-            JOIN assets ON assets.id = asset_albums.asset_id
-            WHERE asset_albums.album_id = ? AND assets.archive_state = ?
+            SELECT COUNT(DISTINCT asset_id) AS total
+            FROM asset_files
+            WHERE album_id = ? AND location = ?
             """,
-            (album.album_id, ArchiveState.ACTIVE.value),
+            (album.album_id, FileLocation.PHOTOS.value),
         ).fetchone()
         summaries.append(
             AlbumSummary(

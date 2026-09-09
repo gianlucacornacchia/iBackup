@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
-from ..catalog.models import ArchiveState
+from ..catalog.models import ArchiveState, FileLocation
 from ..config import ArchivePaths
 
 
@@ -27,13 +27,17 @@ class AssetView:
     present_on_phone: bool
     archive_state: str
     paths: list[str] = field(default_factory=list)
+    file_ids: list[int] = field(default_factory=list)
 
 
-def gallery_row_to_view(row: sqlite3.Row, paths: list[str]) -> AssetView:
+def gallery_row_to_view(
+    row: sqlite3.Row, paths: list[str], file_ids: list[int] | None = None
+) -> AssetView:
     """Map an asset row plus its stored paths into a view model.
 
     row: a row from the ``assets`` table.
     paths: archive-relative paths of the asset's stored copies.
+    file_ids: catalog ids corresponding to those paths for scoped editing.
     Returns the corresponding ``AssetView``.
     """
     return AssetView(
@@ -46,29 +50,75 @@ def gallery_row_to_view(row: sqlite3.Row, paths: list[str]) -> AssetView:
         present_on_phone=bool(row["present_on_phone"]),
         archive_state=str(row["archive_state"]),
         paths=paths,
+        file_ids=file_ids if file_ids is not None else [],
     )
+
+
+def gallery_collect_files(
+    connection: sqlite3.Connection,
+    asset_ids: list[int],
+    location: FileLocation | None = None,
+    album_id: int | None = None,
+) -> dict[int, list[tuple[int, str]]]:
+    """Fetch stored file ids and paths in bounded queries.
+
+    connection: an open catalog connection.
+    asset_ids: the assets whose paths to collect.
+    location: restrict paths to Photos or Deleted when provided.
+    album_id: restrict paths to one album when provided.
+    Returns a mapping of asset id to its file-id/path pairs.
+    """
+    grouped: dict[int, list[tuple[int, str]]] = {}
+    if not asset_ids:
+        return grouped
+    for offset in range(0, len(asset_ids), 500):
+        batch = asset_ids[offset : offset + 500]
+        placeholders = ",".join("?" for _ in batch)
+        clauses = [f"asset_id IN ({placeholders})"]
+        parameters: list[object] = list(batch)
+        if location is not None:
+            clauses.append("location = ?")
+            parameters.append(location.value)
+        if album_id is not None:
+            clauses.append("album_id = ?")
+            parameters.append(album_id)
+        rows = connection.execute(
+            f"SELECT id, asset_id, path FROM asset_files WHERE {' AND '.join(clauses)} ORDER BY id",
+            parameters,
+        ).fetchall()
+        for row in rows:
+            grouped.setdefault(int(row["asset_id"]), []).append((int(row["id"]), str(row["path"])))
+    return grouped
 
 
 def gallery_collect_paths(
     connection: sqlite3.Connection, asset_ids: list[int]
 ) -> dict[int, list[str]]:
-    """Fetch stored paths for many assets in one query.
+    """Return archive-relative paths for the supplied asset ids."""
+    return {
+        asset_id: [path for _, path in files]
+        for asset_id, files in gallery_collect_files(connection, asset_ids).items()
+    }
 
-    connection: an open catalog connection.
-    asset_ids: the assets whose paths to collect.
-    Returns a mapping of asset id to its archive-relative paths.
-    """
-    grouped: dict[int, list[str]] = {}
-    if not asset_ids:
-        return grouped
-    placeholders = ",".join("?" for _ in asset_ids)
-    rows = connection.execute(
-        f"SELECT asset_id, path FROM asset_files WHERE asset_id IN ({placeholders})",
-        asset_ids,
-    ).fetchall()
-    for row in rows:
-        grouped.setdefault(int(row["asset_id"]), []).append(str(row["path"]))
-    return grouped
+
+def gallery_build_views(
+    connection: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+    location: FileLocation | None = None,
+    album_id: int | None = None,
+) -> list[AssetView]:
+    """Attach matching file paths and scope ids to an ordered asset query result."""
+    by_asset = gallery_collect_files(
+        connection, [int(row["id"]) for row in rows], location, album_id
+    )
+    return [
+        gallery_row_to_view(
+            row,
+            [path for _, path in by_asset.get(int(row["id"]), [])],
+            [file_id for file_id, _ in by_asset.get(int(row["id"]), [])],
+        )
+        for row in rows
+    ]
 
 
 def gallery_list_assets(
@@ -87,24 +137,37 @@ def gallery_list_assets(
     offset: number of assets to skip, for paged/virtualized views.
     Returns a list of ``AssetView`` models ordered by capture time then name.
     """
+    if offset < 0 or (limit is not None and limit < 0):
+        raise ValueError("listing limit and offset must not be negative")
     clauses = []
     parameters: list[object] = []
     if not include_deleted:
         clauses.append("assets.archive_state = ?")
         parameters.append(ArchiveState.ACTIVE.value)
     if album_id is not None:
-        clauses.append("assets.id IN (SELECT asset_id FROM asset_albums WHERE album_id = ?)")
+        membership = "SELECT asset_id FROM asset_files WHERE album_id = ?"
         parameters.append(album_id)
+        if not include_deleted:
+            membership += " AND location = ?"
+            parameters.append(FileLocation.PHOTOS.value)
+        clauses.append(f"assets.id IN ({membership})")
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    query = f"SELECT * FROM assets {where} ORDER BY COALESCE(captured_at, ''), original_name"
+    query = f"SELECT * FROM assets {where} ORDER BY COALESCE(captured_at, ''), original_name, id"
     if limit is not None:
         query += " LIMIT ? OFFSET ?"
         parameters.extend([limit, offset])
+    elif offset:
+        query += " LIMIT -1 OFFSET ?"
+        parameters.append(offset)
 
     rows = connection.execute(query, parameters).fetchall()
-    paths_by_asset = gallery_collect_paths(connection, [int(row["id"]) for row in rows])
-    return [gallery_row_to_view(row, paths_by_asset.get(int(row["id"]), [])) for row in rows]
+    return gallery_build_views(
+        connection,
+        rows,
+        None if include_deleted else FileLocation.PHOTOS,
+        album_id,
+    )
 
 
 def gallery_list_unsorted(connection: sqlite3.Connection) -> list[AssetView]:
@@ -122,8 +185,7 @@ def gallery_list_unsorted(connection: sqlite3.Connection) -> list[AssetView]:
         """,
         (ArchiveState.ACTIVE.value,),
     ).fetchall()
-    paths_by_asset = gallery_collect_paths(connection, [int(row["id"]) for row in rows])
-    return [gallery_row_to_view(row, paths_by_asset.get(int(row["id"]), [])) for row in rows]
+    return gallery_build_views(connection, rows, FileLocation.PHOTOS)
 
 
 def gallery_list_recycled(connection: sqlite3.Connection) -> list[AssetView]:
@@ -133,11 +195,11 @@ def gallery_list_recycled(connection: sqlite3.Connection) -> list[AssetView]:
     Returns the recycled assets as view models.
     """
     rows = connection.execute(
-        "SELECT * FROM assets WHERE archive_state = ? ORDER BY original_name",
-        (ArchiveState.DELETED.value,),
+        "SELECT * FROM assets WHERE id IN "
+        "(SELECT asset_id FROM asset_files WHERE location = ?) ORDER BY original_name, id",
+        (FileLocation.DELETED.value,),
     ).fetchall()
-    paths_by_asset = gallery_collect_paths(connection, [int(row["id"]) for row in rows])
-    return [gallery_row_to_view(row, paths_by_asset.get(int(row["id"]), [])) for row in rows]
+    return gallery_build_views(connection, rows, FileLocation.DELETED)
 
 
 def gallery_count_assets(connection: sqlite3.Connection, include_deleted: bool = False) -> int:

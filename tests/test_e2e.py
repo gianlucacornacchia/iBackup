@@ -30,7 +30,9 @@ ALBUMS = {
 
 def helper_device() -> FakeDevice:
     """Build the standard fake phone used by these tests."""
-    return FakeDevice(dict(MEDIA), album_map={k: list(v) for k, v in ALBUMS.items()})
+    device = FakeDevice(dict(MEDIA), album_map={k: list(v) for k, v in ALBUMS.items()})
+    device.metadata = {path: {"modified_at": "2026-01-01T12:00:00"} for path in MEDIA}
+    return device
 
 
 def helper_archive_files(service: AppService) -> dict[str, bytes]:

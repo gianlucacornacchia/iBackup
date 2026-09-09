@@ -36,9 +36,9 @@ def archive(tmp_path, monkeypatch):
     return root
 
 
-def helper_run(*args: str):
+def helper_run(*args: str, input: str = ""):
     """Invoke the CLI and return the result."""
-    return runner.invoke(app, list(args))
+    return runner.invoke(app, list(args), input=input)
 
 
 def helper_asset_ids(output: str) -> list[str]:
@@ -78,6 +78,35 @@ def test_device_info(phone):
     result = helper_run("device-info")
     assert result.exit_code == 0
     assert "Media items: 2" in result.output
+
+
+def test_real_device_constructor_and_cleanup(monkeypatch):
+    """The non-fake CLI path uses the adapter's public keyword and closes it."""
+    import iphone_archive.cli as cli
+
+    state = {}
+
+    class DeviceStub:
+        def __init__(self, udid=None):
+            state["udid"] = udid
+
+        def afc_device_connect(self):
+            state["connected"] = True
+
+        def device_enumerate(self):
+            return iter(())
+
+        def device_udid(self):
+            return "stub"
+
+        def device_close(self):
+            state["closed"] = True
+
+    monkeypatch.delenv("IBACKUP_FAKE_DEVICE", raising=False)
+    monkeypatch.setattr(cli, "AfcDevice", DeviceStub)
+    result = helper_run("device-info")
+    assert result.exit_code == 0, result.output
+    assert state == {"udid": None, "connected": True, "closed": True}
 
 
 def test_import_then_list_and_stats(archive, phone):
@@ -168,7 +197,7 @@ def test_purge_requires_confirm(archive, phone):
     assert "Dry run" in dry.output
     assert "2 asset(s)" in helper_run("list").output
 
-    confirmed = helper_run("deleted-on-phone", "purge", asset_id, "--confirm")
+    confirmed = helper_run("deleted-on-phone", "purge", asset_id, "--confirm", input="DELETE\n")
     assert "Purged 1" in confirmed.output
     assert "1 asset(s)" in helper_run("list").output
 
@@ -187,7 +216,7 @@ def test_reclaim_with_confirm_deletes_on_phone(archive, phone):
     """reclaim --confirm deletes verified assets from the phone only."""
     helper_run("import")
 
-    result = helper_run("reclaim", "--confirm")
+    result = helper_run("reclaim", "--confirm", input="DELETE\n")
 
     assert "Deleted 2 item(s)" in result.output
     assert "2 asset(s)" in helper_run("list").output
@@ -239,3 +268,126 @@ def test_thumbnail_reports_unsupported_media(archive, phone):
 
     assert result.exit_code == 1
     assert "No thumbnail" in result.output
+
+
+@pytest.mark.parametrize("answer", ["", "delete\n", "yes\n"])
+def test_permanent_delete_rejects_missing_or_wrong_confirmation(archive, phone, answer):
+    """--confirm alone never deletes bytes, including noninteractive EOF."""
+    helper_run("import")
+    asset_id = helper_asset_ids(helper_run("list").output)[0]
+    result = helper_run("deleted-on-phone", "purge", asset_id, "--confirm", input=answer)
+    assert result.exit_code != 0
+    assert "2 asset(s)" in helper_run("list").output
+
+
+def test_reclaim_requires_typed_confirmation(archive, phone):
+    """A phone deletion without the exact confirmation word does nothing."""
+    helper_run("import")
+    result = helper_run("reclaim", "--confirm", input="no\n")
+    assert result.exit_code != 0
+    assert (phone / "A.HEIC").is_file()
+
+
+def test_marks_purge_requires_typed_confirmation(archive, phone):
+    """Rejected purge leaves the marks pending for later review."""
+    helper_run("import")
+    asset_id = helper_asset_ids(helper_run("list").output)[0]
+    helper_run("marks", "add", asset_id)
+    result = helper_run("marks", "commit", "--confirm", "--purge", input="no\n")
+    assert result.exit_code != 0
+    assert "1 pending mark(s)" in helper_run("marks", "list").output
+    assert "2 asset(s)" in helper_run("list").output
+
+
+def test_clear_marks_and_thumbnails_have_cli_surfaces(archive, phone):
+    """Every new GUI utility has a headless CLI equivalent."""
+    helper_run("import")
+    asset_id = helper_asset_ids(helper_run("list").output)[0]
+    helper_run("marks", "add", asset_id)
+    assert helper_run("marks", "clear").exit_code == 0
+    assert "0 pending mark(s)" in helper_run("marks", "list").output
+    assert helper_run("clear-thumbnails").exit_code == 0
+
+
+def test_reclaim_selection_only_deletes_selected_asset(archive, phone):
+    """A selected GUI/CLI subset must never expand to all eligible assets."""
+    helper_run("import")
+    asset_id = helper_asset_ids(helper_run("list").output)[0]
+    result = helper_run("reclaim", "--asset", asset_id, "--confirm", input="DELETE\n")
+    assert result.exit_code == 0, result.output
+    assert "Deleted 1 item(s)" in result.output
+
+
+def test_cli_writes_archive_log(archive):
+    """Opening an archive wires the rotating log rather than only creating a directory."""
+    assert helper_run("stats").exit_code == 0
+    assert "stats" in (archive / ".ibackup" / "logs" / "ibackup.log").read_text()
+
+
+def test_file_scoped_mark_is_explicit_and_mutually_exclusive(archive, phone):
+    """Users can discover file ids but cannot request contradictory scopes."""
+    helper_run("import")
+    listing = helper_run("list", "--files")
+    assert "file " in listing.output
+    assert helper_run("marks", "add", "1", "--album", "--file").exit_code == 1
+
+
+def test_config_reset_recovers_invalid_persisted_values():
+    """A rejected on-disk preference cannot prevent the explicit reset command."""
+    from iphone_archive.settings import settings_path
+
+    target = settings_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"confirm_word_required": false}', encoding="utf-8")
+    assert helper_run("config", "list").exit_code == 1
+    assert helper_run("config", "reset").exit_code == 0
+    assert helper_run("config", "list").exit_code == 0
+
+
+def test_scoped_cli_edit_preserves_other_album_copies(archive):
+    """File-id marks and recycle-bin purge cannot expand into a surviving album."""
+    from iphone_archive.device.fake_device import FakeDevice
+    from iphone_archive.service.app_service import AppService
+
+    service = AppService(archive)
+    service.app_service_open()
+    service.app_service_import(
+        FakeDevice({"/DCIM/shared.JPG": b"shared"}, album_map={"/DCIM/shared.JPG": ["A", "B"]})
+    )
+    albums = {album.name: album.album_id for album in service.app_service_list_albums()}
+    selected = service.app_service_list_assets(album_id=albums["A"])[0]
+    asset_id = str(selected.asset_id)
+    file_id = str(selected.file_ids[0])
+    service.app_service_close()
+
+    marked = helper_run("marks", "add", file_id, "--file")
+    assert marked.exit_code == 0, marked.output
+    committed = helper_run("marks", "commit", "--confirm")
+    assert committed.exit_code == 0, committed.output
+    assert "1 asset(s)" in helper_run("list", "--album", str(albums["B"])).output
+    assert "1 asset(s)" in helper_run("list", "--recycled").output
+
+    purged = helper_run(
+        "deleted-on-phone", "purge", asset_id, "--recycled-only", "--confirm", input="DELETE\n"
+    )
+    assert purged.exit_code == 0, purged.output
+    assert "0 asset(s)" in helper_run("list", "--recycled").output
+    assert "1 asset(s)" in helper_run("list", "--album", str(albums["B"])).output
+
+
+def test_cli_move_selected_file_leaves_other_album_unchanged(archive):
+    """Direct copy selection is available in both adapters, not just the GUI."""
+    from iphone_archive.device.fake_device import FakeDevice
+    from iphone_archive.service.app_service import AppService
+
+    service = AppService(archive)
+    service.app_service_open()
+    service.app_service_import(
+        FakeDevice({"/DCIM/shared.JPG": b"shared"}, album_map={"/DCIM/shared.JPG": ["A", "B"]})
+    )
+    albums = {album.name: album.album_id for album in service.app_service_list_albums()}
+    selected = service.app_service_list_assets(album_id=albums["A"])[0]
+    service.app_service_close()
+    result = helper_run("move", "C", str(selected.asset_id), "--file", str(selected.file_ids[0]))
+    assert result.exit_code == 0, result.output
+    assert "1 asset(s)" in helper_run("list", "--album", str(albums["B"])).output

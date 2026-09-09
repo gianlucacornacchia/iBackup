@@ -97,12 +97,15 @@ def settings_load() -> Settings:
         except (OSError, json.JSONDecodeError) as error:
             LOGGER.warning("ignoring unreadable settings file %s: %s", target, error)
         else:
+            if not isinstance(raw, dict):
+                raise SettingsError(f"settings file must contain an object: {target}")
             known = settings_field_names()
             for key, value in raw.items():
                 if key in known:
                     setattr(result, key, value)
                 else:
                     LOGGER.debug("ignoring unknown setting %r", key)
+            settings_validate(result)
     return result
 
 
@@ -112,6 +115,7 @@ def settings_save(settings: Settings) -> Path:
     settings: the preferences to persist.
     Returns the path written.
     """
+    settings_validate(settings)
     target = settings_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.with_name(target.name + ".tmp")
@@ -152,6 +156,17 @@ def settings_validate(settings: Settings) -> None:
     settings: the preferences to check.
     Returns None. Raises ``SettingsError`` describing the first invalid value.
     """
+    for name in ("reopen_last_archive", "scan_phone_after_import", "confirm_word_required"):
+        if not isinstance(getattr(settings, name), bool):
+            raise SettingsError(f"{name} must be a boolean")
+    if settings.default_archive is not None and not isinstance(settings.default_archive, str):
+        raise SettingsError("default_archive must be a path string or null")
+    if not isinstance(settings.recent_archives, list) or any(
+        not isinstance(entry, str) for entry in settings.recent_archives
+    ):
+        raise SettingsError("recent_archives must be a list of path strings")
+    if not isinstance(settings.thumbnail_size, int) or isinstance(settings.thumbnail_size, bool):
+        raise SettingsError("thumbnail_size must be an integer")
     if settings.album_link_mode not in (LINK_MODE_COPY, LINK_MODE_HARDLINK):
         raise SettingsError(
             f"album_link_mode must be {LINK_MODE_COPY} or {LINK_MODE_HARDLINK}, "
@@ -161,7 +176,10 @@ def settings_validate(settings: Settings) -> None:
         raise SettingsError(f"thumbnail_size must be one of {THUMBNAIL_SIZE_CHOICES}")
     if settings.default_deleted_action not in DELETED_ACTION_CHOICES:
         raise SettingsError(f"default_deleted_action must be one of {DELETED_ACTION_CHOICES}")
-    if settings.log_level.upper() not in LOG_LEVEL_CHOICES:
+    if (
+        not isinstance(settings.log_level, str)
+        or settings.log_level.upper() not in LOG_LEVEL_CHOICES
+    ):
         raise SettingsError(f"log_level must be one of {LOG_LEVEL_CHOICES}")
     # A confirmation may be made stricter but never switched off.
     if not settings.confirm_word_required:

@@ -54,6 +54,62 @@ def test_initialize_is_idempotent(catalog_connection):
     assert database.database_read_version(catalog_connection) == database.SCHEMA_VERSION
 
 
+def test_asset_file_indexes_cover_hot_queries(catalog_connection):
+    """Fresh catalogs index per-asset sidecar refreshes and active-album file lookups."""
+    cases = (
+        ("SELECT * FROM asset_files WHERE asset_id = ?", (1,), "idx_asset_files_asset"),
+        (
+            "SELECT * FROM asset_files WHERE album_id = ? AND location = ?",
+            (1, "photos"),
+            "idx_asset_files_album_location",
+        ),
+        (
+            "SELECT id FROM assets WHERE EXISTS "
+            "(SELECT 1 FROM source_identities WHERE asset_id = assets.id AND present = 1)",
+            (),
+            "idx_sources_asset_present",
+        ),
+    )
+    for query, parameters, expected_index in cases:
+        plan = catalog_connection.execute(f"EXPLAIN QUERY PLAN {query}", parameters).fetchall()
+        assert any(expected_index in row["detail"] for row in plan)
+
+
+@pytest.mark.parametrize("stored_version", [1, database.SCHEMA_VERSION])
+def test_existing_catalog_initialization_adds_file_indexes(catalog_connection, stored_version):
+    """Both v1 migration and reopening v2 add missing indexes without changing file rows."""
+    connection = catalog_connection
+    asset_id = repository.repository_insert_asset(connection, make_asset())
+    repository.repository_insert_asset_file(
+        connection, AssetFile(asset_id=asset_id, path="Photos/Album/A.JPG")
+    )
+    existing_files = repository.repository_list_asset_files(connection, asset_id)
+    connection.execute("DROP INDEX idx_asset_files_asset")
+    connection.execute("DROP INDEX idx_asset_files_album_location")
+    connection.execute("DROP INDEX idx_sources_asset_present")
+    database.database_write_version(connection, stored_version)
+    connection.commit()
+
+    database.database_initialize(connection)
+    database.database_initialize(connection)
+
+    assert database.database_read_version(connection) == database.SCHEMA_VERSION
+    assert repository.repository_list_asset_files(connection, asset_id) == existing_files
+    columns = {
+        index: [row["name"] for row in connection.execute(f"PRAGMA index_info({index})").fetchall()]
+        for index in (
+            "idx_asset_files_asset",
+            "idx_asset_files_album_location",
+            "idx_sources_asset_present",
+        )
+    }
+    assert columns == {
+        "idx_asset_files_asset": ["asset_id"],
+        "idx_asset_files_album_location": ["album_id", "location"],
+        "idx_sources_asset_present": ["asset_id", "present"],
+    }
+
+
 def test_old_catalog_upgrades(tmp_path):
     """A catalog recorded at an older version is migrated to the current one."""
     path = tmp_path / ".ibackup" / "catalog.sqlite"
@@ -67,6 +123,41 @@ def test_old_catalog_upgrades(tmp_path):
     database.database_initialize(reopened)
     assert database.database_read_version(reopened) == database.SCHEMA_VERSION
     reopened.close()
+
+
+def test_v1_migration_does_not_invent_device_provenance(catalog_connection):
+    """Old content remains indexed, but legacy identities cannot authorize a fast skip."""
+    connection = catalog_connection
+    asset_id = repository.repository_insert_asset(
+        connection,
+        make_asset(
+            phone_path="/DCIM/A.JPG",
+            phone_size=1024,
+            phone_modified_at="old",
+            phone_asset_id="legacy",
+        ),
+    )
+    connection.execute("DROP TABLE source_identities")
+    connection.execute("DROP TABLE import_commits")
+    database.database_write_version(connection, 1)
+    connection.commit()
+    database.database_initialize(connection)
+    assert repository.repository_get_asset(connection, asset_id) is not None
+    assert connection.execute("SELECT COUNT(*) FROM source_identities").fetchone()[0] == 0
+    assert (
+        repository.repository_find_by_phone_identity(
+            connection, "legacy", "/DCIM/A.JPG", 1024, "phone", "old"
+        )
+        is None
+    )
+
+
+def test_future_schema_is_rejected_before_mutation(catalog_connection):
+    """A newer catalog is not silently opened with an older schema contract."""
+    database.database_write_version(catalog_connection, database.SCHEMA_VERSION + 1)
+    catalog_connection.commit()
+    with pytest.raises(ValueError, match="unsupported catalog schema"):
+        database.database_initialize(catalog_connection)
 
 
 def test_insert_and_lookup_by_hash(catalog_connection):
@@ -86,21 +177,21 @@ def test_hash_is_unique(catalog_connection):
 
 
 def test_find_by_phone_identity_asset_id(catalog_connection):
-    """Fast-skip lookup matches on the phone asset id."""
+    """Legacy asset ids without device and modification metadata are untrusted."""
     repository.repository_insert_asset(catalog_connection, make_asset(phone_asset_id="PH-1"))
     found = repository.repository_find_by_phone_identity(catalog_connection, "PH-1", None, None)
-    assert found is not None
+    assert found is None
 
 
 def test_find_by_phone_identity_path_and_size(catalog_connection):
-    """Fast-skip lookup falls back to phone path + size."""
+    """Legacy path and size pairs are not sufficient for a fast skip."""
     repository.repository_insert_asset(
         catalog_connection, make_asset(phone_path="/DCIM/IMG_0001.HEIC", phone_size=1024)
     )
     found = repository.repository_find_by_phone_identity(
         catalog_connection, None, "/DCIM/IMG_0001.HEIC", 1024
     )
-    assert found is not None
+    assert found is None
     missing = repository.repository_find_by_phone_identity(
         catalog_connection, None, "/DCIM/IMG_0001.HEIC", 999
     )

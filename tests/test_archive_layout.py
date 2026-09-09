@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import io
 
+import pytest
+
 from iphone_archive import config
 from iphone_archive.core import archive_layout
 
@@ -129,3 +131,30 @@ def test_relative_path_uses_forward_slashes(tmp_path):
     relative = archive_layout.archive_layout_relative_path(paths, placed.path)
     assert relative.startswith("Photos/Trip/")
     assert "\\" not in relative
+
+
+def test_exclusive_copy_never_overwrites_existing_file(tmp_path):
+    """Destination collisions preserve the original bytes even on the fallback path."""
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"new")
+    destination.write_bytes(b"original")
+    with pytest.raises(FileExistsError):
+        archive_layout.archive_layout_copy_exclusive(source, destination)
+    assert destination.read_bytes() == b"original"
+
+
+def test_missing_atomic_publication_fails_without_partial_final(tmp_path, monkeypatch):
+    """Unsupported publication must not fall back to an untracked public file creation."""
+
+    def unsupported(*args, **kwargs):
+        raise OSError("hardlinks unsupported")
+
+    monkeypatch.setattr(archive_layout, "file_operations_publish", unsupported)
+    paths = make_archive(tmp_path)
+    with pytest.raises(OSError, match="hardlinks unsupported"):
+        archive_layout.archive_layout_store_stream(
+            paths, io.BytesIO(b"content"), paths.unsorted_dir, "A.JPG"
+        )
+    assert not list(paths.unsorted_dir.iterdir())
+    assert not list((paths.internal_dir / "import-staging").iterdir())

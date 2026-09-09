@@ -11,10 +11,11 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from ..catalog import repository
+from ..catalog.models import ArchiveState
 from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
 from ..service.progress import ProgressHandle
-from . import verifier
+from . import hashing, verifier
 
 OPERATION_NAME = "reclaim"
 
@@ -51,6 +52,7 @@ def reclaim_find_candidates(
     paths: ArchivePaths,
     source: MediaSource,
     progress: ProgressHandle | None = None,
+    asset_ids: list[int] | None = None,
 ) -> list[ReclaimCandidate]:
     """Find phone files whose content is archived and verifies successfully.
 
@@ -63,6 +65,9 @@ def reclaim_find_candidates(
     handle = progress if progress is not None else ProgressHandle()
     candidates: list[ReclaimCandidate] = []
     items = list(source.device_enumerate())
+    selected = None if asset_ids is None else set(asset_ids)
+    if selected is not None and any(type(value) is not int or value <= 0 for value in selected):
+        raise ValueError("asset_ids must contain positive integers")
     total = len(items)
 
     for index, item in enumerate(items, start=1):
@@ -70,10 +75,14 @@ def reclaim_find_candidates(
             break
         handle.progress_report(OPERATION_NAME, index, total, item.original_name)
 
-        known = repository.repository_find_by_phone_identity(
-            connection, item.phone_asset_id, item.phone_path, item.size
-        )
+        with source.device_open(item.phone_path) as stream:
+            digest = hashing.hashing_sha256_stream(stream)
+        known = repository.repository_get_asset_by_hash(connection, digest)
         if known is None or known.asset_id is None:
+            continue
+        if selected is not None and known.asset_id not in selected:
+            continue
+        if known.archive_state != ArchiveState.ACTIVE or known.size != item.size:
             continue
         if not verifier.verifier_asset_is_verified(connection, paths, known.asset_id):
             continue
@@ -94,6 +103,7 @@ def reclaim_run(
     source: MediaSource,
     confirmed: bool = False,
     progress: ProgressHandle | None = None,
+    asset_ids: list[int] | None = None,
 ) -> ReclaimResult:
     """Report, and optionally delete, phone files that are safely archived.
 
@@ -106,7 +116,7 @@ def reclaim_run(
     """
     handle = progress if progress is not None else ProgressHandle()
     result = ReclaimResult(dry_run=not confirmed)
-    result.candidates = reclaim_find_candidates(connection, paths, source, handle)
+    result.candidates = reclaim_find_candidates(connection, paths, source, handle, asset_ids)
 
     if handle.progress_is_cancelled():
         result.cancelled = True
@@ -121,6 +131,18 @@ def reclaim_run(
             result.cancelled = True
             break
         try:
+            known = repository.repository_get_asset(connection, candidate.asset_id)
+            with source.device_open(candidate.phone_path) as stream:
+                digest = hashing.hashing_sha256_stream(stream)
+            if (
+                known is None
+                or digest != known.sha256
+                or not verifier.verifier_asset_is_verified(connection, paths, candidate.asset_id)
+            ):
+                raise DeviceError("phone or archive content changed since candidate verification")
+            if handle.progress_is_cancelled():
+                result.cancelled = True
+                break
             source.device_delete(candidate.phone_path)
             result.deleted_count += 1
         except (DeviceError, OSError) as error:

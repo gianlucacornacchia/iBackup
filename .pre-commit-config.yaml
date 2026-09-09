@@ -21,5 +21,6 @@ repos:
     rev: v1.11.1
     hooks:
       - id: mypy
+        args: ["--strict"]
         additional_dependencies: []
-        files: ^src/
+        files: ^src/iphone_archive/(core|catalog)/

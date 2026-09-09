@@ -17,20 +17,36 @@ MAX_LOG_BYTES = 5 * 1024 * 1024
 BACKUP_COUNT = 3
 
 
-def logging_setup_configure(logs_dir: Path | None = None, verbose: bool = False) -> logging.Logger:
+def logging_setup_close() -> None:
+    """Release configured handlers, including archive file handles on Windows."""
+    logger = logging.getLogger(LOGGER_NAME)
+    for handler in tuple(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def logging_setup_configure(
+    logs_dir: Path | None = None, verbose: bool = False, level: str = "INFO"
+) -> logging.Logger:
     """Configure and return the application logger.
 
     logs_dir: folder for the rotating log file; when None only console logging
         is configured (used before an archive is known).
     verbose: when True, emit debug-level messages to the console.
+    level: minimum severity for console and archive log records.
     Returns the configured application logger.
     """
     logger = logging.getLogger(LOGGER_NAME)
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
+    severity = logging.getLevelNamesMapping().get(level.upper())
+    if severity is None:
+        raise ValueError(f"unknown log level: {level}")
+    if verbose:
+        severity = logging.DEBUG
+    logger.setLevel(severity)
+    logging_setup_close()
 
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    console_handler.setLevel(severity)
     console_handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(console_handler)
 
@@ -42,7 +58,7 @@ def logging_setup_configure(logs_dir: Path | None = None, verbose: bool = False)
             backupCount=BACKUP_COUNT,
             encoding="utf-8",
         )
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(severity)
         file_handler.setFormatter(
             logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
         )
