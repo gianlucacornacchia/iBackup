@@ -5,6 +5,10 @@ tests. **Keep this document up to date as the code evolves.**
 
 Target platform: **Windows 10/11 (64-bit)**, Python **3.11+**.
 
+Current evidence is offline core/CLI testing, not a validated Windows/iPhone
+release. All GUI work, including a Windows Mica probe, is blocked pending
+explicit sketch approval. See `progress.md` for the final validation report.
+
 ## 1. Prerequisites
 
 - Python 3.11 or newer (64-bit) on the PATH.
@@ -49,8 +53,8 @@ pip install -e ".[dev]"          # editable install + dev extras
 | Library | Purpose |
 |---|---|
 | `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`). |
-| `PySide6` | Qt GUI (thumbnail grid, multi-select, dialogs, threading). **6.7+ required** for the native `windows11` style — see ADR-0010. |
-| `darkdetect` | Detect the Windows light/dark setting so the GUI follows the system theme. |
+| `PySide6` | Planned Qt GUI. **6.7+ required** for the target native `windows11` style — see ADR-0010/0011; installed dependency is not an implemented GUI. |
+| `darkdetect` | Planned GUI system-theme detection; no current GUI consumer. |
 | `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
 | `typer` | CLI argument parsing, subcommands, and help text. |
 | (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json` | Catalog, hashing, paths, sidecars. |
@@ -71,6 +75,13 @@ pip install -e ".[dev]"          # editable install + dev extras
 > Keep the tables above in sync with `pyproject.toml` whenever dependencies
 > change.
 
+`pymobiledevice3` is pinned to **`11.10.4`**, whose async AFC API was inspected
+during device hardening. Upgrades require adapter compatibility tests rather
+than assuming API stability. The adapter's sync-shaped test clients are
+fixtures, not proof of legacy-library support.
+Real iOS album schema/WAL consistency and hash-to-unlink races remain hardware
+validation items, with real AFC deletion gated.
+
 ## 4. Running the tests
 
 **Run the tests after writing code for every module/todo** (see the workflow rule
@@ -82,9 +93,10 @@ pytest tests\test_hashing.py        # a single file
 pytest -k dedup                     # by keyword
 pytest --cov=iphone_archive         # optional coverage
 
-# GUI tests run headless via Qt's offscreen platform:
-$env:QT_QPA_PLATFORM="offscreen"; pytest tests\test_gui.py
 ```
+
+`tests/test_gui.py` does not exist. After approval and implementation, GUI
+tests will run headless with `QT_QPA_PLATFORM=offscreen`.
 
 The suite runs **offline** with a fake device and temporary archives — no real
 iPhone required.
@@ -99,21 +111,28 @@ how the test suite stays isolated from your real profile (an autouse fixture in
 `conftest.py` sets it for every test):
 
 ```powershell
-$env:IBACKUP_ARCHIVE = "C:\temp\arch"
-$env:IBACKUP_FAKE_DEVICE = "C:\temp\fakephone"
-ibackup init C:\temp\arch
+$env:IBACKUP_ARCHIVE = "$PWD\scratch\arch"
+$env:IBACKUP_FAKE_DEVICE = "$PWD\scratch\fakephone"
+# Create/populate scratch\fakephone with disposable test files first.
+ibackup init .\scratch\arch
 ibackup import -v
 ibackup list
 ```
+
+Use a project-local test scratch directory if system temporary directories are
+prohibited. Fake-device confirmed reclaim is destructive to the in-memory
+fixture for that invocation; it is not a hardware deletion validation.
+Settings are isolated by the test fixture; never use personal media as a fixture.
 
 ## 5. Running the app during development
 
 ```powershell
 ibackup --help                      # CLI (console entry point)
-ibackup-gui                         # GUI (once implemented + sketch approved)
 # or, without console scripts:
 python -m iphone_archive.cli --help
 ```
+
+There is currently no `ibackup-gui` entry point.
 
 ## 6. Project layout
 
@@ -122,10 +141,16 @@ See `structure.md` for the full module map. Source lives under
 
 ## 7. Building the Windows executable
 
-```powershell
-pip install pyinstaller
-pyinstaller packaging\ibackup.spec   # spec added during the packaging todo
-```
+**Scheduled release work, not an available installer/download.** There is no
+PyInstaller spec in this remediation. The packaging milestone must first add a
+CLI-only recipe, then document its actual build command and run it on Windows.
+Do not invoke a nonexistent `packaging/ibackup.spec`.
+
+A Linux build is not a Windows executable. Record clean-machine launch/help/
+offline-import smoke tests, artifact version and dependency/license notices
+before advertising a release. GUI bundling waits for approval/implementation;
+review Qt LGPL replacement/relinking obligations and icon notices (ADR-0011).
+MSIX/signing are release decisions, not currently provided deliverables.
 
 ## 8. Conventions
 
@@ -158,10 +183,13 @@ guard, merge-conflict check).
 
 1. set up Python 3.11, create the venv, `pip install -e ".[dev]"`;
 2. `ruff check` + `ruff format --check`;
-3. `mypy` (`--strict` on `core/` and `catalog/`);
+3. `mypy --strict` on the scope declared in the checked-in workflow/tool configuration;
 4. `pytest` (GUI headless via `QT_QPA_PLATFORM=offscreen`) with
    `--cov=iphone_archive`;
 5. **coverage gate:** fail the build if total coverage drops below the configured
-   threshold (target ~85%, with `core/` + `catalog/` held highest).
+   threshold. Read `pyproject.toml`/workflow for the current value rather than
+   treating an old percentage as evidence.
 
-The same commands can be run locally before pushing to reproduce CI results.
+The workflow is configured, not proof of an observed successful Windows run.
+Record real execution results in `progress.md`. See `unit-tests.md` for device,
+recovery, worker-ownership and release checks that unit coverage cannot replace.

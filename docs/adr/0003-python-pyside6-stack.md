@@ -1,6 +1,6 @@
 # 0003. Python core + PySide6 GUI
 
-- **Status:** Accepted
+- **Status:** Accepted; interop rationale corrected by ADR-0011
 - **Date:** 2026-09-07
 - **Deciders:** Project author
 

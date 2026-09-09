@@ -17,10 +17,10 @@ Key decisions:
 - **Target:** Windows 10/11 (64-bit). (Linux support dropped.)
 - **Language:** Python 3.11+.
 - **Frontends:** CLI (`ibackup`) + GUI (`ibackup-gui`), both thin adapters over a
-  headless `service/` layer, guaranteeing full parity.
+  headless `service/` layer, with full parity required and tested.
 - **GUI framework:** PySide6 **6.7+** (Qt for Python, LGPL). Native WinUI/C#
-  rejected because it would require rewriting the whole Python core (incl.
-  `pymobiledevice3`).
+  could bridge the Python core; rejected for additional interop/toolchain cost,
+  not because a rewrite is unavoidable (ADR-0011).
 - **GUI look:** a **modern Windows 11 Fluent** app, not a default Qt window —
   Qt's native `windows11` style + our own WinUI design tokens + DWM Mica /
   rounded corners / dark caption. No GPL widget library (ADR-0010).
@@ -35,12 +35,24 @@ Key decisions:
 
 1. **Phase 0 — Documentation only.** All docs under `docs/`, then **STOP for
    approval**. No source code. (Status: **DONE, approved**.)
-2. **Phase 1 — Build core + CLI.** Only after docs are approved.
-   (Status: **DONE** — 205 tests, 91% coverage.)
-3. **UI sketch gate.** Before any GUI code, produce a **UI sketch/wireframe**
+2. **Phase 1 — Core + CLI baseline implemented offline.** Historical tests
+   establish a baseline, not hardware readiness.
+3. **Core-hardening checkpoint — complete offline.** Closed source identity,
+   migrations, bounded device streaming, scan/reclaim safety, archive recovery,
+   service locking/cancellation, typed confirmation, CLI parity and log wiring
+   gaps. Final lint/type/test evidence is recorded in `progress.md`.
+4. **Windows/iPhone gate — pending.** Read/album/large-video matrix must pass
+   before enabling real-phone destructive reclaim. Offline tests cannot lift
+   this gate; see `unit-tests.md` §4.
+5. **UI sketch gate.** Before any GUI code, produce a **UI sketch/wireframe**
    under `docs/ui-sketch/` and **STOP for explicit approval**.
-   (Status: **sketch written, HOLDING HERE**.)
-4. **Phase 2 — Build GUI.** Only after the UI sketch is approved.
+   (Status: **sketch written, BLOCKED**; review fix requests are not approval.)
+6. **Phase 2 — Build GUI.** Only after explicit approval and core-hardening
+   contracts stabilize. Mica probe is also behind approval and requires Windows.
+7. **Release milestone — scheduled after validation.** Windows-build and
+   clean-machine smoke-test CLI packaging, notices and versioned artifacts.
+   First add a CLI packaging recipe; no spec is added during this remediation.
+   GUI packaging follows GUI implementation/tests; no release is available now.
 
 ## 3. Archive layout (plain, album-organized, append-only)
 
@@ -60,23 +72,27 @@ Key decisions:
   browsing); `--album-link-mode copy|hardlink` (auto-fallback to copy).
 - **Windows-safe names** (reserved chars/names, trailing dots/spaces,
   case-insensitive collisions, <260-char paths).
-- Import is transactional per file (temp → hash-verify → atomic rename →
-  sidecar → commit). Files immutable once committed.
+- Import uses per-item recovery journals (stage → hash-verify → exclusive
+  placement → sidecar/catalog commit). Private staging ownership is durable
+  before media creation; final publication preserves identity without overwrites
+  using Windows rename or POSIX hardlink. Unsupported publication fails safely.
+  Files are immutable once committed; power-loss guarantees require
+  filesystem-specific validation.
 
 ## 4. Module structure (see `structure.md` for detail)
 
 ```
 src/iphone_archive/
   cli.py                # thin adapter over service/
-  config.py, logging_setup.py
+  config.py, settings.py, logging_setup.py
   service/              # headless API for CLI + GUI
-    app_service.py, progress.py, results.py, selection.py, marks.py
-  device/               # afc_client, device_manager, media_source
+    app_service.py, archive_lock.py, progress.py, selection.py, marks.py
+  device/               # interface.py, afc_device.py, fake_device.py
   catalog/              # database, models, repository, sidecar
   core/                 # hashing, name_safety, archive_layout, importer,
                         #   dedup, verifier, albums, reclaim,
-                        #   phone_diff, recycle
-  browse/               # gallery (listing + optional HTML) + thumbnails (cache)
+                        #   phone_diff, recycle, file_operations
+  browse/               # gallery (read models only) + thumbnails (cache)
   gui/                  # PySide6 (built only after UI sketch approval)
 tests/
 ```
@@ -91,19 +107,40 @@ tests/
 - `albums(id, phone_album_id, name, safe_name, kind)`
 - `asset_albums(asset_id, album_id)`
 - `import_sessions(...)`, `deletion_marks(...)`
+- Schema v2 `source_identities(device_udid, phone_path, asset_id,
+  phone_asset_id, phone_size, phone_modified_at, present, last_seen_at)`,
+  keyed by `(device_udid, phone_path, asset_id)`: device-scoped many-to-one
+  content provenance and complete-scan presence, not global path matching.
+- `import_commits(journal_id)` and `meta` file-operation commit markers support
+  import/edit journal recovery. Legacy v1 content is retained without invented
+  source identities; newer unsupported schema versions fail closed.
+- `asset_albums` reflects active copies; deleted copies retain album IDs in
+  `asset_files`. Any active copy keeps its asset active.
 
 ## 6. CLI commands (first release)
 
-Shipped: `init`, `device-info`, `import [--album-link-mode ...]`, `verify`,
-`dedup`, `albums`, `list`, `stats`, `scan-phone`, `thumbnail`, `move`,
-`reclaim [--confirm]`, `deleted-on-phone list|to-deleted|restore|purge`,
-`marks add|list|remove|commit`, `config get|set|list|reset|path|forget`.
+Implemented source CLI (not a shipped binary): `init`, `device-info`,
+`import [--album-link-mode ...]`, `verify`,
+`dedup`, `albums`, `list`, `stats`, `scan-phone`, `thumbnail`,
+`move [--from-album ALBUM_ID] [--file FILE_ID ...]`,
+`reclaim [--asset ID ...] [--confirm]`,
+`deleted-on-phone list|to-deleted|restore|purge`, `clear-thumbnails`,
+`marks add|list|remove|clear|commit`, `config get|set|list|reset|path|forget`.
+`device-info`, `import`, `scan-phone`, `reclaim` and `deleted-on-phone list`
+accept `--device UDID`; the latter scopes both the report and optional rescan.
+Move/recycle/restore/purge accept repeated `--file ID` with required asset IDs;
+purge additionally supports `--recycled-only`. `marks add <id> --file` instead
+marks one copy for later commit and is mutually exclusive with `--album`.
+Permanent deletion requires interactive typed `DELETE`; reversible marks
+commit keeps explicit `--confirm`. No `gallery`, `dedup --report`,
+`verify --full`, or `reclaim --dry-run` command exists.
 
 ## 7. Feature: review of assets deleted from the phone
 
 - **Detection (read-only):** import/scan records `present_on_phone` /
   `last_seen_on_phone_at`; assets active in the archive but absent from the
-  latest phone scan are "deleted from phone" (matched by hash / phone id).
+  latest complete successful scan of the same device are "deleted from phone".
+  Unknown legacy identity and interrupted scans must not create absence.
 - **Per-item decision** (multi-select): (1) delete from the local archive
   (permanent, confirmed) or (2) move to `Deleted/` (non-destructive recycle bin;
   restore or purge later). Never automatic; never touches the phone.
@@ -112,10 +149,12 @@ Shipped: `init`, `device-info`, `import [--album-link-mode ...]`, `verify`,
 
 scaffold → name-safety → device-access → catalog-schema → hashing-layout →
 sidecar → importer → dedup → verifier → albums → phone-diff → reclaim →
-recycle-bin → browse-gallery → thumbnails → service-layer → archive-edit →
-cli-wiring → settings-store → **UI sketch (gate)** → gui-theme
+recycle-bin + archive-edit primitives → browse-gallery → thumbnails →
+service-layer → cli-wiring → settings-store → **core hardening** →
+**UI sketch approval (gate)** → gui-theme
 (`theme.py` + `win32_effects.py`, preceded by a Mica probe) → gui-frontend →
-tests.
+tests → Windows release validation. Device read/album/large-video validation
+separately gates real-phone destructive reclaim. US-D4 HTML gallery is deferred.
 
 See `todos.md` for the full checklist with dependencies and status.
 
@@ -143,7 +182,7 @@ See `todos.md` for the full checklist with dependencies and status.
     `mypy`, and hygiene hooks run before every commit.
   - **CI** on `windows-latest` (`.github/workflows/ci.yml`): venv + install →
     ruff → `mypy --strict` (core/catalog) → `pytest` (GUI headless) with
-    coverage; **coverage gate** ~85% (core/catalog highest).
+    coverage; the exact paths/threshold in configuration are authoritative.
   - **Property-based tests** (`hypothesis`) for `name_safety` + hashing.
   - **Golden end-to-end + crash-resume test** (`tests/test_e2e.py`) over the fake
     device, asserting append-only/catalog invariants and idempotent resume.
@@ -154,30 +193,32 @@ See `todos.md` for the full checklist with dependencies and status.
 - pytest suite (with `pytest-qt` for the GUI) runs offline with a fake device and
   temporary archives. Coverage: hashing, name-safety, archive layout, catalog,
   sidecar, importer (incl. fast-skip), dedup, verifier, albums, reclaim,
-  phone_diff, recycle, thumbnails, service, marks, selection, cli, gui. See
+  phone_diff, recycle, thumbnails, service, marks, selection, cli; GUI coverage
+  is planned, not implemented. See
   `unit-tests.md`.
 
 ## 10. Performance & scalability (see `specifications.md` §19)
 
 - Designed for tens of thousands of items / tens–hundreds of GB.
-- **First import is USB-bound** (Lightning = USB 2.0, ~20–40 MB/s): roughly
-  ~15–30 min for ~30 GB, ~45–90 min for ~80 GB, a few hours for ~200 GB.
-- **Incremental runs are fast:** a metadata-only enumeration + a **fast-skip**
-  match on stored phone identity means already-archived items are never
-  re-transferred or re-hashed; only new bytes move.
-- Streamed chunked copy/hash → constant memory; SQLite indexes → O(log n)
-  lookups; GUI grid is virtualized with a `.ibackup/thumbnails/` cache.
+- Throughput estimates are hypotheses, not hardware measurements. Benchmark
+  transfer, verification, metadata and album-copy costs separately.
+- Fast-skip can avoid transfers for trusted unchanged device identities; stale
+  or migrated identities and missing copies require revalidation.
+- Chunked file reads bound media buffers, not total library metadata memory.
+  GUI virtualization, pagination and bounded thumbnail queues remain planned.
 
 ## 11. Progress
 
 - **Phase 0 (docs): DONE and approved.**
-- **Phase 1 (core + CLI): DONE.** All core, catalog, device, service, browse,
-  settings and CLI modules implemented and committed. **205 tests, 91%
-  coverage**, ruff + mypy clean. Runs end to end offline against a fake device.
+- **Phase 1 baseline and core hardening complete offline.** Offline
+  fake-device behavior is not a real-phone or release qualification.
 - **UI sketch: written** (`docs/ui-sketch/`), including the Windows 11 Fluent
   visual spec. **Holding at the UI-sketch approval gate.**
 - **Phase 2 (GUI): blocked** on that approval. First task on approval is the
   theming layer plus a Mica probe, then the views.
-- Deferred by agreement: the 6 `future-*` backlog items.
+- **Windows hardware and release milestones pending.** Migrations and basic
+  destructive guardrails are core hardening, not optional future work. Catalog
+  rebuild, tamper-proof audit logging, dependency automation and HTML gallery
+  remain separately tracked enhancements.
 
 See `progress.md` for the detailed, resumable status.

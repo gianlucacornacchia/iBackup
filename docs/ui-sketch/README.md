@@ -2,10 +2,13 @@
 
 **Status: awaiting user approval.** Per `specifications.md` §16.3 this is a hard
 gate: no PySide6 code is written until this sketch is explicitly approved.
+Review corrections are **not** that approval. The Mica probe is GUI work and is
+also blocked. All views and interactions below are requirements, not screenshots
+of implemented software. Core-hardening validation is a separate prerequisite.
 
 Framework: **PySide6 (Qt for Python) 6.7+**, Windows 10/11. The GUI is a *thin
 adapter* — every button calls one `AppService` method, the same one the CLI
-calls, which is what guarantees feature parity. No business logic lives in the
+calls; the parity map and adapter tests must establish parity. No business logic lives in the
 GUI.
 
 **Look and feel: a modern Windows 11 app**, not a default cross-platform Qt
@@ -36,7 +39,8 @@ it as the base style and only add QSS where the native style has nothing to say
 ### 0.2 Window chrome (Mica, rounded corners, dark caption)
 
 Applied to the top-level `HWND` (from `winId()`) via `DwmSetWindowAttribute`,
-each call guarded by a build check and failing silently:
+each call guarded by a build check and checked for failure. Log the attribute,
+result/error and selected solid fallback (ADR-0011); never silently swallow it:
 
 | Effect | Attribute | Value | Requires |
 |---|---|---|---|
@@ -47,13 +51,15 @@ each call guarded by a build check and failing silently:
 - **Mica** is the signature Windows 11 backdrop: the desktop wallpaper, heavily
   blurred and tinted, showing through the window base layer. Content sits on a
   `LayerFillColorDefault` layer above it.
-- Mica degrades on its own to a solid color when the user disables transparency,
-  is in Battery Saver, or is on Windows 10 — no extra code needed.
+- Select a solid background when unsupported or unavailable, including Windows
+  10, transparency-disabled and power-saving configurations. Verify actual Qt
+  rendering on the target instead of assuming DWM alone handles every fallback.
 - We keep the **system title bar**. A hand-drawn caption would look custom but
   loses Snap Layouts, accessibility and correct maximize behaviour.
 - **Unproven:** Mica behind Qt-painted content may need a translucent Qt
-  background. This gets a throwaway probe on Win11 22H2 **before** GUI work; if
-  it is not clean, we ship solid `SolidBackgroundFillColorBase` and move on.
+  background. Only **after explicit approval**, run a probe on Win11 22H2+
+  before implementing the full views. No probe has run. If not clean, retain
+  solid `SolidBackgroundFillColorBase` and log the fallback.
 
 ### 0.3 Design tokens
 
@@ -116,14 +122,15 @@ removing. Instead:
 ### 0.5 Iconography
 
 **MIT-licensed `fluentui-system-icons` (SVG)** recolored to the current theme.
-We deliberately do **not** ship Segoe Fluent Icons: Microsoft's license permits
-downloading it for design and development but **not** shipping it, and it is
-absent from Windows 10 anyway.
+Retain its MIT copyright and permission notices. We do **not** bundle Segoe
+Fluent Icons/font files; use system-installed fonts where available. Check
+actual redistribution rights rather than infer them from a design download.
 
 ### 0.6 What we are not doing
 
 - **No `qfluentwidgets`.** It is the most complete Fluent widget set for Qt, but
-  it is **GPLv3**, which would relicense this MIT application. See ADR-0010.
+  its GPL distribution obligations are not chosen for this bundle. MIT is
+  GPL-compatible; original MIT code does not lose its license. See ADR-0011.
 - **No Material / QDarkStyle skin** — permissively licensed, but Material is a
   different design language and would look no more Windows-native than stock Qt.
 - **No frameless custom title bar** — looks bespoke, breaks Snap Layouts.
@@ -211,12 +218,20 @@ Behaviour:
 +-------------------------------------------------+
 ```
 
-- Runs on a `QThread`; the UI never blocks.
+- Runs on a `QThread` that constructs, opens, uses and closes its own
+  `AppService`/SQLite connection. Never share a service across QThreads.
 - Wired to `ProgressHandle`: `progress_report` drives the bar, **Cancel** calls
   `progress_cancel` and the import stops at the next safe checkpoint, leaving a
-  consistent, resumable archive.
+  consistent, resumable archive. Cancellation uses `threading.Event`; queued
+  Qt signals deliver progress/results to the UI, never direct worker widget calls.
 - **Hide** keeps it running with a small progress widget in the status bar.
 - The same dialog serves verify, reclaim and thumbnail pre-generation.
+- The archive OS lock permits one open service session, including reads;
+  competing sessions fail busy rather than queue. Dispatch operations through
+  the owning worker. Progress snapshots retain only the last 256 events.
+  Bound thumbnail
+  workers, pending requests and decoded cache; discard obsolete scroll requests.
+  Shutdown cancels and waits before closing the worker-owned connection.
 
 ---
 
@@ -272,12 +287,18 @@ phone, then choose per item.
 
 - Opens in **dry-run** state; the button is the only path to a real deletion and
   it routes through the confirmation dialog.
+- Pass only selected asset IDs to `app_service_reclaim`; revalidate current
+  source bytes and active archive copies at execution. A preview is not a
+  deletion authorization. Real AFC deletion remains blocked pending the
+  Windows/iPhone validation matrix, even after UI approval.
 
 ---
 
 ## 5. Destructive-action confirmation
 
-Used by purge, mark-commit and reclaim — the GUI mirror of `--confirm`. Styled
+Used by purge, permanent mark-commit and reclaim — the GUI mirror of `--confirm`
+plus typed `DELETE`. Reversible mark-commit retains an explicit confirmation,
+without pretending its CLI requires the permanent-deletion word. Styled
 as a WinUI **ContentDialog**: 8px corners, a smoke-layer scrim dimming the
 window behind it, Subtitle-weight heading, and a footer where the destructive
 action is the **accent-filled primary button** and Cancel is the standard
@@ -344,7 +365,10 @@ button holding default focus.
 The settings **store and CLI now exist** (`settings.py` + `ibackup config
 get|set|list|reset|path|forget`), so this dialog is a thin editor over
 `app_service_get_settings` / `app_service_update_settings`. It is the only part
-of the settings feature still to be built, and it waits on this approval.
+of the planned settings UI and waits on this approval. Stored
+`reopen_last_archive` and `default_deleted_action` preferences have no current
+GUI consumer. Import/thumbnail defaults are now applied service-side;
+the CLI's rotating archive log uses the configured log level.
 
 ```
 +-------------------------------------------------------------+
@@ -374,6 +398,8 @@ Panels:
   in dry-run until explicitly confirmed. These only ever *add* friction; they
   cannot disable a confirmation entirely.
 - **Advanced** — log level and a **Open logs folder** shortcut.
+- **Maintenance** — reset settings, show settings path and forget a recent
+  archive without deleting its files; each has a CLI counterpart below.
 
 Design notes:
 
@@ -389,34 +415,51 @@ Design notes:
 
 ## 8. CLI ↔ GUI parity map
 
-Every CLI command has a GUI surface, and both call the same service method.
+Target parity map: GUI surfaces below are **planned** and remain blocked.
+Current source CLI actions call the listed service APIs; tests must confirm
+selection, defaults and confirmation behavior match.
 
 | Operation | CLI | GUI | Service method |
 |---|---|---|---|
-| Initialize archive | `init` | File ▸ New archive | `app_service_initialize` |
-| Open archive | `--archive` | File ▸ Open archive | `app_service_open` |
-| Device info | `device-info` | Toolbar phone indicator | (`device_enumerate`) |
-| Import | `import` | **Import** button + §2 | `app_service_import` |
+| Initialize archive | `init` | **...** overflow ▸ New archive | `app_service_initialize` |
+| Open archive | `--archive` | **...** overflow ▸ Open archive | `app_service_open` |
+| Device info | `device-info [--device UDID]` | Command-bar device selection, identifier and inventory count | `app_service_device_info(source)` → `DeviceInfo(udid, media_count)` |
+| Import | `import [--device UDID]` | **Import** button + §2 for selected device | `app_service_import` |
 | Verify | `verify` | **Verify** button + §2 | `app_service_verify` |
-| Dedup report | `dedup` | Archive ▸ Storage report | `app_service_dedup_report` |
+| Dedup report | `dedup` | **...** overflow ▸ Storage report | `app_service_dedup_report` |
 | Albums | `albums` | Left nav ALBUMS | `app_service_list_albums` |
-| List assets | `list` | Centre grid | `app_service_list_assets` |
+| List assets/copies | `list [--files]` | Centre grid; selection retains aligned file IDs/paths from the current album/location | `app_service_list_assets` |
 | Unsorted | `list --unsorted` | Left nav ▸ Unsorted | `app_service_list_unsorted` |
 | Recycle bin | `list --recycled` | Left nav ▸ Recycle bin | `app_service_list_recycled` |
 | Stats | `stats` | Status bar | `app_service_stats` |
-| Scan phone | `scan-phone` | **Scan phone** button | `app_service_scan_phone` |
-| Deleted on phone | `deleted-on-phone list` | §3 view | `app_service_deleted_on_phone` |
-| Move to Deleted | `deleted-on-phone to-deleted` | §3 button | `app_service_move_to_deleted` |
-| Restore | `deleted-on-phone restore` | Recycle bin ▸ Restore | `app_service_restore` |
-| Purge | `deleted-on-phone purge --confirm` | §3 button + §5 dialog | `app_service_purge` |
-| Reclaim | `reclaim [--confirm]` | §4 view + §5 dialog | `app_service_reclaim` |
-| Mark | `marks add` | **Mark for delete** button | `app_service_mark(_many)` |
+| Scan phone | `scan-phone [--device UDID]` | **Scan phone** button for selected device | `app_service_scan_phone` |
+| Deleted on phone | `deleted-on-phone list [--device UDID] [--rescan]` | §3 device-scoped report/rescan | `app_service_deleted_on_phone(device_udid=...)` |
+| Move to Deleted | `deleted-on-phone to-deleted <asset-ids...> [--file ID ...]` | §3 button with explicit asset/copy scope | `app_service_move_to_deleted(file_ids=...)` |
+| Restore | `deleted-on-phone restore <asset-ids...> [--file ID ...]` | Recycle bin ▸ Restore selected copies | `app_service_restore(file_ids=...)` |
+| Purge | `deleted-on-phone purge <asset-ids...> [--file ID ...] [--recycled-only] --confirm` | §3 asset/copy purge; Recycle bin restricts to deleted copies; §5 dialog | `app_service_purge(file_ids=..., recycled_only=...)` |
+| Reclaim selection | `reclaim [--device UDID] [--asset ID ...] [--confirm]` | §4 device/selected rows + §5 dialog | `app_service_reclaim(asset_ids=...)` |
+| Mark asset/album/copy | `marks add <id> [--album \| --file]` | **Mark for delete**, with explicit current-copy versus whole-asset scope | `app_service_mark` (`asset`/`album`/`file`), `app_service_mark_many` (assets) |
 | List marks | `marks list` | §6 view | `app_service_list_marks` |
 | Unmark | `marks remove` | §6 **Unmark** | `app_service_unmark` |
+| Clear marks | `marks clear` | §6 **Clear all marks** | `app_service_clear_marks` |
 | Commit marks | `marks commit --confirm` | §6 buttons + §5 dialog | `app_service_commit_marks` |
-| Move selection | `move` | **Move to album...** | `app_service_move_selection` |
+| Move selection | `move <album> <asset-ids...> [--from-album ALBUM_ID] [--file ID ...]` | **Move to album...**, preserving album/copy scope | `app_service_move_selection(file_ids=...)` |
 | Thumbnail | `thumbnail` | Grid tiles (implicit) | `app_service_thumbnail` |
-| Settings | `config list` / `get` / `set` | §7b dialog *(pending)* | `app_service_get_settings` / `app_service_update_settings` |
+| Clear preview cache | `clear-thumbnails` | §7b **Clear cache** | `app_service_clear_thumbnails` |
+| Settings | `config list` / `get` / `set` | §7b dialog *(pending)* | `app_service_get_settings` / `app_service_set_setting` (bulk save: `app_service_update_settings`) |
+| Reset settings | `config reset` | §7b **Reset settings** | `app_service_reset_settings` |
+| Settings location | `config path` | §7b **Show settings file** | `app_service_settings_path` |
+| Forget recent archive | `config forget <path>` | §7b **Forget** | `app_service_forget_archive` |
+
+US-D4 HTML gallery is explicitly deferred; there is no current `gallery`
+command to map. **Show in Explorer**, viewer navigation, search and theme
+controls are planned presentation features, not claimed CLI archive operations.
+Album-grid deletion should use the aligned `AssetView.file_ids` for the shown
+copies, not silently promote a selection to all copies of an asset. Asset-wide
+delete/move must be clearly labeled; `--from-album` is the CLI source-album
+move equivalent, while the unqualified CLI move affects all active copies.
+Recycle-bin purge must set `recycled_only=True` so partially recycled assets
+retain their active copies; this maps to CLI `--recycled-only`.
 
 ---
 
@@ -426,8 +469,9 @@ Every CLI command has a GUI surface, and both call the same service method.
   reversible option is always offered first.
 - **Long operations never block the UI** — they run in a `QThread` with progress
   and working cancellation.
-- **Read-only by default:** import, verify, scan and browsing never modify or
-  delete archived files.
+- **Preservation by default:** import adds files; verify/scan may update catalog
+  metadata, and thumbnails create cache files. None automatically deletes or
+  changes original media bytes. Browsing does not require phone access.
 - **Keyboard:** `Ctrl+A` select all, `Ctrl+click` / `Shift+click` extend,
   `Delete` marks (never deletes directly), `F5` refresh, `Esc` clears selection.
 - **Empty and error states** are explicit: "No archive open", "No iPhone
@@ -444,8 +488,8 @@ Every CLI command has a GUI surface, and both call the same service method.
 
 ## 10. What approval unblocks
 
-Approving this sketch unblocks `ui-sketch-approval-gate` and therefore the
-`gui-frontend` todo:
+Only explicit approval unblocks `ui-sketch-approval-gate`; core-hardening
+contracts must also pass before the GUI implementation starts:
 
 - **Theming first** — `gui/theme.py` (the §0.3 tokens + scoped QSS) and
   `gui/win32_effects.py` (the §0.2 DWM calls), preceded by a throwaway Mica
@@ -457,7 +501,8 @@ Approving this sketch unblocks `ui-sketch-approval-gate` and therefore the
 - **Then** the `ibackup-gui` entry point and `tests/test_gui.py` under
   `pytest-qt` (headless via `QT_QPA_PLATFORM=offscreen`).
 
-Requires **PySide6 >= 6.7** for the native `windows11` style (ADR-0010); the
-dependency floor is being raised from 6.6.
+Requires **PySide6 >= 6.7** for the native `windows11` style (ADR-0010/0011).
+Windows runtime behavior, Qt/icon distribution notices and the packaged GUI
+must be validated separately before a release.
 
 **Please review and confirm, or tell me what to change.**

@@ -1,229 +1,207 @@
 # iPhone Archive — Project Structure
 
-Status: Draft for review (Phase 0 documentation)
+Status: current core/CLI module map plus explicitly planned GUI contracts.
+Implementation presence does not establish hardware or crash-safety validation;
+see [progress](progress.md) and [test plan](unit-tests.md).
 
-## 1. Repository layout
+## 1. Current modules
 
-```
-ibackup/
-  pyproject.toml                 # packaging, dependencies, entry point, tool config
-  README.md                      # short project README (points to docs/)
-  docs/
-    specifications.md
-    readme-user.md
-    user-stories.md
-    structure.md                 # this file
-    unit-tests.md
-  src/
-    iphone_archive/
-      __init__.py
-      cli.py                     # command entry points (thin adapter over service/)
-      config.py                  # archive-root and folder-path resolution
-      settings.py                # persisted user preferences (%APPDATA%\ibackup\settings.json)
-      logging_setup.py           # logging configuration
-      service/                   # headless application API for both frontends (CLI + GUI)
-        __init__.py
-        app_service.py           # facade: import, verify, dedup, albums, browse,
-                                 #   select, mark-for-delete, move, delete, reclaim
-        progress.py              # progress-reporting + cancellation interfaces
-        results.py               # UI-agnostic result / DTO types
-        selection.py             # multi-select operations; move/delete of many items
-        marks.py                 # mark-for-delete queue (staged, explicit-commit)
-      device/
-        __init__.py
-        device_manager.py        # detect/pair device, device info
-        afc_client.py            # pymobiledevice3 AFC wrapper (list/pull/delete)
-        media_source.py          # enumerate DCIM + PhotoData over AFC
-      catalog/
-        __init__.py
-        database.py              # SQLite schema, migrations, connection
-        models.py                # dataclasses: Asset, AssetFile, Album, ImportSession
-        repository.py            # queries (by hash, by album, files to verify)
-        sidecar.py               # per-asset JSON sidecar read/write
-      core/
-        __init__.py
-        hashing.py               # streaming SHA-256
-        name_safety.py           # Windows/cross-platform safe names + collisions
-        archive_layout.py        # album-folder paths, atomic copy/hardlink placement
-        importer.py              # incremental import orchestration
-        dedup.py                 # duplicate detection & reporting
-        verifier.py              # re-hash on-disk copies vs catalog
-        albums.py                # parse Photos.sqlite -> album membership
-        reclaim.py               # verify-before-delete phone space reclamation
-        phone_diff.py            # detect archived assets no longer on the phone
-        recycle.py               # move to / restore from / purge the Deleted/ folder
-      browse/
-        __init__.py
-        gallery.py               # album/asset read models for the CLI and GUI
-        thumbnails.py            # generate + cache thumbnails (HEIC via pillow-heif)
-      gui/                       # PySide6 GUI — thin adapter over service/
-        __init__.py
-        app.py                   # QApplication bootstrap; ibackup-gui entry point
-        theme.py                 # Windows 11 Fluent design tokens + scoped QSS (ADR-0010)
-        win32_effects.py         # DWM: Mica backdrop, rounded corners, dark caption
-        main_window.py           # main window: navigation pane + command bar + grid
-        navigation_pane.py       # NavigationView-style album/library nav with counts
-        picture_grid_view.py     # QListView icon-mode thumbnail grid, multi-select
-        thumbnail_loader.py      # background thumbnail loading from archive files
-        operations_controller.py # binds UI actions to service/ calls; progress/cancel
-        reclaim_view.py          # "safe to delete from phone" list + confirm
-        deleted_on_phone_view.py # review items gone from phone; purge or move-to-Deleted
-        models.py                # Qt models wrapping service/ result DTOs
-  tests/
-    ...                          # unit tests (see docs/unit-tests.md)
-```
+All paths below are relative to `src/iphone_archive/`.
 
-File and directory names use lowercase with underscores, per project coding
-rules.
-
-## 2. Layered architecture
-
-```
-        +------------------+        +------------------+
-        |      cli.py       |       |      gui/        |
-        |  (thin adapter)   |       |  PySide6 (thin)  |
-        +---------+---------+       +---------+--------+
-                  |                           |
-                  +------------+--------------+
-                               |
-                     +---------v---------+
-                     |     service/      |   headless application API (facade):
-                     |  app_service.py   |   import, verify, dedup, albums,
-                     | progress + results|   browse/query, select, mark-for-delete,
-                     +---------+---------+   move, delete, reclaim + progress/cancel
-                               |
-     +----------------+--------+-------+----------------+
-     |                |                |                |
-+----v----+     +-----v-----+    +-----v-----+    +-----v-----+
-| device/ |     |  core/    |    | catalog/  |    | browse/   |
-| (phone) |<--->| (logic)   |<-->| (SQLite + |    | (query +  |
-|  AFC    |     |           |    |  sidecars)|    | gallery)  |
-+---------+     +-----------+    +-----------+    +-----------+
-```
-
-- **`service/`** is a **headless application layer (facade)** that exposes every
-  operation as a plain, UI-agnostic API returning structured result objects and
-  emitting progress/cancellation events. **Both the CLI and the GUI are thin
-  adapters over this layer**, guaranteeing the two frontends stay in parity.
-- **`cli.py`** and **`gui/`** contain no business logic — they only translate
-  user input into `service/` calls and render results.
-- **`device/`** is the only layer that talks to the phone. It exposes a small
-  interface (list media, pull a file, delete a file, read `Photos.sqlite`) so
-  the rest of the app can be tested with a fake source.
-- **`core/`** holds all business logic and is device-, service-, and UI-agnostic.
-- **`catalog/`** owns persistence: the SQLite index plus JSON sidecars.
-- **`browse/`** provides read-only query/presentation helpers (list albums,
-  list/paginate pictures, resolve file paths for thumbnails, optional HTML
-  gallery) that a GUI grid or a CLI listing can both consume.
-
-## 3. Module responsibilities
-
-| Module | Responsibility |
+| Path | Responsibility |
 |---|---|
-| `config.py` | Resolve the archive root and every folder inside it; validate the archive. |
-| `settings.py` | Persisted user preferences stored per-user *outside* the archive: default/recent archives, album link mode, thumbnail size, safety defaults, log level. Preferences only — validation refuses any value that would weaken a safety guarantee. |
-| `logging_setup.py` | Configure logging to console and `.ibackup/logs/`. |
-| `service/app_service.py` | Headless facade: exposes every operation (import, verify, dedup, albums, browse/query, select, mark-for-delete, move, delete, reclaim, deleted-on-phone review + purge/move-to-Deleted/restore) as UI-agnostic calls used by both the CLI and the GUI. |
-| `service/progress.py` | Progress-reporting and cancellation interfaces for long operations (import/verify/reclaim), consumable by a CLI progress bar or a GUI progress dialog. |
-| `service/results.py` | Structured, serializable result/DTO types returned to any frontend (no printing/formatting in core). |
-| `service/selection.py` | Operate on multiple selected assets/albums at once (move, delete, mark). |
-| `service/marks.py` | Manage the mark-for-delete queue: stage items, list staged, unmark, and commit deletions on explicit confirmation. |
-| `device/device_manager.py` | Discover the device, report info, manage pairing. |
-| `device/afc_client.py` | Wrap `pymobiledevice3` AFC: list, stream-read, delete. |
-| `device/media_source.py` | Enumerate `/DCIM` and locate `PhotoData/Photos.sqlite`. |
-| `catalog/database.py` | Create/migrate schema; provide connections. |
-| `catalog/models.py` | Typed records passed between layers. |
-| `catalog/repository.py` | All SQL queries; hash lookups; verify worklists. |
-| `catalog/sidecar.py` | Serialize/deserialize per-asset JSON sidecars. |
-| `core/hashing.py` | Streaming SHA-256 over file-like objects. |
-| `core/name_safety.py` | Produce Windows-safe album/file names; collisions. |
-| `core/archive_layout.py` | Compute destination paths; atomic copy/hardlink. |
-| `core/importer.py` | Orchestrate the incremental import workflow. |
-| `core/dedup.py` | Detect duplicates; report storage/multi-album cost. |
-| `core/verifier.py` | Re-hash on-disk copies; report mismatches/missing. |
-| `core/albums.py` | Parse `Photos.sqlite`; map assets to album names. |
-| `core/reclaim.py` | Determine eligible phone files; delete on confirm. |
-| `core/phone_diff.py` | Compare catalog to the latest phone scan; list assets deleted from the phone. |
-| `core/recycle.py` | Move assets from `Photos/` to `Deleted/`, restore, and permanently purge; keep catalog `archive_state`/`asset_files.location` in sync. |
-| `browse/gallery.py` | Album/asset read models: list albums with counts, list/page assets, unsorted and recycled views. |
-| `browse/thumbnails.py` | Generate and cache JPEG previews under `.ibackup/thumbnails/<sha256>_<size>.jpg` (HEIC via `pillow-heif`); originals are only read. Unsupported media (video) reports a placeholder result. |
-| `cli.py` | Thin adapter: map subcommands to `service/` calls; format output. |
-| `gui/` | PySide6 thin adapter: bind widgets to the same `service/` calls; thumbnail grid, album navigation, multi-select, move/delete/mark, reclaim view, progress/cancel. |
-| `gui/theme.py` | Windows 11 Fluent design tokens (type ramp, radii, light/dark color tokens, accent) and the narrowly scoped QSS applied on top of Qt's native `windows11` style. Pure data + string building, so it is unit-testable without a display. |
-| `gui/win32_effects.py` | `ctypes` calls to `DwmSetWindowAttribute` for the Mica backdrop, rounded corners and dark title bar, each guarded by a Windows build check and failing silently to a solid-color fallback. |
+| `cli.py` | Typer adapter, archive selection, confirmation prompts, result rendering. |
+| `config.py` | Archive paths and initialization. |
+| `settings.py` | Per-user persisted settings, validation, default/recent archives. |
+| `logging_setup.py` | Rotating CLI command start/completion/error log, configured level and handler cleanup. |
+| `service/app_service.py` | Headless `AppService` facade; `app_service_device_info(source)` returns `DeviceInfo(udid, media_count)` after full enumeration. |
+| `service/archive_lock.py` | Exclusive archive-session/process lock. |
+| `service/progress.py` | `ProgressEvent`, `ProgressHandle`, Event cancellation and bounded last-256 history snapshots. |
+| `service/selection.py` | Batch archive moves and `SelectionResult`. |
+| `service/marks.py` | Staged deletion queue, `MarkSummary`, `MarkCommitResult`. |
+| `device/interface.py` | Injectable `MediaSource` protocol. |
+| `device/afc_device.py` | `AfcDevice`: discovery/pairing, AFC media enumeration, streaming, best-effort album extraction. |
+| `device/fake_device.py` | Offline `FakeDevice` for tests and CLI exercises. |
+| `catalog/database.py` | SQLite connection, schema initialization and upgrade handling. |
+| `catalog/models.py` | `Asset`, `AssetFile`, `Album`, `ImportSession`, `DeletionMark`, `PhoneItem`, state enums. |
+| `catalog/repository.py` | Catalog queries, identities, membership, scan state. |
+| `catalog/sidecar.py` | JSON metadata serialization and `SidecarData`. |
+| `core/hashing.py` | Chunked SHA-256. |
+| `core/name_safety.py` | Windows-safe names and collision handling. |
+| `core/archive_layout.py` | Copy/hardlink placement and `PlacedFile`. |
+| `core/file_operations.py` | Journaled archive edit preflight, placement, rollback/finalization and sidecar recovery. |
+| `core/importer.py` | Incremental import, placement, catalog/sidecars, `ImportResult`. |
+| `core/albums.py` | Archive album queries and `AlbumSummary` (not the phone database parser). |
+| `core/dedup.py` | Read-only storage report, `DuplicateGroup`, `DedupResult`. |
+| `core/verifier.py` | Verify all cataloged copies, `VerifyIssue`, `VerifyResult`. |
+| `core/phone_diff.py` | Device inventory reconciliation, `DeletedFromPhoneItem`, `PhoneDiffResult`. |
+| `core/reclaim.py` | Selected/all-candidate preview and guarded deletion, `ReclaimCandidate`, `ReclaimResult`. |
+| `core/recycle.py` | Move to Deleted, restore, purge, `RecycleResult`. |
+| `browse/gallery.py` | Album/asset listings and `AssetView`; aligned `file_ids`/`paths` filtered by current album/location, including partially recycled assets; **no HTML generator**. |
+| `browse/thumbnails.py` | Cached still-image previews and `ThumbnailResult`; video placeholder, not video transcoding. |
+| `gui/__init__.py` | Placeholder package only; no implemented GUI or GUI entry point. |
 
-## 4. Data flow — import
+DTOs live with their owning modules above. There is no `service/results.py`,
+`device_manager.py`, `afc_client.py`, or `media_source.py`.
+Repository metadata/tool configuration is in `pyproject.toml`, `.github/`, and
+`.pre-commit-config.yaml`; tests are inventoried in `unit-tests.md`.
 
-```
-phone (AFC)                 core                         catalog / disk
------------                 ----                         --------------
-media_source.enumerate() -> importer
-  for each asset:
-    afc_client.read() ----> hashing.sha256() (streaming)
-                            repository.exists(sha256)? --> skip if yes
-                            albums.membership(asset) ----> Photos.sqlite (best-effort)
-                            name_safety.safe_name()
-                            archive_layout.place() ------> Photos/<Album>/file  (atomic)
-                            verifier.reverify(stored) ---> compare to source hash
-                            sidecar.write() -------------> .ibackup/sidecars/<sha256>.json
-                            repository.commit() ---------> catalog.sqlite (assets, asset_files)
-importer.summary() -------> import_sessions row
-```
+## 2. Layering and data flow
 
-## 5. Data flow — reclaim
-
-```
-reclaim --dry-run/--confirm
-  repository.list_archived_phone_assets()
-  for each candidate:
-    verifier.verify(archive copy)  -> must pass
-  present eligible list
-  if --confirm and user confirms:
-    afc_client.delete(phone path)  -> never touches archive
+```text
+CLI (current) / GUI (planned)
+              |
+        service/AppService
+              |
+       core + browse + catalog
+              |
+       injectable MediaSource
+              |
+       AfcDevice / FakeDevice
 ```
 
-## 6. Key conventions
+The service owns the archive session and connection. Frontends translate input
+and render results; persistence and destructive eligibility stay below them.
+Settings are outside the archive; media, catalog, sidecars and recovery data
+travel together. Plain media remains viewable without SQLite or this app.
 
-- No symlinks are ever created in the archive.
-- All destination writes are atomic (write to `.ibackup/tmp`, then rename).
-- The catalog is written transactionally; a crash cannot half-record an asset.
-- The `device/` interface is dependency-injected so `core/` is unit-testable
-  without a real phone.
-- Public functions are prefixed with their module concept where helpful
-  (e.g. `archive_place_asset`, `catalog_find_by_hash`), per coding rules.
-- **Frontend-agnostic core:** no `print()`/formatting or UI concerns below the
-  adapter layer. `service/` returns structured results and emits progress events;
-  the CLI and GUI decide how to render them.
+Import: enumerate device metadata → device-scoped fast-skip checks → stream
+new/changed bytes into archive staging while hashing → verify/place each copy
+→ persist sidecar/catalog/session state. Album growth is append-only.
+Fast-skip is not evidence that a current phone file still has identical bytes.
 
-## 6a. Frontend Parity (CLI + GUI)
+Reclaim: obtain current device inventory → restrict to requested asset IDs if
+provided → verify active archive copies and current source identity/content
+→ preview → explicit confirmation and execution-time revalidation. Real AFC
+deletion remains gated by the Windows/iPhone matrix; no flag bypasses it.
 
-Both frontends are thin adapters over `service/`, so they stay in lock-step:
+An atomic file rename or SQLite transaction alone cannot make a filesystem +
+database operation atomic. Core hardening must provide rollback/recovery for
+partial multi-copy placement, recycle, restore, purge and sidecar updates.
+`file_operations.py` journals edits under `.ibackup/operations/`; service open
+attempts recovery of provably owned interrupted edits, preserving conflicting
+files under
+`.ibackup/operation_conflicts/`. This does not prove all import or power-loss
+failure cases are covered.
+Imports separately journal each item under `.ibackup/import-journals/`, using
+schema-v2 `import_commits` markers. Service initialization/open now runs schema
+initialization → `importer.importer_recover(connection, paths)` →
+`file_operations.file_operations_recover(connection, paths)` under the archive
+session lock. Import also invokes its recovery before work.
+Use catalog-derived sidecars so membership/file updates stay represented.
+The immutable fsynced intent owns a private staging directory before media
+creation, while originals remain intact. Bounded per-file ownership records
+persist staged device/inode identity before no-clobber publication. This avoids
+both the creation/ownership crash window and quadratic whole-batch journal
+rewrites. Windows uses native rename; POSIX uses hardlink publication and refuses
+unsupported filesystems rather than copying into an unowned public destination.
+Recovery refuses ambiguous or externally replaced files, even byte-identical
+replacements; ordinary staging creation/ownership-write failures can roll back.
+A SQLite `meta` commit marker commits with file rows/marks; recovery rolls back
+precommit destinations or finishes committed source cleanup and sidecars.
+Purge stages copies until commit. Allow temporary extra space for these copies.
+Preserve `.ibackup/import-staging/` with the import journals while any operation
+is unfinished.
+Recovery checks identity and content before destructive cleanup and fails
+explicitly on ambiguous ownership or changed/damaged data. Serialization
+coordinates app sessions, not external file
+managers; it does not provide instantaneous whole-batch filesystem visibility.
+Never describe a batch as all-or-nothing unless failure-injection tests prove
+that boundary. No destructive action may discard the last good copy on error.
 
-- **Single source of behavior:** every operation lives in `service/app_service.py`.
-  The CLI (`ibackup`) and the GUI (`ibackup-gui`) are both adapters over the same
-  API — guaranteeing **the GUI can do everything the CLI can**, and vice versa.
-- **Structured results, not text:** `service/results.py` returns typed DTOs
-  (e.g. album summaries, asset records with on-disk paths for thumbnails,
-  operation reports); the GUI wraps them in Qt models and the CLI prints them.
-- **Progress + cancellation:** long-running operations (`import`, `verify`,
-  `reclaim`) accept a progress/cancel handle from `service/progress.py`; the GUI
-  renders a progress dialog with cancel, the CLI a progress line.
-- **Selection & batch ops:** `service/selection.py` supports acting on many
-  selected pictures/albums at once (move, delete, mark-for-delete); the GUI grid
-  provides multi-select, the CLI accepts multiple targets.
-- **Mark-for-delete queue:** `service/marks.py` stages items marked for deletion;
-  nothing is removed until an explicit commit — matching the append-only safety
-  model and the GUI "review before delete" flow.
-- **Phone-safe-to-delete view:** the reclaim eligibility query (archived +
-  verified) is exposed as data, rendered by the GUI reclaim view and by
-  `reclaim --dry-run`.
+## 3. Archive and identity contracts
 
-## 7. External dependencies
+- No archive symlinks; resolve and validate paths before writing/deleting.
+- One open service session per archive, protected by an OS-exclusive lock
+  across processes, including read operations. Competing sessions are rejected
+  as busy, not queued. Thread ownership is enforced before SQLite access.
+- Source identity must include device identity, not only a phone path or asset
+  ID. Multiple phone identities may refer to the same SHA-256 content.
+  Schema-v2 `source_identities` records many device/path/content mappings.
+  Repository identity lookup requires device UDID and modification time;
+  missing provenance fails closed, and v1 content rows gain no fabricated
+  provenance during migration.
+- A failed/cancelled/incomplete scan must not publish absence. Reclaim uses
+  fresh device-scoped matches, not global `present_on_phone` alone.
+- Schema changes need versioned, transactional migrations and upgrade tests.
+  Unscoped legacy identities are not trusted for skip, absence or deletion;
+  require renewed device-scoped import/content validation. Schema v2 stores
+  device/path source identities; unchanged size/mtime supports trusted lookup,
+  not proof of current bytes for deletion. Newer unsupported schemas fail closed.
+- Verification includes recycled copies; active archive presence is required
+  for phone reclaim. Catalog repair from sidecars remains separate future work.
+  An asset remains active while any `Photos/` copy exists; `asset_albums` tracks
+  active folders. Recycled views include partially recycled assets.
+  Deleted copies retain their original `asset_files.album_id` for restoration;
+  `recycle_purge(..., recycled_only=True)` preserves all active copies.
+- Selection must preserve scope: asset marks cover the asset, album marks its
+  album copies, and `target_type="file"` marks one copy. `list --files` exposes
+  aligned IDs/paths for the current filter. Moves default to all active copies;
+  `--from-album` restricts the source. Per-copy commits preserve other copies,
+  memberships and sidecars.
+  Default moves leave Deleted copies unchanged; explicit `file_ids` that do
+  not match the requested assets/location are rejected.
+  Service move/recycle/restore/purge accepts optional `file_ids`; CLI adapters
+  expose repeated `--file ID` while retaining required positional asset IDs.
+  `app_service_purge` also accepts `recycled_only`. Marks commit delegates
+  scoped edits once and returns its `recycle_result`; it does not delete the
+  resolved asset IDs a second time.
+- Sidecars now record `archive_state` and actual copy path/location, album
+  ID/name and link mode; reads remain compatible with older sidecar data.
 
-- `pymobiledevice3` — USB/AFC access to the iPhone.
-- `PySide6` — Qt GUI (Windows).
-- `pillow-heif` (+ `Pillow`) — decode HEIC/HEIF to generate cached thumbnails.
-- Python standard library: `sqlite3`, `hashlib`, `pathlib`, `json`, `argparse`
-  (or `typer` if adopted for the CLI).
-- Test tooling: `pytest` (with `pytest-qt` for GUI widget tests).
-- Packaging: `PyInstaller` for a portable Windows build (optional MSIX installer).
+Device hardening must adapt supported asynchronous `pymobiledevice3` APIs
+without per-chunk event-loop creation: a persistent loop owns the AFC session,
+bounded `fopen`/`fread`/`fclose` reads, and deterministic `device_close`/
+context-manager cleanup. Adapter implementation/tests are not hardware proof.
+`AfcDevice(udid=...)` retains its constructor; first use establishes worker
+affinity. Missing/inaccessible media directories are errors, not a valid empty
+inventory. Source verification and per-device scan publication are separate;
+only a complete successful scan publishes absence.
+
+## 4. Future GUI execution contract — blocked
+
+No GUI code, entry point, theme module or Mica probe is authorized until the
+user explicitly approves the sketch. Review fixes are not that approval.
+
+After approval:
+
+- Create/open/use/close `AppService` and its SQLite connection **in the worker
+  thread that owns them**. Never share a service/connection between QThreads,
+  and do not defeat SQLite thread checks. Prefer a single serialized archive
+  worker. The service rejects competing sessions as busy; any UI-side queue
+  must route work through that same owning worker, not open another session.
+- Use `threading.Event` cancellation; emit progress/results through queued Qt
+  signals. Worker callbacks must never touch widgets directly. Shutdown
+  cancels, waits for safe completion, then closes the worker-owned session.
+  The current progress handle retains snapshots of only the last 256 events;
+  it is not an unbounded event log.
+- Bound thumbnail workers, pending requests and decoded-image caches; request
+  visible/prefetch tiles only, discard stale requests, and paginate metadata.
+  Independent thumbnail workers receive immutable paths/DTOs, not SQLite.
+- `gui/theme.py`, `win32_effects.py`, `main_window.py`, `navigation_pane.py`,
+  `command_bar.py`, `picture_grid_view.py`, `thumbnail_loader.py`,
+  `operations_controller.py`, review/settings views and Qt models are
+  **planned names, not existing files**.
+- DWM failures must log the attribute/result and select a solid background.
+  Probe Mica only after approval on Windows 11 22H2+; no probe result exists.
+- Full parity is an acceptance requirement, not guaranteed by a facade alone:
+  see the complete [CLI↔GUI map](ui-sketch/README.md#8-cli--gui-parity-map).
+
+## 5. Dependencies and packaging
+
+The service applies `album_link_mode`, `thumbnail_size` and
+`scan_phone_after_import` defaults for all adapters. Settings APIs include
+`app_service_get_settings`, `app_service_update_settings`,
+`app_service_set_setting`, `app_service_reset_settings`,
+`app_service_settings_path` and `app_service_forget_archive`.
+Malformed settings JSON warns and falls back to defaults; invalid recognized
+values raise on validation. GUI-only stored preferences remain inactive.
+`app_service_reset_settings` / `config reset` can recover invalid configuration.
+
+`pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.
+PySide6/darkdetect and pytest-qt support the planned GUI. Actual version and
+optional-extra declarations live in `pyproject.toml`.
+PyInstaller Windows packaging is a scheduled milestone; no spec or released
+binary is supplied in this remediation.
+Qt/icon notices and replacement/relinking obligations must be checked before
+distribution; see [ADR-0011](adr/0011-licensing-and-gui-contract-addendum.md).

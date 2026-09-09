@@ -26,7 +26,10 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 - [x] **doc-progress** — `docs/progress.md` (resumable progress log).
 - [x] **docs-approval-gate** — docs approved by the user; Phase 1 unblocked. _Depends on: all doc-* above._
 
-## Phase 1 — Core + CLI (docs approved — complete)
+## Phase 1 — Core + CLI baseline (implemented offline, not hardware-qualified)
+
+The checked items below record initial implementation, not completion of the
+hardening and Windows validation gates that follow.
 
 - [x] **project-scaffold** — create `.venv`, pyproject.toml (runtime + dev
   extras incl. ruff, mypy, hypothesis, pre-commit, pytest-cov),
@@ -62,8 +65,8 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 - [x] **reclaim** — verify-before-delete phone space reclamation
   (dry-run/confirm). _Depends on: device-access, importer, verifier._
 - [x] **recycle-bin** — `Deleted/` folder: move/restore/purge; keep catalog in
-  sync. _Depends on: archive-edit, catalog-schema, hashing-layout._
-- [x] **browse-gallery** — album listing/counts + optional HTML gallery.
+  sync. _Depends on: catalog-schema, hashing-layout._
+- [x] **browse-gallery** — album listing/counts (no HTML generator).
   _Depends on: catalog-schema._
 - [x] **thumbnails** — generate + cache thumbnails under `.ibackup/thumbnails/`
   (HEIC via `pillow-heif`), reuse cache, never modify originals. _Depends on:
@@ -71,19 +74,43 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 - [x] **service-layer** — headless facade (`app_service.py`) + progress/cancel
   + result DTOs, exposing all operations. _Depends on: albums, browse-gallery,
   dedup, importer, phone-diff, reclaim, recycle-bin, thumbnails, verifier._
-- [x] **archive-edit** — multi-select move/delete + mark-for-delete queue.
-  _Depends on: catalog-schema, hashing-layout, service-layer._
+- [x] **archive-edit** — multi-select move/delete + mark-for-delete primitives.
+  _Depends on: catalog-schema, hashing-layout, recycle-bin._
 - [x] **cli-wiring** — wire all subcommands to the service layer. _Depends on:
   albums, archive-edit, browse-gallery, dedup, importer, reclaim,
   service-layer, verifier._
 
-## UI sketch gate (before any GUI code)
+## Core-hardening checkpoint (complete offline)
+
+- [x] **device-identity-safety** — device-scoped multiple identities, transactional
+  schema migrations and legacy rescan behavior; complete-scan-only absence;
+  bounded AFC streaming and cleanup; fail-closed real AFC reclaim.
+  _Depends on: importer, phone-diff, reclaim, catalog-schema._
+- [x] **archive-recovery-safety** — path confinement, multi-copy/sidecar/catalog
+  failure handling, recycle/restore/purge recovery and album-copy semantics.
+  _Depends on: archive-edit, recycle-bin._
+- [x] **service-safety-parity** — process/session lock, worker-owned SQLite,
+  Event cancellation, typed DELETE for permanent operations, selected reclaim,
+  cache clear, marks clear, operation logs/log level.
+  _Depends on: service-layer, cli-wiring._
+- [x] **settings-store** — store/CLI and current service consumers implemented.
+  `reopen_last_archive` and `default_deleted_action` are future GUI preferences,
+  not active CLI behavior. _Depends on: service-layer._
+- [x] **core-validation** — final targeted/full configured quality gates and
+  report in `progress.md`, without duplicating brittle counts across docs.
+  _Depends on: device-identity-safety, archive-recovery-safety, service-safety-parity._
+- [!] **windows-iphone-validation** — Windows/iPhone read, album and large-video
+  matrix, then separately controlled destructive/recovery checks. Keep real AFC
+  deletion gated until approved evidence exists. _Depends on: core-validation._
+
+## UI sketch gate (before any GUI code, including Mica probe)
 
 - [x] **ui-sketch** — written at `docs/ui-sketch/README.md`; produce UI sketch/wireframe (main window, album nav,
   picture grid + multi-select, deleted-on-phone review, reclaim, progress) under
   `docs/ui-sketch/`. _Depends on: service-layer._
 - [!] **ui-sketch-approval-gate** — STOP: await explicit user approval of the
   sketch before implementing the GUI. _Depends on: ui-sketch._
+  Review corrections are not approval.
 
 ## Phase 2 — GUI (after sketch approval)
 
@@ -92,12 +119,15 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
   ramp, 4/8px radii, light+dark color tokens, system accent, scoped QSS over
   Qt's native `windows11` style) and `gui/win32_effects.py` (DWM Mica, rounded
   corners, dark caption, each build-guarded). Requires PySide6>=6.7.
-  _Depends on: ui-sketch-approval-gate._
+  Log DWM failure and fall back to solid color; probe is unperformed.
+  _Depends on: ui-sketch-approval-gate, core-validation._
 - [ ] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
   operations_controller, reclaim_view, deleted_on_phone_view, marks_view,
   settings_dialog, Qt models); `ibackup-gui` entry point; progress/cancel via
-  QThread. **No menu bar** — NavigationView + command bar per the sketch.
+  QThread with worker-owned SQLite, queued UI signals and Event cancellation;
+  serialized mutations and bounded thumbnail queues.
+  **No menu bar** — NavigationView + command bar per the sketch.
   _Depends on: archive-edit, browse-gallery, gui-theme, phone-diff,
   recycle-bin, service-layer, ui-sketch-approval-gate._
 
@@ -108,27 +138,29 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
   after each module during development** and as a final full-suite gate.
   _Depends on: archive-edit, dedup, gui-frontend, hashing-layout, importer,
   name-safety, phone-diff, recycle-bin, service-layer, thumbnails, verifier._
-  Status: **179 tests green, 91% coverage** for core + catalog + service + CLI;
-  `test_gui.py` still to be written after the GUI exists.
+  Status: offline core/CLI and recovery regressions pass; see `progress.md`.
+  GUI tests and Windows/hardware qualification remain separate future gates.
+
+## Scheduled release milestone
+
+- [ ] **windows-cli-release** — first create a CLI-only PyInstaller recipe
+  (none is included in this remediation), then build it on
+  Windows, smoke-test on a clean machine without Python, validate licenses/
+  notices and versioned artifacts. A recipe alone is not a release.
+  _Depends on: core-validation, windows-iphone-validation._
+- [ ] **windows-gui-release** — package the approved, tested GUI and Qt/icon
+  notices/replacement obligations; installer/signing strategy and release docs.
+  _Depends on: windows-cli-release, gui-frontend, tests._
 
 ## Future backlog (agreed, not scheduled)
 
 Architect recommendations captured for later — not part of the current build:
 
-- [ ] **future-schema-migrations** — versioned SQLite migrations + upgrade test.
 - [ ] **future-audit-log** — structured logging + append-only operation audit log
-  in `.ibackup/logs/` (import/delete/reclaim/purge with hashes).
+  in `.ibackup/logs/` (distinct from implemented diagnostic operation logging).
 - [ ] **future-catalog-repair** — rebuild/repair `catalog.sqlite` from sidecars.
-- [ ] **future-release-checklist** — CHANGELOG/SECURITY/CONTRIBUTING/LICENSE,
-  signed reproducible PyInstaller build, `.exe` smoke test, version tagging.
 - [ ] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
-- [~] **settings-store** — **store + CLI done**; only the §7b Settings dialog
-  remains (blocked with the rest of the GUI). Persisted user preferences
-  (`%APPDATA%\ibackup\settings.json`): default archive + recent archives, album
-  link mode, thumbnail size, safety defaults, log level. Needs `settings.py`,
-  `app_service_get_settings` / `app_service_update_settings`, an
-  `ibackup config get|set|list` command (CLI parity) and the §7b Settings
-  dialog. Preferences only — must never weaken the append-only guarantee.
-  _Depends on: service-layer. Sketched in `docs/ui-sketch/` §7b._
-- [ ] **future-destructive-guardrails** — extend dry-run + explicit-confirm to
-  every destructive op (purge/delete/move-to-Deleted).
+- [ ] **future-html-gallery** — US-D4 static browser gallery, explicitly
+  deferred; read models do not implement HTML generation.
+- [ ] **future-expanded-previews** — additional optional dry-run previews for
+  reversible edits; basic permanent-deletion guardrails are mandatory now.
