@@ -1,6 +1,8 @@
 # iPhone Archive — User Stories
 
-Status: Draft for review (Phase 0 documentation)
+Status: living requirements and acceptance criteria, not a passed-test report.
+Core/CLI exists but is undergoing hardening; GUI stories are blocked on explicit
+sketch approval. Hardware/release validation is pending (`unit-tests.md`).
 
 Format: each story has an ID, a role/goal/benefit statement, and acceptance
 criteria (Given/When/Then). "The archive" refers to the local append-only store.
@@ -25,8 +27,9 @@ Acceptance criteria:
 that** I know I can import.
 
 Acceptance criteria:
-- Given a trusted, unlocked iPhone over USB, when I run `device-info`, then the
-  device name, model, and iOS version are shown.
+- Given a trusted, unlocked iPhone over USB, when I run `device-info`, then its
+  device identifier (UDID) and full enumerated media count are shown via the
+  service. Name/model/iOS-version reporting is not currently implemented.
 - Given no device or an untrusted device, when I run `device-info`, then a clear
   message explains how to connect/trust the phone.
 
@@ -98,7 +101,7 @@ Acceptance criteria:
 usage, including multi-album copies.
 
 Acceptance criteria:
-- Given an archive, when I run `dedup --report`, then duplicate counts and the
+- Given an archive, when I run `dedup`, then duplicate counts and the
   storage cost of intentional multi-album copies are shown.
 - Given the report, then no files are deleted.
 
@@ -136,6 +139,9 @@ Acceptance criteria:
   unique name.
 
 ### US-D4 — Optional HTML gallery
+**Deferred, not implemented or scheduled for the current checkpoint.**
+`browse/gallery.py` provides read models only; no `gallery` command exists.
+
 **As** a user, **I want** an optional gallery page **so that** I can browse an
 album visually in a browser.
 
@@ -153,7 +159,7 @@ Acceptance criteria:
 from the phone before doing it.
 
 Acceptance criteria:
-- Given a backed-up phone, when I run `reclaim --dry-run`, then only assets that
+- Given a backed-up phone, when I run `reclaim`, then only assets that
   are archived AND pass a fresh verification are listed, and nothing is deleted.
 
 ### US-E2 — Safely delete from the phone
@@ -162,7 +168,11 @@ can free space, with confirmation.
 
 Acceptance criteria:
 - Given eligible assets, when I run `reclaim --confirm`, then I am asked to
-  confirm, and only then are those files deleted from the phone.
+  type `DELETE`; absent/wrong input aborts without an automation bypass.
+- Given repeated `--asset` options, only the selected, freshly revalidated
+  device-scoped source files may be deleted; stale/recycled-only copies fail.
+- Given the Windows/iPhone read/album/large-video and destructive-recovery gate
+  is not validated, real AFC deletion is refused even with confirmation.
 - Given any reclaim run, then archive files are never touched and deletion never
   runs automatically.
 
@@ -192,7 +202,9 @@ that** I never have to drop to the terminal.
 
 Acceptance criteria:
 - Given any CLI-supported operation (init, device-info, import, verify, dedup,
-  albums, gallery, move, delete, mark-for-delete, reclaim), then the GUI can
+  albums, list, stats, thumbnail/cache clear, scan-phone, move, recycle/restore/
+  purge, marks including clear, reclaim selection, and all config operations),
+  then the GUI can
   invoke it through the same service layer.
 - Given a new service operation is added, then it is available to both CLI and
   GUI without duplicating business logic.
@@ -226,6 +238,11 @@ Acceptance criteria:
   are removed from the archive; the phone is untouched.
 - Given a picture in multiple albums, when it is deleted from one album, then it
   remains in the others (unless explicitly deleted everywhere).
+- Given `list --files`, the exposed file IDs align with the displayed paths
+  and current album/location. `marks add <file-id> --file` stages one copy,
+  while default asset marks and `--album` marks retain their distinct scope.
+- Given a file-scoped mark is committed, only that copy is recycled/purged;
+  other copies, memberships and metadata remain consistent.
 
 ### US-G5 — Delete or mark an album for deletion
 **As** a user, **I want** to delete or mark a whole album **so that** I can
@@ -242,7 +259,9 @@ together **so that** batch curation is efficient.
 
 Acceptance criteria:
 - Given several selected pictures, when I choose "move to album", then all move
-  to the chosen album atomically, with no content change.
+  to the chosen album with recoverable per-asset updates and no content change.
+- Given CLI `move` without a source filter, all active copies are selected;
+  with `--from-album <id>`, only that source album's copies move.
 - Given several selected pictures, when I choose delete/mark, then the action
   applies to all of them.
 
@@ -253,7 +272,7 @@ Acceptance criteria:
 Acceptance criteria:
 - Given a connected phone, when I open the reclaim view, then it lists only
   assets that are archived AND pass a fresh verification (same result as
-  `reclaim --dry-run`).
+  `reclaim` preview).
 - Given I confirm deletion in the GUI, then only those phone files are deleted;
   the archive is never modified.
 
@@ -266,6 +285,10 @@ Acceptance criteria:
   from the service layer's progress events.
 - Given I click cancel, then the operation stops safely without corrupting the
   archive or catalog.
+- Given workers run, each owns its service/SQLite connection; no connection is
+  shared across QThreads. Event cancellation and queued UI signals are used.
+- Given competing mutations or thumbnail requests, mutations serialize with an
+  archive process lock and thumbnail queues/caches remain bounded.
 
 ---
 
@@ -280,7 +303,8 @@ Acceptance criteria:
 **so that** I can review them.
 
 Acceptance criteria:
-- Given assets exist in the archive but were not seen in the latest phone scan,
+- Given assets exist in the archive but were not seen in the latest complete,
+  successful scan of their own device (not a failed/cancelled scan),
   when I open the "deleted from phone" list/view, then those assets are shown
   with thumbnail, album, and date last seen on the phone.
 - Given detection runs, then it changes no files (read-only).

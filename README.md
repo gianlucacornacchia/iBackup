@@ -1,14 +1,16 @@
 # iPhone Archive (`ibackup`)
 
-A **Windows** desktop application (CLI **and** GUI) that creates a permanent,
+A **Windows-targeted** photo archive project (CLI implemented; GUI planned) that creates a permanent,
 **append-only** archive of photos and videos from a USB-connected iPhone. Media
 is stored as **plain files in album folders**, browsable in File Explorer
 without the app. The archive — not the phone — is the source of truth.
 
-> Status: **Phase 1 complete** — the core engine and the full `ibackup` CLI are
-> implemented and tested (179 tests, 91% coverage). The GUI is next and is
-> **blocked on UI-sketch approval**. See `docs/plan.md` for the build plan and
-> `docs/progress.md` for current status.
+> Status: **offline core-hardening complete**. Core and CLI implementations have
+> offline fake-device tests; that is not real-iPhone or Windows release
+> validation. No GUI or downloadable Windows release is available. GUI work,
+> including the Mica probe, is **blocked on explicit UI-sketch approval**;
+> review corrections do not constitute approval. See [`docs/progress.md`](docs/progress.md)
+> for validation evidence and remaining gates.
 
 ## Documentation
 
@@ -38,6 +40,10 @@ pytest
 
 ## Quick start (users)
 
+From a source installation (see the developer setup above). Use a disposable
+archive and non-destructive checks until the Windows/iPhone validation matrix
+passes; do not rely on this project as your only backup.
+
 ```powershell
 ibackup init D:\iphone-archive
 ibackup import --archive D:\iphone-archive
@@ -55,3 +61,7 @@ See [`docs/readme-user.md`](docs/readme-user.md) for the full command reference.
 ## License
 
 MIT.
+
+Bundled dependencies retain their own licenses. A future Qt/icon distribution
+must satisfy the notice and redistribution obligations in
+[`ADR-0011`](docs/adr/0011-licensing-and-gui-contract-addendum.md).

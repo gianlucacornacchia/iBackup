@@ -1,6 +1,6 @@
 # 0009. Headless `service/` layer shared by CLI and GUI
 
-- **Status:** Accepted
+- **Status:** Accepted; execution contract clarified by ADR-0011
 - **Date:** 2026-09-07
 - **Deciders:** Project author
 

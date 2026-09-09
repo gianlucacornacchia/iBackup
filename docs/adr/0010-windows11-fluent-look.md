@@ -1,6 +1,6 @@
 # 0010. Windows 11 Fluent look without a GPL widget library
 
-- **Status:** Accepted
+- **Status:** Accepted; licensing, interop and fallback claims corrected by ADR-0011
 - **Date:** 2026-09-07
 - **Deciders:** project owner, assistant
 
