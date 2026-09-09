@@ -14,6 +14,7 @@ from ..catalog import repository
 from ..catalog.models import Asset
 from ..config import ArchivePaths
 from ..device.interface import MediaSource
+from .hashing import hashing_sha256_stream
 
 
 @dataclass
@@ -48,24 +49,43 @@ class PhoneDiffResult:
 def phone_diff_scan_presence(
     connection: sqlite3.Connection, source: MediaSource, scanned_at: str
 ) -> None:
-    """Refresh present-on-phone flags from a metadata-only device scan.
+    """Publish presence only after a complete device scan and identity resolution.
 
     connection: an open catalog connection.
-    source: the media source to enumerate (no file contents are read).
+    source: metadata is used when trustworthy; otherwise content is hashed.
     scanned_at: ISO timestamp recorded as the last-seen time.
     Returns None.
     """
-    repository.repository_mark_all_absent(connection)
-    for item in source.device_enumerate():
+    items = list(source.device_enumerate())
+    device_udid = source.device_udid()
+    seen: list[tuple[str, int]] = []
+    for item in items:
         known = repository.repository_find_by_phone_identity(
-            connection, item.phone_asset_id, item.phone_path, item.size
+            connection,
+            item.phone_asset_id,
+            item.phone_path,
+            item.size,
+            device_udid,
+            item.modified_at,
         )
+        if known is None:
+            with source.device_open(item.phone_path) as stream:
+                digest = hashing_sha256_stream(stream)
+            known = repository.repository_get_asset_by_hash(connection, digest)
         if known is not None and known.asset_id is not None:
-            repository.repository_mark_present(connection, known.asset_id, scanned_at)
-    connection.commit()
+            seen.append((item.phone_path, known.asset_id))
+    seen_ids = dict(seen)
+    with connection:
+        for item in items:
+            asset_id = seen_ids.get(item.phone_path)
+            if asset_id is not None:
+                repository.repository_record_source(connection, asset_id, device_udid, item)
+        repository.repository_publish_presence(connection, device_udid, seen, scanned_at)
 
 
-def phone_diff_list(connection: sqlite3.Connection, paths: ArchivePaths) -> PhoneDiffResult:
+def phone_diff_list(
+    connection: sqlite3.Connection, paths: ArchivePaths, device_udid: str | None = None
+) -> PhoneDiffResult:
     """List active archived assets absent from the latest phone scan.
 
     connection: an open catalog connection.
@@ -73,7 +93,7 @@ def phone_diff_list(connection: sqlite3.Connection, paths: ArchivePaths) -> Phon
     Returns a ``PhoneDiffResult``; nothing is modified on disk or on the phone.
     """
     result = PhoneDiffResult()
-    for asset in repository.repository_list_deleted_from_phone(connection):
+    for asset in repository.repository_list_deleted_from_phone(connection, device_udid):
         if asset.asset_id is None:
             continue
         stored_files = repository.repository_list_asset_files(connection, asset.asset_id)

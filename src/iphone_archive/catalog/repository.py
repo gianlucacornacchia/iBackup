@@ -16,6 +16,7 @@ from .models import (
     DeletionMark,
     FileLocation,
     ImportSession,
+    PhoneItem,
 )
 
 
@@ -125,30 +126,82 @@ def repository_find_by_phone_identity(
     phone_asset_id: str | None,
     phone_path: str | None,
     phone_size: int | None,
+    device_udid: str | None = None,
+    phone_modified_at: str | None = None,
 ) -> Asset | None:
     """Find an asset by phone identity for the fast-skip import pass.
 
     connection: an open catalog connection.
-    phone_asset_id: the stable phone asset id, when known.
-    phone_path: the phone-side path, used with size when no asset id is known.
-    phone_size: the phone-side byte size paired with ``phone_path``.
-    Returns a matching ``Asset`` without reading file bytes, or None.
+    phone_asset_id: the phone asset id, which must also match when available.
+    phone_path: exact source path on the identified device.
+    phone_size: observed byte size.
+    device_udid: required device provenance; unknown devices cannot fast-skip.
+    phone_modified_at: required nonempty observed modification metadata.
+    Returns one unambiguous byte-verified identity, or None for legacy/unknown data.
     """
-    result: Asset | None = None
-    if phone_asset_id:
-        row = connection.execute(
-            "SELECT * FROM assets WHERE phone_asset_id = ?", (phone_asset_id,)
-        ).fetchone()
-        if row is not None:
-            result = repository_row_to_asset(row)
-    if result is None and phone_path is not None and phone_size is not None:
-        row = connection.execute(
-            "SELECT * FROM assets WHERE phone_path = ? AND phone_size = ?",
-            (phone_path, phone_size),
-        ).fetchone()
-        if row is not None:
-            result = repository_row_to_asset(row)
-    return result
+    if not device_udid or not phone_path or phone_size is None or not phone_modified_at:
+        return None
+    rows = connection.execute(
+        """
+        SELECT assets.* FROM assets JOIN source_identities AS source
+          ON source.asset_id = assets.id
+        WHERE source.device_udid = ? AND source.phone_path = ?
+          AND source.phone_size = ? AND source.phone_modified_at = ?
+          AND source.phone_asset_id IS ?
+        """,
+        (device_udid, phone_path, phone_size, phone_modified_at, phone_asset_id),
+    ).fetchall()
+    return repository_row_to_asset(rows[0]) if len(rows) == 1 else None
+
+
+def repository_record_source(
+    connection: sqlite3.Connection,
+    asset_id: int,
+    device_udid: str | None,
+    item: PhoneItem,
+) -> None:
+    """Record a byte-verified source identity without publishing scan presence."""
+    if not device_udid:
+        return
+    connection.execute(
+        """
+        INSERT INTO source_identities(
+            device_udid, phone_path, asset_id, phone_asset_id, phone_size, phone_modified_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(device_udid, phone_path, asset_id) DO UPDATE SET
+            phone_asset_id = excluded.phone_asset_id,
+            phone_size = excluded.phone_size,
+            phone_modified_at = excluded.phone_modified_at
+        """,
+        (device_udid, item.phone_path, asset_id, item.phone_asset_id, item.size, item.modified_at),
+    )
+
+
+def repository_publish_presence(
+    connection: sqlite3.Connection,
+    device_udid: str | None,
+    seen: list[tuple[str, int]],
+    scanned_at: str,
+) -> None:
+    """Atomically publish one complete device inventory, leaving other devices intact."""
+    if not device_udid:
+        return
+    connection.execute(
+        "UPDATE source_identities SET present = 0 WHERE device_udid = ?", (device_udid,)
+    )
+    connection.executemany(
+        """UPDATE source_identities SET present = 1, last_seen_at = ?
+           WHERE device_udid = ? AND phone_path = ? AND asset_id = ?""",
+        [(scanned_at, device_udid, phone_path, asset_id) for phone_path, asset_id in seen],
+    )
+    connection.execute(
+        """UPDATE assets SET present_on_phone = EXISTS(
+             SELECT 1 FROM source_identities WHERE asset_id = assets.id AND present = 1)
+           WHERE id IN (SELECT asset_id FROM source_identities WHERE device_udid = ?)""",
+        (device_udid,),
+    )
+    for asset_id in {asset_id for _, asset_id in seen}:
+        repository_mark_present(connection, asset_id, scanned_at)
 
 
 def repository_insert_asset_file(connection: sqlite3.Connection, asset_file: AssetFile) -> int:
@@ -319,15 +372,26 @@ def repository_mark_present(connection: sqlite3.Connection, asset_id: int, seen_
     )
 
 
-def repository_list_deleted_from_phone(connection: sqlite3.Connection) -> list[Asset]:
+def repository_list_deleted_from_phone(
+    connection: sqlite3.Connection, device_udid: str | None = None
+) -> list[Asset]:
     """List active assets that were not seen in the latest phone scan.
 
     connection: an open catalog connection.
     Returns active-archive assets with ``present_on_phone`` false.
     """
-    rows = connection.execute(
-        "SELECT * FROM assets WHERE present_on_phone = 0 AND archive_state = 'active'"
-    ).fetchall()
+    if device_udid is None:
+        rows = connection.execute(
+            "SELECT * FROM assets WHERE present_on_phone = 0 AND archive_state = 'active'"
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            """SELECT * FROM assets WHERE archive_state = 'active'
+               AND id IN (SELECT asset_id FROM source_identities WHERE device_udid = ?)
+               AND id NOT IN (SELECT asset_id FROM source_identities
+                              WHERE device_udid = ? AND present = 1)""",
+            (device_udid, device_udid),
+        ).fetchall()
     return [repository_row_to_asset(row) for row in rows]
 
 

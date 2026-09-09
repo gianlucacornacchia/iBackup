@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "iphone-archive"
 version = "0.1.0"
-description = "Permanent, append-only archive of photos and videos from a USB-connected iPhone (Windows-first)."
+description = "Permanent, append-only archive of photos and videos from a USB-connected iPhone (Windows)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -24,7 +24,7 @@ classifiers = [
 
 dependencies = [
     "typer>=0.12",
-    "pymobiledevice3>=4.0",
+    "pymobiledevice3==11.10.4",
     "PySide6>=6.7",
     "darkdetect>=0.8",
     "pillow-heif>=0.16",
@@ -45,7 +45,6 @@ dev = [
 
 [project.scripts]
 ibackup = "iphone_archive.cli:main"
-ibackup-gui = "iphone_archive.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

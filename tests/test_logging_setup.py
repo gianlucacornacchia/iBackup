@@ -44,3 +44,15 @@ def test_reconfigure_does_not_duplicate_handlers(tmp_path):
     logging_setup.logging_setup_configure(logs_dir=tmp_path / "logs")
     logger = logging_setup.logging_setup_configure(logs_dir=tmp_path / "logs")
     assert len(logger.handlers) == 2
+
+
+def test_configured_level_applies_to_file_and_console(tmp_path):
+    """Persisted severity affects both outputs."""
+    logger = logging_setup.logging_setup_configure(tmp_path, level="WARNING")
+    logger.info("hidden")
+    logger.warning("visible")
+    for handler in logger.handlers:
+        handler.flush()
+        assert handler.level == logging.WARNING
+    text = (tmp_path / logging_setup.LOG_FILE_NAME).read_text()
+    assert "visible" in text and "hidden" not in text

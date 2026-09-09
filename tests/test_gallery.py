@@ -110,3 +110,38 @@ def test_empty_archive_lists_nothing(archive):
     paths, connection = archive
     assert gallery.gallery_list_assets(connection) == []
     assert gallery.gallery_count_assets(connection) == 0
+
+
+def test_partial_recycle_filters_paths_and_album_counts(archive):
+    """A shared asset can be active in one album and recycled in another."""
+    from iphone_archive.core.albums import albums_list
+
+    paths, connection = archive
+    importer.importer_run(
+        connection,
+        paths,
+        FakeDevice({"/DCIM/A.HEIC": b"a"}, album_map={"/DCIM/A.HEIC": ["Trip", "Family"]}),
+    )
+    connection.execute(
+        "UPDATE asset_files SET location = 'deleted', path = replace(path, 'Photos/', 'Deleted/') "
+        "WHERE album_id = (SELECT id FROM albums WHERE name = 'Trip')"
+    )
+    connection.commit()
+    active = gallery.gallery_list_assets(connection)
+    deleted = gallery.gallery_list_recycled(connection)
+    assert len(active) == len(deleted) == 1
+    assert all(path.startswith("Photos/Family/") for path in active[0].paths)
+    assert all(path.startswith("Deleted/Trip/") for path in deleted[0].paths)
+    summaries = {album.name: album.asset_count for album in albums_list(connection)}
+    assert summaries == {"Family": 1, "Trip": 0}
+
+
+def test_offset_without_limit_and_negative_paging(archive):
+    """Paging always honors its offset and rejects invalid bounds."""
+    paths, connection = archive
+    importer.importer_run(
+        connection, paths, FakeDevice({"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b"})
+    )
+    assert len(gallery.gallery_list_assets(connection, offset=1)) == 1
+    with pytest.raises(ValueError):
+        gallery.gallery_list_assets(connection, limit=-1)

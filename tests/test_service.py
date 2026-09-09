@@ -204,3 +204,25 @@ def test_facade_exposes_every_operation():
         "app_service_stats",
     }
     assert expected.issubset(set(dir(AppService)))
+
+
+def test_archive_session_is_exclusive_and_released(service):
+    """A second process/service cannot mutate files during the owner's transaction."""
+    from iphone_archive.service.archive_lock import ArchiveBusyError
+
+    competing = AppService(service.archive_root)
+    with pytest.raises(ArchiveBusyError):
+        competing.app_service_open()
+    service.app_service_close()
+    competing.app_service_open()
+    competing.app_service_close()
+
+
+def test_cross_thread_service_access_is_rejected_before_sqlite(service):
+    """A GUI must marshal work instead of sharing a connection with its workers."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with pytest.raises(RuntimeError, match="owning worker thread"):
+            executor.submit(service.app_service_stats).result()
+    assert service.app_service_stats()["assets"] == 0

@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 # Current catalog schema version. Bump when adding a migration step.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_STATEMENTS = [
     """
@@ -88,11 +88,32 @@ SCHEMA_STATEMENTS = [
         committed_at TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS source_identities (
+        device_udid TEXT NOT NULL,
+        phone_path TEXT NOT NULL,
+        asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        phone_asset_id TEXT,
+        phone_size INTEGER NOT NULL,
+        phone_modified_at TEXT,
+        present INTEGER NOT NULL DEFAULT 1,
+        last_seen_at TEXT,
+        PRIMARY KEY(device_udid, phone_path, asset_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS import_commits (
+        journal_id TEXT PRIMARY KEY
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_assets_sha256 ON assets(sha256)",
     "CREATE INDEX IF NOT EXISTS idx_assets_present ON assets(present_on_phone)",
     "CREATE INDEX IF NOT EXISTS idx_assets_phone_id ON assets(phone_asset_id)",
+    "CREATE INDEX IF NOT EXISTS idx_sources_asset_present ON source_identities(asset_id, present)",
     "CREATE INDEX IF NOT EXISTS idx_asset_albums_album ON asset_albums(album_id)",
     "CREATE INDEX IF NOT EXISTS idx_asset_files_path ON asset_files(path)",
+    "CREATE INDEX IF NOT EXISTS idx_asset_files_asset ON asset_files(asset_id)",
+    "CREATE INDEX IF NOT EXISTS idx_asset_files_album_location ON asset_files(album_id, location)",
     "CREATE INDEX IF NOT EXISTS idx_marks_committed ON deletion_marks(committed_at)",
 ]
 
@@ -116,9 +137,14 @@ def database_initialize(connection: sqlite3.Connection) -> None:
     connection: an open catalog connection.
     Returns None.
     """
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    current = database_read_version(connection)
+    if current > SCHEMA_VERSION:
+        raise ValueError(f"unsupported catalog schema version: {current}")
     for statement in SCHEMA_STATEMENTS:
         connection.execute(statement)
-    current = database_read_version(connection)
     if current == 0:
         database_write_version(connection, SCHEMA_VERSION)
     elif current < SCHEMA_VERSION:
@@ -158,5 +184,6 @@ def database_apply_migrations(connection: sqlite3.Connection, from_version: int)
     from_version: the schema version currently stored in the catalog.
     Returns None. Future schema bumps add ordered steps here.
     """
-    # No migration steps beyond version 1 yet; record the current version.
+    # V1 has no device provenance. Preserve its content rows, but never promote
+    # legacy path/size pairs to trusted source identities without reading bytes.
     database_write_version(connection, SCHEMA_VERSION)

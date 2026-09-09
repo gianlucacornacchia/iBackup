@@ -73,6 +73,27 @@ def test_unknown_keys_in_file_are_ignored():
     assert not hasattr(loaded, "from_future")
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        [],
+        {"confirm_word_required": False},
+        {"confirm_word_required": "true"},
+        {"thumbnail_size": True},
+        {"log_level": 5},
+        {"recent_archives": "not-a-list"},
+        {"default_archive": 123},
+    ],
+)
+def test_invalid_persisted_settings_are_rejected(data):
+    """Hand-edited settings cannot bypass type or deletion safety constraints."""
+    target = settings_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(SettingsError):
+        settings_load()
+
+
 def test_set_and_get_round_trip():
     """A value set through the API reads back converted to its real type."""
     settings_set("thumbnail_size", "512")

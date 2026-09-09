@@ -1,25 +1,67 @@
 """Placement of asset files into the archive's plain album folders.
 
-Files are written atomically: content is streamed into the hidden ``tmp`` folder
-(hashing as it goes), then renamed into place. Multi-album assets get a real file
+Content is streamed and verified in a private staging folder, then published
+without replacing existing files. The staging inode is durably identified before
+publication, using native Windows rename or POSIX hardlink. Multi-album assets get a real file
 in every album folder, either copied or hardlinked; **symbolic links are never
 created** so the archive stays valid when copied to another disk.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
+from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO
+from uuid import uuid4
 
 from ..config import ArchivePaths
 from . import hashing, name_safety
+from .file_operations import file_operations_path, file_operations_publish
 
 LINK_MODE_COPY = "copy"
 LINK_MODE_HARDLINK = "hardlink"
+placement_recorder: ContextVar[Callable[[Path], None] | None] = ContextVar(
+    "placement_recorder", default=None
+)
+placement_claimer: ContextVar[Callable[[Path, bool], None] | None] = ContextVar(
+    "placement_claimer", default=None
+)
+placement_staging_dir: ContextVar[Path | None] = ContextVar("placement_staging_dir", default=None)
+placement_preparer: ContextVar[Callable[[Path, Path], None] | None] = ContextVar(
+    "placement_preparer", default=None
+)
+
+
+def archive_layout_record(path: Path) -> None:
+    """Write durable import intent before exclusively creating a new file."""
+    recorder = placement_recorder.get()
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(path)
+    if recorder is not None:
+        recorder(path)
+
+
+def archive_layout_claim(path: Path, created: bool = True) -> None:
+    """Notify private creation, or withdraw an intent after a publication collision."""
+    claimer = placement_claimer.get()
+    if claimer is not None:
+        claimer(path, created)
+
+
+def archive_layout_sync(directory: Path) -> None:
+    """Sync directory entries on platforms supporting directory fsync."""
+    if os.name != "nt":
+        descriptor = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 @dataclass
@@ -88,30 +130,56 @@ def archive_layout_store_stream(
 ) -> PlacedFile:
     """Stream content into the archive atomically, hashing as it is written.
 
-    paths: resolved archive paths (its temp folder is used for staging).
+    paths: resolved archive paths; imports use their journal-owned private staging namespace.
     source_stream: an open binary stream positioned at the start of the content.
     target_dir: the album folder the file should end up in.
     original_name: the source file name, sanitized before use.
     Returns a ``PlacedFile`` describing the stored file.
     """
-    paths.temp_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = placement_staging_dir.get() or paths.internal_dir / "import-staging"
+    file_operations_path(paths, staging_dir.relative_to(paths.root).as_posix())
+    file_operations_path(paths, target_dir.relative_to(paths.root).as_posix())
+    staging_dir.mkdir(parents=True, exist_ok=True)
     target_dir.mkdir(parents=True, exist_ok=True)
     safe_name = name_safety.name_safety_safe_file_name(original_name)
-    staging_path = paths.temp_dir / f"{safe_name}.partial"
+    staging_path = staging_dir / f"{uuid4().hex}.partial"
 
     written_size = 0
-    hasher_source = None
-    with open(staging_path, "wb") as staging_handle:
-        while True:
-            block = source_stream.read(hashing.CHUNK_SIZE)
-            if not block:
-                break
-            staging_handle.write(block)
-            written_size += len(block)
-    hasher_source = hashing.hashing_sha256_file(staging_path)
-
-    final_path = archive_layout_unique_target(target_dir, safe_name)
-    os.replace(staging_path, final_path)
+    source_hasher = hashlib.sha256()
+    staging_created = False
+    archive_layout_record(staging_path)
+    try:
+        with open(staging_path, "xb") as staging_handle:
+            staging_created = True
+            archive_layout_claim(staging_path)
+            while True:
+                block = source_stream.read(hashing.CHUNK_SIZE)
+                if not block:
+                    break
+                staging_handle.write(block)
+                source_hasher.update(block)
+                written_size += len(block)
+            staging_handle.flush()
+            os.fsync(staging_handle.fileno())
+        hasher_source = source_hasher.hexdigest()
+        if hashing.hashing_sha256_file(staging_path) != hasher_source:
+            raise OSError("staged content does not match the source stream")
+        final_path = archive_layout_unique_target(target_dir, safe_name)
+        archive_layout_record(final_path)
+        archive_layout_publish(staging_path, final_path)
+        if (
+            final_path.stat().st_size != written_size
+            or hashing.hashing_sha256_file(final_path) != hasher_source
+        ):
+            final_path.unlink()
+            raise OSError("placed content does not match the source stream")
+    except FileExistsError:
+        if not staging_created:
+            archive_layout_claim(staging_path, False)
+        raise
+    finally:
+        if staging_created:
+            staging_path.unlink(missing_ok=True)
     return PlacedFile(
         path=final_path,
         sha256=hasher_source,
@@ -132,25 +200,77 @@ def archive_layout_duplicate_file(
     Returns a ``PlacedFile`` describing the new copy. No symlink is ever created.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
+    expected_hash = hashing.hashing_sha256_file(source_path)
+    expected_size = source_path.stat().st_size
     final_path = archive_layout_unique_target(target_dir, source_path.name)
     effective_mode = link_mode
-    if link_mode == LINK_MODE_HARDLINK:
-        try:
-            os.link(source_path, final_path)
-        except OSError:
-            # Hardlinks are unavailable across devices and on exFAT/FAT volumes;
-            # a real copy still satisfies the archive's "plain files" guarantee.
-            shutil.copy2(source_path, final_path)
-            effective_mode = LINK_MODE_COPY
-    else:
-        shutil.copy2(source_path, final_path)
+    staging_dir = placement_staging_dir.get() or target_dir
+    staged = staging_dir / f"{uuid4().hex}.partial"
+    try:
+        if link_mode == LINK_MODE_HARDLINK:
+            try:
+                os.link(source_path, staged)
+            except FileExistsError:
+                raise
+            except OSError:
+                archive_layout_copy_exclusive(source_path, staged)
+                effective_mode = LINK_MODE_COPY
+        else:
+            archive_layout_copy_exclusive(source_path, staged)
+        if (
+            staged.stat().st_size != expected_size
+            or hashing.hashing_sha256_file(staged) != expected_hash
+        ):
+            raise OSError("staged album copy does not match the source")
+        archive_layout_record(final_path)
+        archive_layout_publish(staged, final_path)
+    finally:
+        staged.unlink(missing_ok=True)
 
+    if (
+        final_path.stat().st_size != expected_size
+        or hashing.hashing_sha256_file(final_path) != expected_hash
+    ):
+        final_path.unlink()
+        raise OSError("album copy does not match the source")
     return PlacedFile(
         path=final_path,
-        sha256=hashing.hashing_sha256_file(final_path),
-        size=final_path.stat().st_size,
+        sha256=expected_hash,
+        size=expected_size,
         link_mode=effective_mode,
     )
+
+
+def archive_layout_copy_exclusive(source: Path, destination: Path) -> None:
+    """Copy and fsync bytes without ever replacing an existing destination."""
+    created = False
+    try:
+        with source.open("rb") as reader, destination.open("xb") as writer:
+            created = True
+            archive_layout_claim(destination)
+            shutil.copyfileobj(reader, writer, hashing.CHUNK_SIZE)
+            writer.flush()
+            os.fsync(writer.fileno())
+        shutil.copystat(source, destination)
+        archive_layout_sync(destination.parent)
+    except BaseException:
+        if created:
+            destination.unlink(missing_ok=True)
+        else:
+            archive_layout_claim(destination, False)
+        raise
+
+
+def archive_layout_publish(source: Path, destination: Path) -> None:
+    """Persist staged ownership before atomic no-clobber publication of that inode."""
+    preparer = placement_preparer.get()
+    if preparer is not None:
+        preparer(source, destination)
+    try:
+        file_operations_publish(source, destination)
+    except FileExistsError:
+        archive_layout_claim(destination, False)
+        raise
 
 
 def archive_layout_relative_path(paths: ArchivePaths, absolute_path: Path) -> str:
