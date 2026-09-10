@@ -82,6 +82,16 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-10 — **Built a clickable UI mock** in `docs/ui-sketch/mockup/` using
+  the selected framework (PySide6), covering every screen in the sketch and
+  navigable between them: navigation pane with counts and selection pill,
+  thumbnail grid with multi-select, import/verify progress, deleted-on-phone
+  review, reclaim, typed-DELETE confirmation, viewer, marks queue and the
+  six-panel settings dialog. Rendered 20 reference screenshots (light + dark)
+  via `capture_screens.py`. The mock is a **review artifact only** — fake data,
+  no imports from `iphone_archive`, excluded from lint/type/test — so the
+  UI-sketch approval gate remains closed and no application GUI code exists.
+
 - 2026-09-10 — **First run against a real iPhone** (iPhone 12, iOS 26.4, 1297
   items, 5.55 GB). Import, dedup, incremental fast-skip, verification, HEIC
   thumbnails and the archive layout all behaved correctly on real data.

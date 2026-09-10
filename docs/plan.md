@@ -46,7 +46,9 @@ Key decisions:
    this gate; see `unit-tests.md` §4.
 5. **UI sketch gate.** Before any GUI code, produce a **UI sketch/wireframe**
    under `docs/ui-sketch/` and **STOP for explicit approval**.
-   (Status: **sketch written, BLOCKED**; review fix requests are not approval.)
+   (Status: **sketch written, plus a clickable mock in `docs/ui-sketch/mockup/`
+   built with PySide6 for review — BLOCKED**; review fix requests are not
+   approval, and the mock is a throwaway artifact that does not open the gate.)
 6. **Phase 2 — Build GUI.** Only after explicit approval and core-hardening
    contracts stabilize. Mica probe is also behind approval and requires Windows.
 7. **Release milestone — scheduled after validation.** Windows-build and

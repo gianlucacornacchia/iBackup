@@ -98,6 +98,21 @@ pytest --cov=iphone_archive         # optional coverage
 `tests/test_gui.py` does not exist. After approval and implementation, GUI
 tests will run headless with `QT_QPA_PLATFORM=offscreen`.
 
+### Running the UI mock
+
+A clickable mock of the whole interface lives in `docs/ui-sketch/mockup/`:
+
+```powershell
+python docs\ui-sketch\mockup\run_mock.py           # click through it
+python docs\ui-sketch\mockup\capture_screens.py    # re-render the screenshots
+```
+
+It needs only `PySide6` (already a project dependency). It uses fake data,
+imports nothing from `iphone_archive`, and is deliberately **excluded from
+`ruff`, `mypy` and `pytest`** because it is a throwaway review artifact, not
+application code. Rendered light/dark reference screens are in
+`docs/ui-sketch/mockup/screens/`.
+
 The suite runs **offline** with a fake device and temporary archives — no real
 iPhone required.
 

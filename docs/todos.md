@@ -152,6 +152,12 @@ hardening and Windows validation gates that follow.
   notices/replacement obligations; installer/signing strategy and release docs.
   _Depends on: windows-cli-release, gui-frontend, tests._
 
+## UI mock (2026-09-10)
+
+- [x] **ui-mock** — clickable PySide6 mock of every sketch screen under
+  `docs/ui-sketch/mockup/`, with light/dark reference screenshots. Review
+  artifact only; does not open the approval gate.
+
 ## Found by real-device testing (2026-09-10)
 
 - [ ] **device-delete-validation** — `reclaim` lists candidates then fails on
