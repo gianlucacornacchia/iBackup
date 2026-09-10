@@ -152,6 +152,20 @@ hardening and Windows validation gates that follow.
   notices/replacement obligations; installer/signing strategy and release docs.
   _Depends on: windows-cli-release, gui-frontend, tests._
 
+## Found by real-device testing (2026-09-10)
+
+- [ ] **device-delete-validation** — `reclaim` lists candidates then fails on
+  every item: `AfcDevice.device_delete` refuses unconditionally because a raw
+  AFC unlink under `/DCIM` would not update the Photos library. **Space
+  reclamation therefore frees nothing on a real phone today.** Find a supported
+  deletion path and validate it on Windows before enabling.
+- [ ] **future-photosdb-cache** — every run pays a fixed ~36 s cost dominated by
+  copying the phone's 1 GB `Photos.sqlite`, even when nothing is imported.
+  Cache it on size+mtime, or skip it when album data is not needed.
+- [ ] **future-video-thumbnails** — `thumbnail` reports "unsupported media type"
+  for `.mov`, so videos would be blank tiles in the GUI grid. Needs a frame grab
+  or an explicit placeholder design.
+
 ## Future backlog (agreed, not scheduled)
 
 Architect recommendations captured for later — not part of the current build:

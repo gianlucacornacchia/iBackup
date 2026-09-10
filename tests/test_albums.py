@@ -49,6 +49,40 @@ def make_photos_db(path, rows):
     connection.close()
 
 
+def make_ios26_photos_db(path, rows, join_ordinal=33):
+    """Build an iOS 26-style photo database whose join table ordinal differs.
+
+    path: destination file.
+    rows: tuples of (album_pk, title, kind, asset_pk, file_name).
+    join_ordinal: the Core Data entity number embedded in the join table name.
+    """
+    connection = sqlite3.connect(path)
+    join_table = f"Z_{join_ordinal}ASSETS"
+    album_column = f"Z_{join_ordinal}ALBUMS"
+    connection.executescript(
+        f"""
+        CREATE TABLE ZGENERICALBUM (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZKIND INTEGER);
+        CREATE TABLE ZASSET (Z_PK INTEGER PRIMARY KEY, ZFILENAME TEXT);
+        CREATE TABLE "{join_table}" ({album_column} INTEGER, Z_3ASSETS INTEGER);
+        """
+    )
+    for album_pk, title, kind, asset_pk, file_name in rows:
+        connection.execute(
+            "INSERT OR IGNORE INTO ZGENERICALBUM(Z_PK, ZTITLE, ZKIND) VALUES (?, ?, ?)",
+            (album_pk, title, kind),
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO ZASSET(Z_PK, ZFILENAME) VALUES (?, ?)",
+            (asset_pk, file_name),
+        )
+        connection.execute(
+            f'INSERT INTO "{join_table}"({album_column}, Z_3ASSETS) VALUES (?, ?)',
+            (album_pk, asset_pk),
+        )
+    connection.commit()
+    connection.close()
+
+
 def test_parses_album_membership(tmp_path):
     """A well-formed photo database yields file-to-album mapping."""
     database_path = tmp_path / "Photos.sqlite"
@@ -60,6 +94,50 @@ def test_parses_album_membership(tmp_path):
     membership = albums.albums_parse_photos_database(database_path)
 
     assert membership["IMG_0001.HEIC"] == ["Trip", "Favorites"]
+
+
+@pytest.mark.parametrize("ordinal", [28, 33, 41])
+def test_join_table_ordinal_is_discovered(tmp_path, ordinal):
+    """The join table is found whatever entity ordinal the iOS version used.
+
+    Regression test: the ordinal was hardcoded to 28, so a real iPhone running
+    iOS 26 (Z_33ASSETS) silently produced no album data at all.
+    """
+    database_path = tmp_path / "Photos.sqlite"
+    make_ios26_photos_db(
+        database_path, [(1, "USA 2022", 2, 10, "IMG_0001.HEIC")], join_ordinal=ordinal
+    )
+
+    membership = albums.albums_parse_photos_database(database_path)
+
+    assert membership == {"IMG_0001.HEIC": ["USA 2022"]}
+
+
+def test_non_user_albums_are_ignored(tmp_path):
+    """Smart albums and internal bookkeeping albums are not archived as albums."""
+    database_path = tmp_path / "Photos.sqlite"
+    make_ios26_photos_db(
+        database_path,
+        [
+            (1, "Holiday", 2, 10, "IMG_0001.HEIC"),
+            (2, "progress-sync", 3571, 11, "IMG_0002.HEIC"),
+            (3, "", 2, 12, "IMG_0003.HEIC"),
+        ],
+    )
+
+    membership = albums.albums_parse_photos_database(database_path)
+
+    assert membership == {"IMG_0001.HEIC": ["Holiday"]}
+
+
+def test_schema_without_album_tables_returns_empty(tmp_path):
+    """An unrecognisable schema degrades to no album data rather than raising."""
+    database_path = tmp_path / "Photos.sqlite"
+    connection = sqlite3.connect(database_path)
+    connection.executescript("CREATE TABLE ZUNRELATED (Z_PK INTEGER);")
+    connection.close()
+
+    assert albums.albums_parse_photos_database(database_path) == {}
 
 
 def test_missing_database_returns_empty(tmp_path):
