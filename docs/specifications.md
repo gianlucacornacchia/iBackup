@@ -476,7 +476,29 @@ exclude verification, album copies and metadata work:
 These arithmetic examples are not predicted completion times. Retry,
 verification and multi-album storage can increase elapsed time substantially.
 
-### 19.3 Incremental-run hypothesis
+### 19.2b Measured on real hardware (2026-09-10)
+
+First measurements from a physical device — iPhone 12 (iPhone13,2), iOS 26.4,
+1297 items, 5.55 GB, USB, Linux host:
+
+| Phase | Measurement |
+|---|---|
+| Enumeration + album metadata | **~36 s, fixed** (independent of new content) |
+| Sustained read + SHA-256, large files | **~34 MB/s** |
+| Import of 40 mixed items (77.5 MB) | 44 s total, of which ~36 s was enumeration |
+| Re-run with nothing new | 39 s, **0 bytes retransferred** |
+
+Two consequences worth designing around:
+
+- The ~34 MB/s figure makes the §19.2 arithmetic examples roughly realistic for
+  large files, but small photos transfer slower because per-file AFC overhead
+  dominates.
+- The **fixed ~36 s cost is mostly copying the phone's 1 GB `Photos.sqlite`** to
+  read album membership, and it is paid even when nothing needs importing. For
+  frequent incremental runs this is the dominant cost, not the media transfer.
+  Caching or conditionally skipping that copy is the highest-value optimisation.
+
+### 19.3 Incremental-run behaviour (confirmed)
 
 - Subsequent imports use the **fast skip pass** (§9 step 3): the phone inventory
   is enumerated (metadata only) and matched against stored **phone identity**, so
@@ -484,6 +506,9 @@ verification and multi-album storage can increase elapsed time substantially.
   migrations and ambiguous/changed identities require renewed validation.
 - Time includes enumeration of the whole library plus checks and new content
   transfer. There is no established "30,000 items under a minute" result.
+- **Confirmed on hardware:** a second import of an unchanged selection reported
+  `added=0, skipped=40` and moved no media bytes, so the fast-skip pass works
+  against a real Photos library.
 
 ### 19.4 Catalog, memory, and detection
 

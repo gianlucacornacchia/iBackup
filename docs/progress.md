@@ -82,6 +82,18 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-10 — **First run against a real iPhone** (iPhone 12, iOS 26.4, 1297
+  items, 5.55 GB). Import, dedup, incremental fast-skip, verification, HEIC
+  thumbnails and the archive layout all behaved correctly on real data.
+  **Fixed a real defect**: album membership was completely broken on device
+  because the Photos.sqlite album/asset join table ordinal (`Z_28ASSETS`) is
+  version-specific and is `Z_33ASSETS` on iOS 26; it is now discovered at
+  runtime and filtered to user albums (`ZKIND = 2`). Album coverage went from
+  0 to 750 items across 67 albums. Measured ~34 MB/s transfer and a fixed ~36 s
+  enumeration cost caused by copying the 1 GB Photos.sqlite on every run.
+  Confirmed `reclaim` still cannot delete from the phone (by design) and left
+  the device untouched. See ADR-0008.
+
 - 2026-09-09 — Completed offline hardening and final quality gates above.
   Imports and edits now establish durable private staging before creating media,
   persist bounded ownership records before no-clobber publication, and recover
