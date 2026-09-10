@@ -6,6 +6,13 @@ Review corrections are **not** that approval. The Mica probe is GUI work and is
 also blocked. All views and interactions below are requirements, not screenshots
 of implemented software. Core-hardening validation is a separate prerequisite.
 
+> **A clickable mock of everything below now exists** in `mockup/`. Run
+> `python docs/ui-sketch/mockup/run_mock.py` to click through the real
+> interface, or look at the rendered screens in `mockup/screens/`. It is a
+> throwaway review artifact built with the selected framework: it uses fake
+> data, imports nothing from `iphone_archive`, and performs no operations.
+> **It is not application code and does not open this gate.**
+
 Framework: **PySide6 (Qt for Python) 6.7+**, Windows 10/11. The GUI is a *thin
 adapter* — every button calls one `AppService` method, the same one the CLI
 calls; the parity map and adapter tests must establish parity. No business logic lives in the
@@ -500,6 +507,11 @@ contracts must also pass before the GUI implementation starts:
   and the Qt models.
 - **Then** the `ibackup-gui` entry point and `tests/test_gui.py` under
   `pytest-qt` (headless via `QT_QPA_PLATFORM=offscreen`).
+
+The mock in `mockup/` is the reference for layout, wording and interaction, but
+it is **not** a starting point for the implementation: it has no service layer,
+no threading and no error handling, and it is deliberately excluded from lint,
+type checking and the test suite.
 
 Requires **PySide6 >= 6.7** for the native `windows11` style (ADR-0010/0011).
 Windows runtime behavior, Qt/icon distribution notices and the packaged GUI
