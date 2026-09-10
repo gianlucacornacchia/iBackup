@@ -45,7 +45,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_phone_diff.py` | Inventory/absence reconciliation. |
 | `test_reclaim.py` | Device/content eligibility, selected reclaim, fresh checks and fail-closed deletion regressions. |
 | `test_gallery.py` | Asset/album read models, partial recycling and location-filtered paths/counts, not HTML output. |
-| `test_thumbnails.py` | Still-image generation/cache and unsupported-media behavior. |
+| `test_thumbnails.py` | Still-image generation/cache, video poster frames (orientation checked against ffmpeg, dark lead-in skipped, missing PyAV degrades), and unsupported-media behavior. |
 | `test_progress.py` | Progress and cancellation handle. |
 | `test_service.py` | Facade, recycle/restore/purge/reclaim, selection, locks/thread ownership. |
 | `test_marks.py` | Stage/unmark/commit behavior. |

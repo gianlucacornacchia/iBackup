@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from mock_data import MockArchive, MockAsset, mock_data_format_size
+from mock_data import MockArchive, MockAsset, mock_data_format_duration, mock_data_format_size
 from mock_tokens import (
     CONTROL_RADIUS,
     NAV_WIDTH,
@@ -191,11 +191,15 @@ class TileDelegate(QStyledItemDelegate):
         if asset.media_type == "video":
             painter.setBrush(QColor(0, 0, 0, 130))
             painter.setPen(Qt.PenStyle.NoPen)
-            badge = QRect(image_rect.left() + 6, image_rect.bottom() - 22, 34, 16)
+            # Videos now get a real poster frame, so the badge carries the
+            # clip length rather than repeating the word "video".
+            label = mock_data_format_duration(asset.duration_seconds)
+            painter.setFont(tokens_font("caption"))
+            width = painter.fontMetrics().horizontalAdvance(label) + 14
+            badge = QRect(image_rect.left() + 6, image_rect.bottom() - 22, width, 16)
             painter.drawRoundedRect(badge, 8, 8)
             painter.setPen(QColor("white"))
-            painter.setFont(tokens_font("caption"))
-            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, "video")
+            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, label)
 
         painter.setFont(tokens_font("caption"))
         painter.setPen(tokens_color("TextFillColorSecondary"))

@@ -82,6 +82,20 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-10 — **Video thumbnails implemented** (`future-video-thumbnails`,
+  one of the two gaps raised at the UI-mock review). `thumbnails` now extracts a
+  poster frame with PyAV, whose wheels bundle FFmpeg so Windows needs no system
+  install. Two correctness points were settled against the ffmpeg CLI rather
+  than by assumption: the display-matrix rotation is applied so portrait iPhone
+  clips are not sideways (verified pixel-identical to ffmpeg's autorotate for
+  0/90/180/270), and the decoder walks forward from the seek keyframe to the
+  target instead of returning the keyframe itself, which was silently producing
+  black frames. A nearly-black poster frame also triggers a bounded scan for a
+  brighter one. `av>=12` is now a declared dependency and is imported lazily, so
+  a missing install degrades videos to a placeholder without affecting image
+  thumbnails. The UI mock was updated to match: video tiles carry a duration
+  badge instead of the word "video".
+
 - 2026-09-10 — **Built a clickable UI mock** in `docs/ui-sketch/mockup/` using
   the selected framework (PySide6), covering every screen in the sketch and
   navigable between them: navigation pane with counts and selection pill,
