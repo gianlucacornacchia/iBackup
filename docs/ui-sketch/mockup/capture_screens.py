@@ -3,7 +3,12 @@
 MOCK ONLY. Produces the reference images in ``screens/`` so the UI can be
 reviewed without running the app. Usage:
 
-    python docs/ui-sketch/mockup/capture_screens.py [--dark]
+    python docs/ui-sketch/mockup/capture_screens.py            # both themes
+    python docs/ui-sketch/mockup/capture_screens.py --light    # light only
+    python docs/ui-sketch/mockup/capture_screens.py --dark     # dark only
+
+Rendering both themes is the default: a partial refresh silently leaves stale
+screenshots for the theme that was skipped.
 """
 
 from __future__ import annotations
@@ -141,7 +146,11 @@ def capture_screens_run(dark: bool) -> None:
 
 if __name__ == "__main__":
     application = QApplication(sys.argv)
-    capture_screens_run(dark="--dark" in sys.argv)
-    if "--both" in sys.argv:
-        capture_screens_run(dark=True)
+    themes = [False, True]
+    if "--light" in sys.argv:
+        themes = [False]
+    elif "--dark" in sys.argv:
+        themes = [True]
+    for use_dark in themes:
+        capture_screens_run(dark=use_dark)
     print(f"Wrote screens to {OUTPUT_DIRECTORY}")

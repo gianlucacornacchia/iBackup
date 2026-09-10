@@ -168,9 +168,13 @@ hardening and Windows validation gates that follow.
 - [ ] **future-photosdb-cache** — every run pays a fixed ~36 s cost dominated by
   copying the phone's 1 GB `Photos.sqlite`, even when nothing is imported.
   Cache it on size+mtime, or skip it when album data is not needed.
-- [ ] **future-video-thumbnails** — `thumbnail` reports "unsupported media type"
-  for `.mov`, so videos would be blank tiles in the GUI grid. Needs a frame grab
-  or an explicit placeholder design.
+- [x] **future-video-thumbnails** — **done.** `thumbnail` now extracts a poster
+  frame from videos with PyAV (bundled FFmpeg, no system install). The frame is
+  rotated into display orientation using the container's display matrix — pinned
+  against the ffmpeg CLI's own autorotate output for all four orientations, since
+  iPhone clips record landscape and would otherwise show sideways — and a
+  nearly-black poster frame triggers a short scan for a brighter one so clips that
+  open on a fade-in do not become black tiles.
 
 ## Future backlog (agreed, not scheduled)
 

@@ -81,9 +81,9 @@ These are shortcuts in the **mock**, not proposals for the real GUI:
   `fluentui-system-icons` SVG set (sketch section 0.5).
 - The grid holds ~130 fake items, so virtualization is configured but not
   stress-tested. Real libraries are far larger — the test iPhone held 1 297.
-- **Videos show a generated placeholder.** The real `thumbnail` command cannot
-  yet render video frames (`future-video-thumbnails`), so on real data those
-  tiles would currently be blank.
+- **Video tiles show a generated gradient, but the real poster frame now works.**
+  `thumbnail` extracts a rotated frame from `.mov`/`.mp4` via PyAV, so on real
+  data these tiles carry an actual still. The duration badge is fake data.
 - Reclaim's confirm path deliberately ends in the message the **real** device
   layer produces today: deletion from a real iPhone is still blocked pending
   validation (`device-delete-validation`).

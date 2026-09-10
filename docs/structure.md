@@ -38,7 +38,7 @@ All paths below are relative to `src/iphone_archive/`.
 | `core/reclaim.py` | Selected/all-candidate preview and guarded deletion, `ReclaimCandidate`, `ReclaimResult`. |
 | `core/recycle.py` | Move to Deleted, restore, purge, `RecycleResult`. |
 | `browse/gallery.py` | Album/asset listings and `AssetView`; aligned `file_ids`/`paths` filtered by current album/location, including partially recycled assets; **no HTML generator**. |
-| `browse/thumbnails.py` | Cached still-image previews and `ThumbnailResult`; video placeholder, not video transcoding. |
+| `browse/thumbnails.py` | Cached previews and `ThumbnailResult`: still images via Pillow/pillow-heif, video poster frames via PyAV (display-matrix rotation applied, dark opening frames skipped). Previews only — never transcodes or modifies originals. |
 | `gui/__init__.py` | Placeholder package only; no implemented GUI or GUI entry point. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,

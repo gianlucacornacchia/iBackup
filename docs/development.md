@@ -56,6 +56,7 @@ pip install -e ".[dev]"          # editable install + dev extras
 | `PySide6` | Planned Qt GUI. **6.7+ required** for the target native `windows11` style — see ADR-0010/0011; installed dependency is not an implemented GUI. |
 | `darkdetect` | Planned GUI system-theme detection; no current GUI consumer. |
 | `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
+| `av` (PyAV) | Extract video poster frames for the thumbnail cache. Its wheels bundle FFmpeg, so **no system FFmpeg install is needed** on Windows. Imported lazily: if it is missing, videos fall back to a placeholder instead of breaking image thumbnails. |
 | `typer` | CLI argument parsing, subcommands, and help text. |
 | (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json` | Catalog, hashing, paths, sidecars. |
 

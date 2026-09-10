@@ -30,6 +30,7 @@ class MockAsset:
     sha256: str = "a3f1c09e77b41d2e5c8a0f6b93d47e15c2f8a9b0d1e3f4a5b6c7d8e9f0a1b2c3"
     gone_from_phone_at: str = ""
     marked_reason: str = ""
+    duration_seconds: int = 0
 
 
 @dataclass
@@ -109,6 +110,7 @@ class MockArchive:
             if media_type == "video"
             else self.random.randint(900_000, 4_600_000)
         )
+        duration = self.random.randint(4, 340) if media_type == "video" else 0
         month = self.random.randint(1, 9)
         day = self.random.randint(1, 28)
         return MockAsset(
@@ -117,6 +119,7 @@ class MockArchive:
             media_type=media_type,
             size=size,
             captured_at=f"2026-{month:02d}-{day:02d}",
+            duration_seconds=duration,
             albums=list(albums),
         )
 
@@ -191,3 +194,12 @@ def mock_data_format_size(num_bytes: int) -> str:
             return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
         value /= 1024
     return f"{value:.1f} GB"
+
+
+def mock_data_format_duration(seconds: int) -> str:
+    """Render a clip length the way a video tile badge shows it.
+
+    seconds: the clip length.
+    Returns a m:ss string.
+    """
+    return f"{seconds // 60}:{seconds % 60:02d}"

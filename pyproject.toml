@@ -29,6 +29,7 @@ dependencies = [
     "darkdetect>=0.8",
     "pillow-heif>=0.16",
     "Pillow>=10.0",
+    "av>=12",
 ]
 
 [project.optional-dependencies]
