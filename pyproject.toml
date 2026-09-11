@@ -47,6 +47,9 @@ dev = [
 [project.scripts]
 ibackup = "iphone_archive.cli:main"
 
+[project.gui-scripts]
+ibackup-gui = "iphone_archive.gui.application:application_main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

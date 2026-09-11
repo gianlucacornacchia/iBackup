@@ -108,19 +108,62 @@ hardening and Windows validation gates that follow.
 - [x] **ui-sketch** — written at `docs/ui-sketch/README.md`; produce UI sketch/wireframe (main window, album nav,
   picture grid + multi-select, deleted-on-phone review, reclaim, progress) under
   `docs/ui-sketch/`. _Depends on: service-layer._
-- [!] **ui-sketch-approval-gate** — STOP: await explicit user approval of the
-  sketch before implementing the GUI. _Depends on: ui-sketch._
-  Review corrections are not approval.
+- [x] **ui-sketch-approval-gate** — **passed 2026-09-11.** The sketch and its
+  clickable mock were reviewed and explicitly approved, unblocking `gui-theme`
+  and `gui-frontend`.
 
-## Phase 2 — GUI (after sketch approval)
+## Phase 2 — GUI (approved 2026-09-11, in progress)
+
+`gui-frontend` was too large to track as one item, so it is split into the
+ordered steps below. Each is one commit, built bottom-up with tests; a step
+never starts before the layer beneath it is proven. Descriptions live in
+`plan.md` §2b.
+
+- [x] **gui-scaffold** — `src/iphone_archive/gui/` package, `application.py`
+  bootstrap, `main_window.py` shell, restored `ibackup-gui` entry point and
+  headless `tests/test_gui.py`. A test asserts importing the gui package does
+  not import Qt, so a broken PySide6 install cannot take the CLI down with it.
+  _Depends on: ui-sketch-approval-gate._
+- [ ] **gui-worker** — worker thread owning `AppService`, which is
+  single-thread affine and holds an exclusive archive lock: request marshalling,
+  queued progress/result/error signals, cancellation, clean shutdown. The risk
+  concentration of Phase 2. _Depends on: gui-scaffold, service-layer._
+- [ ] **gui-models** — lazy-paging Qt model over `gallery.AssetView` (the test
+  phone holds 1 297 items, so eager loading would stall the window), album
+  model, and the selection mapping that preserves album-copy scope instead of
+  silently promoting a selection to every copy of an asset.
+  _Depends on: gui-worker, browse-gallery._
+- [ ] **gui-thumbnail-loader** — background preview pipeline: bounded LRU cache,
+  request coalescing, cancel-on-scroll, pending/failed placeholders.
+  _Depends on: gui-worker, browse-thumbnails._
+- [ ] **gui-shell** — navigation pane with live counts, page stack, command bar,
+  status bar, phone connected/disconnected state.
+  _Depends on: gui-theme, gui-models._
+- [ ] **gui-gallery** — icon-mode grid, rubber-band and Ctrl/Shift selection,
+  selection bar, viewer dialog, context menu.
+  _Depends on: gui-shell, gui-thumbnail-loader._
+- [ ] **gui-ops-safe** — import, verify, scan-phone, dedup report, stats and
+  move-to-album behind a progress dialog that can be cancelled or hidden.
+  _Depends on: gui-gallery._
+- [ ] **gui-ops-destructive** — typed-DELETE confirmation, deleted-on-phone
+  keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
+  dry-run first. _Depends on: gui-ops-safe, recycle-bin, phone-diff, marks._
+- [ ] **gui-settings** — the six settings panels bound to the service; also
+  closes `settings-store`. _Depends on: gui-shell, settings-store._
+- [ ] **gui-parity-tests** — a test that fails if any CLI command or service
+  method has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
+  _Depends on: gui-ops-destructive, gui-settings._
+- [ ] **gui-packaging** — PyInstaller executable, icon, version resource and a
+  smoke test of the built artifact. _Depends on: gui-parity-tests._
 
 - [ ] **gui-theme** — Windows 11 Fluent look (ADR-0010): a throwaway **Mica
   probe** on Win11 22H2 first, then `gui/theme.py` (WinUI design tokens: type
   ramp, 4/8px radii, light+dark color tokens, system accent, scoped QSS over
   Qt's native `windows11` style) and `gui/win32_effects.py` (DWM Mica, rounded
   corners, dark caption, each build-guarded). Requires PySide6>=6.7.
-  Log DWM failure and fall back to solid color; probe is unperformed.
-  _Depends on: ui-sketch-approval-gate, core-validation._
+  Log DWM failure and fall back to solid color; probe is unperformed and needs
+  a Windows 11 machine, which is not available on the Linux development host.
+  _Depends on: gui-scaffold, core-validation._
 - [ ] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
   operations_controller, reclaim_view, deleted_on_phone_view, marks_view,
@@ -128,6 +171,7 @@ hardening and Windows validation gates that follow.
   QThread with worker-owned SQLite, queued UI signals and Event cancellation;
   serialized mutations and bounded thumbnail queues.
   **No menu bar** — NavigationView + command bar per the sketch.
+  Now tracked as the `gui-*` step list above rather than as one item.
   _Depends on: archive-edit, browse-gallery, gui-theme, phone-diff,
   recycle-bin, service-layer, ui-sketch-approval-gate._
 
