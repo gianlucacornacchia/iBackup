@@ -2,7 +2,8 @@
 
 > **Source CLI / core-hardening preview, not a validated Windows release.**
 > Offline fake-device tests do not establish real-iPhone compatibility.
-> There is no implemented GUI, installer, or published portable build.
+> The source GUI is a themed window shell only; archive operations still use
+> the CLI. There is no installer or published portable build.
 > See [progress](progress.md) and the [hardware gate](unit-tests.md#4-windowsiphone-validation-gate)
 > before using a real phone. Keep an independent backup.
 
@@ -58,6 +59,22 @@ pip install .
 
 Windows packaging is a scheduled release milestone, not an available download.
 No PyInstaller spec is included in this remediation.
+
+### Desktop interface preview
+
+Run `ibackup-gui` to open the window shell. It does not open an archive or perform
+archive operations yet. Choose its appearance before launching:
+
+```powershell
+ibackup config set theme dark       # light or system are also accepted
+ibackup-gui
+```
+
+The default `system` follows Windows appearance changes while the GUI is open.
+System accent colors are used, and high-contrast mode takes precedence over
+custom colors. Normal launches use solid backgrounds; native Windows title-bar
+effects remain platform-dependent. The experimental Mica probe is described in
+the [development guide](development.md#running-the-windows-mica-probe).
 
 ### First-time device setup
 
@@ -179,6 +196,7 @@ archive, so the archive folder stays portable.
 | `confirm_word_required` | `true` | Require typing `DELETE` for permanent deletion. **Cannot be turned off.** |
 | `default_deleted_action` | `recycle` | Stored preference for the future GUI review; does not select a CLI action. |
 | `log_level` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`; applied to the CLI rotating archive log. |
+| `theme` | `system` | GUI appearance: `system`, `light` or `dark`; applied at startup, with live system appearance updates. |
 
 Settings are **preferences only** — none of them can weaken the append-only
 guarantee or cause anything to be deleted automatically.

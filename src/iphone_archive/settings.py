@@ -32,6 +32,7 @@ LOG_LEVEL_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR")
 DELETED_ACTION_RECYCLE = "recycle"
 DELETED_ACTION_PURGE = "purge"
 DELETED_ACTION_CHOICES = (DELETED_ACTION_RECYCLE, DELETED_ACTION_PURGE)
+THEME_CHOICES = ("system", "light", "dark")
 
 
 class SettingsError(ValueError):
@@ -51,6 +52,7 @@ class Settings:
     confirm_word_required: bool = True
     default_deleted_action: str = DELETED_ACTION_RECYCLE
     log_level: str = "INFO"
+    theme: str = "system"
 
 
 def settings_directory() -> Path:
@@ -176,6 +178,8 @@ def settings_validate(settings: Settings) -> None:
         raise SettingsError(f"thumbnail_size must be one of {THUMBNAIL_SIZE_CHOICES}")
     if settings.default_deleted_action not in DELETED_ACTION_CHOICES:
         raise SettingsError(f"default_deleted_action must be one of {DELETED_ACTION_CHOICES}")
+    if settings.theme not in THEME_CHOICES:
+        raise SettingsError(f"theme must be one of {THEME_CHOICES}")
     if (
         not isinstance(settings.log_level, str)
         or settings.log_level.upper() not in LOG_LEVEL_CHOICES

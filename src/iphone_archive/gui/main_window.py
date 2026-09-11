@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
+from .theme import GROUP_GAP, PAGE_MARGIN
 
 LOGGER = logging.getLogger(__name__)
 
@@ -38,15 +39,18 @@ class MainWindow(QMainWindow):
         parent: optional parent widget, normally None.
         """
         super().__init__(parent)
+        self.setObjectName("ArchiveWindow")
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(*WINDOW_DEFAULT_SIZE)
         self.setMinimumSize(*WINDOW_MINIMUM_SIZE)
 
         self.pages = QStackedWidget()
+        self.pages.setObjectName("ContentLayer")
         self.pages.addWidget(main_window_placeholder_page())
         self.setCentralWidget(self.pages)
 
         status_bar = QStatusBar()
+        status_bar.setObjectName("ArchiveStatusBar")
         status_bar.showMessage(f"iPhone Archive {__version__} - no archive open")
         self.setStatusBar(status_bar)
 
@@ -67,9 +71,13 @@ def main_window_placeholder_page() -> QWidget:
     Returns a widget stating that no archive is open.
     """
     page = QWidget()
+    page.setObjectName("PlaceholderPage")
     layout = QVBoxLayout(page)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(GROUP_GAP)
     label = QLabel("No archive open.")
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setObjectName("PlaceholderLabel")
+    label.setProperty("role", "secondary")
     layout.addWidget(label)
     return page

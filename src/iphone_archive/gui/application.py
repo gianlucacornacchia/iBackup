@@ -11,12 +11,14 @@ import traceback.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from typing import TYPE_CHECKING
 
 from ..logging_setup import logging_setup_configure
 from ..settings import settings_load
+from .win32_effects import WINDOWS_11_BUILD
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -28,21 +30,27 @@ ORGANIZATION_NAME = "ibackup"
 # The Windows 11 style only exists on Windows; Fusion is the closest neutral
 # match elsewhere and keeps the development machine usable.
 WINDOWS_STYLE = "windows11"
+WINDOWS_LEGACY_STYLE = "windowsvista"
 FALLBACK_STYLE = "Fusion"
 
 
-def application_style_name(platform_name: str) -> str:
+def application_style_name(platform_name: str, windows_build: int | None = None) -> str:
     """Choose the Qt widget style for a platform.
 
     platform_name: the value of ``sys.platform``.
+    windows_build: native Windows build when known; Windows 10 uses Vista style.
     Returns the style name to request from Qt.
     """
-    return WINDOWS_STYLE if platform_name == "win32" else FALLBACK_STYLE
+    if platform_name != "win32":
+        return FALLBACK_STYLE
+    return (
+        WINDOWS_LEGACY_STYLE
+        if windows_build is not None and windows_build < WINDOWS_11_BUILD
+        else WINDOWS_STYLE
+    )
 
 
-def application_configure(
-    application: QApplication, platform_name: str = sys.platform
-) -> None:
+def application_configure(application: QApplication, platform_name: str = sys.platform) -> None:
     """Apply process-wide identity and style to a Qt application.
 
     application: the QApplication to configure.
@@ -52,10 +60,17 @@ def application_configure(
     application.setApplicationName(APPLICATION_NAME)
     application.setOrganizationName(ORGANIZATION_NAME)
     application.setApplicationDisplayName(APPLICATION_NAME)
-    style_name = application_style_name(platform_name)
-    # setStyle silently ignores an unknown style, so a Qt build without the
-    # requested style degrades to the default rather than failing to start.
-    application.setStyle(style_name)
+    windows_build: int | None = None
+    if sys.platform == "win32":
+        if platform_name == "win32":
+            windows_build = sys.getwindowsversion().build
+    style_name = application_style_name(platform_name, windows_build)
+    if application.setStyle(style_name) is None:
+        fallback = WINDOWS_LEGACY_STYLE if style_name == WINDOWS_STYLE else FALLBACK_STYLE
+        LOGGER.warning("Qt style %s unavailable; trying %s", style_name, fallback)
+        if application.setStyle(fallback) is None:
+            LOGGER.warning("Qt style %s unavailable; using %s", fallback, FALLBACK_STYLE)
+            application.setStyle(FALLBACK_STYLE)
 
 
 def application_create() -> QApplication:
@@ -81,9 +96,19 @@ def application_main(argv: list[str] | None = None) -> int:
     Returns the process exit code.
     """
     arguments = sys.argv[1:] if argv is None else argv
-    if "--help" in arguments or "-h" in arguments:
-        print("Usage: ibackup-gui\n\nOpens the iPhone Archive desktop interface.")
-        return 0
+    parser = argparse.ArgumentParser(prog="ibackup-gui", description="Open the desktop interface.")
+    parser.add_argument(
+        "--mica-probe",
+        action="store_true",
+        help="experiment with Mica client painting on Windows 11 22H2+ (unverified)",
+    )
+    try:
+        options = parser.parse_args(arguments)
+    except SystemExit as result:
+        return int(result.code or 0)
+    if options.mica_probe and sys.platform != "win32":
+        print("The Mica probe requires Windows 11 22H2+.", file=sys.stderr)
+        return 1
 
     settings = settings_load()
     logging_setup_configure(level=settings.log_level)
@@ -91,6 +116,7 @@ def application_main(argv: list[str] | None = None) -> int:
     try:
         application = application_create()
         from .main_window import MainWindow
+        from .theme import ThemeController
     except ImportError as error:
         # A broken Qt install must not look like an application crash.
         print(f"Could not start the desktop interface: {error}", file=sys.stderr)
@@ -98,7 +124,16 @@ def application_main(argv: list[str] | None = None) -> int:
         return 1
 
     window = MainWindow()
+    if options.mica_probe:
+        LOGGER.warning("Experimental Mica probe; native title bar/painting are unverified")
+        from PySide6.QtCore import Qt
+
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    theme_controller = ThemeController(
+        application, window, settings.theme, mica_probe=options.mica_probe
+    )
     window.show()
+    theme_controller.theme_refresh()
     LOGGER.debug("desktop interface started")
     return int(application.exec())
 

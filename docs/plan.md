@@ -66,6 +66,10 @@ step never starts before the layer beneath it is proven.
    point, QApplication bootstrap, empty main window, offscreen smoke test.
 2. `gui-theme` — WinUI light/dark tokens promoted from the mock, system-follow
    via settings, DWM Mica and rounded corners on Windows with honest fallback.
+   Implemented offline: persisted `theme=system|light|dark`, live accent and
+   high-contrast handling, guarded DWM calls. Normal launches retain solid
+   painting; `--mica-probe` explicitly opts into unverified translucent Qt
+   painting. Live Windows qualification is still pending.
 3. `gui-worker` — **the highest-risk step.** `AppService` is single-thread
    affine and holds an exclusive archive lock, so a dedicated worker thread owns
    it and every call is marshalled, with queued progress/result/error signals,
@@ -203,7 +207,8 @@ sidecar → importer → dedup → verifier → albums → phone-diff → reclai
 recycle-bin + archive-edit primitives → browse-gallery → thumbnails →
 service-layer → cli-wiring → settings-store → **core hardening** →
 **UI sketch approval (gate)** → gui-theme
-(`theme.py` + `win32_effects.py`, preceded by a Mica probe) → gui-frontend →
+(`theme.py` + `win32_effects.py`; solid painting until the Windows Mica probe
+is validated) → gui-frontend →
 tests → Windows release validation. Device read/album/large-video validation
 separately gates real-phone destructive reclaim. US-D4 HTML gallery is deferred.
 
@@ -263,10 +268,10 @@ See `todos.md` for the full checklist with dependencies and status.
 - **Phase 0 (docs): DONE and approved.**
 - **Phase 1 baseline and core hardening complete offline.** Offline
   fake-device behavior is not a real-phone or release qualification.
-- **UI sketch: written** (`docs/ui-sketch/`), including the Windows 11 Fluent
-  visual spec. **Holding at the UI-sketch approval gate.**
-- **Phase 2 (GUI): blocked** on that approval. First task on approval is the
-  theming layer plus a Mica probe, then the views.
+- **UI sketch: approved 2026-09-11** (`docs/ui-sketch/`), including the Windows
+  11 Fluent visual spec and clickable mock.
+- **Phase 2 (GUI): in progress.** Scaffold and theme layer are implemented
+  offline; the worker is next. Live Windows Mica/chrome qualification is pending.
 - **Windows hardware and release milestones pending.** Migrations and basic
   destructive guardrails are core hardening, not optional future work. Catalog
   rebuild, tamper-proof audit logging, dependency automation and HTML gallery

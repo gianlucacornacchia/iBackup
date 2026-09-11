@@ -25,15 +25,21 @@ from iphone_archive.gui.main_window import (  # noqa: E402
 
 def test_gui_package_does_not_import_qt():
     """Importing the gui package must not pull in Qt, so the CLI survives a broken install."""
-    import importlib
+    import subprocess
     import sys
 
-    for name in [module for module in sys.modules if module.startswith("iphone_archive.gui")]:
-        del sys.modules[name]
-    package = importlib.import_module("iphone_archive.gui")
-
-    assert package.__doc__
-    assert "iphone_archive.gui.main_window" not in sys.modules
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import iphone_archive.gui; import iphone_archive.gui.application; "
+            "assert not any(name.startswith('PySide6') for name in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_style_is_native_on_windows_and_neutral_elsewhere():
@@ -41,6 +47,8 @@ def test_style_is_native_on_windows_and_neutral_elsewhere():
     assert application.application_style_name("win32") == application.WINDOWS_STYLE
     assert application.application_style_name("linux") == application.FALLBACK_STYLE
     assert application.application_style_name("darwin") == application.FALLBACK_STYLE
+    assert application.application_style_name("win32", 19045) == application.WINDOWS_LEGACY_STYLE
+    assert application.application_style_name("win32", 22000) == application.WINDOWS_STYLE
 
 
 def test_create_reuses_the_running_application(qapp):

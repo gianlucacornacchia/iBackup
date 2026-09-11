@@ -83,6 +83,9 @@ def test_unknown_keys_in_file_are_ignored():
         {"log_level": 5},
         {"recent_archives": "not-a-list"},
         {"default_archive": 123},
+        {"theme": "midnight"},
+        {"theme": None},
+        {"theme": []},
     ],
 )
 def test_invalid_persisted_settings_are_rejected(data):
@@ -101,6 +104,26 @@ def test_set_and_get_round_trip():
 
     assert settings_get("thumbnail_size") == 512
     assert settings_get("reopen_last_archive") is False
+
+
+@pytest.mark.parametrize("preference", ["system", "light", "dark"])
+def test_theme_round_trips_through_cli_and_service(preference, tmp_path):
+    """Theme is shared by CLI/settings/service, not private GUI state."""
+    assert runner.invoke(app, ["config", "set", "theme", preference]).exit_code == 0
+    assert settings_load().theme == preference
+    service = AppService(tmp_path / "archive")
+    assert service.app_service_get_settings().theme == preference
+    service.app_service_close()
+    assert runner.invoke(app, ["config", "set", "theme", "invalid"]).exit_code == 1
+    assert settings_load().theme == preference
+
+
+def test_older_settings_default_to_system_theme():
+    """Existing settings files need no migration."""
+    target = settings_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps({"log_level": "DEBUG"}), encoding="utf-8")
+    assert settings_load().theme == "system"
 
 
 def test_unknown_key_is_rejected():

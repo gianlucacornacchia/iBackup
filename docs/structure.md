@@ -1,6 +1,6 @@
 # iPhone Archive — Project Structure
 
-Status: current core/CLI module map plus explicitly planned GUI contracts.
+Status: current core/CLI and GUI shell/theme map plus planned GUI contracts.
 Implementation presence does not establish hardware or crash-safety validation;
 see [progress](progress.md) and [test plan](unit-tests.md).
 
@@ -40,8 +40,10 @@ All paths below are relative to `src/iphone_archive/`.
 | `browse/gallery.py` | Album/asset listings and `AssetView`; aligned `file_ids`/`paths` filtered by current album/location, including partially recycled assets; **no HTML generator**. |
 | `browse/thumbnails.py` | Cached previews and `ThumbnailResult`: still images via Pillow/pillow-heif, video poster frames via PyAV (display-matrix rotation applied, dark opening frames skipped). Previews only — never transcodes or modifies originals. |
 | `gui/__init__.py` | Package marker. Deliberately imports no Qt, so a broken PySide6 install cannot break the CLI. |
-| `gui/application.py` | Process bootstrap: QApplication, platform style (`windows11` on Windows, Fusion elsewhere), logging, and the `ibackup-gui` entry point. |
+| `gui/application.py` | Process bootstrap, logged `windows11`/`windowsvista`/Fusion style fallback, persisted theme, logging, `ibackup-gui` entry point and opt-in `--mica-probe`. |
 | `gui/main_window.py` | Window shell: title, page stack and status bar. Views are added by later Phase 2 steps. |
+| `gui/theme.py` | WinUI tokens/type ramp/metrics, scoped QSS, live theme/accent controller and high-contrast preservation; GUI-thread-only. |
+| `gui/win32_effects.py` | Lazy native preference queries, build-guarded DWM attributes, checked HRESULTs and observable solid fallback; experimental frame extension for the Mica probe. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.
@@ -160,12 +162,10 @@ affinity. Missing/inaccessible media directories are errors, not a valid empty
 inventory. Source verification and per-device scan publication are separate;
 only a complete successful scan publishes absence.
 
-## 4. Future GUI execution contract — blocked
+## 4. GUI execution contract — implementation in progress
 
-No GUI code, entry point, theme module or Mica probe is authorized until the
-user explicitly approves the sketch. Review fixes are not that approval.
-
-After approval:
+The sketch was approved on 2026-09-11. The shell/theme layer exists; archive
+operations, worker ownership and views still require the following:
 
 - Create/open/use/close `AppService` and its SQLite connection **in the worker
   thread that owns them**. Never share a service/connection between QThreads,
@@ -180,13 +180,14 @@ After approval:
 - Bound thumbnail workers, pending requests and decoded-image caches; request
   visible/prefetch tiles only, discard stale requests, and paginate metadata.
   Independent thumbnail workers receive immutable paths/DTOs, not SQLite.
-- `main_window.py` and `application.py` exist as of step 1 (`gui-scaffold`).
-  `theme.py`, `win32_effects.py`, `navigation_pane.py`, `command_bar.py`,
+- `main_window.py`, `application.py`, `theme.py` and `win32_effects.py` exist
+  as of steps 1-2. `navigation_pane.py`, `command_bar.py`,
   `picture_grid_view.py`, `thumbnail_loader.py`, `operations_controller.py`,
   the review/settings views and the Qt models are **planned names** delivered by
   the remaining Phase 2 steps in `plan.md` §2b.
-- DWM failures must log the attribute/result and select a solid background.
-  Probe Mica only after approval on Windows 11 22H2+; no probe result exists.
+- DWM failures log the attribute/result and select a solid background.
+  Normal launches remain opaque; `--mica-probe` opts into experimental
+  translucent painting on Windows 11 22H2+. No visual probe result exists.
 - Full parity is an acceptance requirement, not guaranteed by a facade alone:
   see the complete [CLI↔GUI map](ui-sketch/README.md#8-cli--gui-parity-map).
 
@@ -198,11 +199,13 @@ The service applies `album_link_mode`, `thumbnail_size` and
 `app_service_set_setting`, `app_service_reset_settings`,
 `app_service_settings_path` and `app_service_forget_archive`.
 Malformed settings JSON warns and falls back to defaults; invalid recognized
-values raise on validation. GUI-only stored preferences remain inactive.
+values raise on validation. The GUI consumes `theme` at startup and follows
+native appearance changes live; other GUI-only preferences await later steps.
 `app_service_reset_settings` / `config reset` can recover invalid configuration.
 
 `pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.
-PySide6/darkdetect and pytest-qt support the planned GUI. Actual version and
+PySide6 and pytest-qt support the GUI shell/theme layer (`darkdetect` remains
+reserved; Qt/Win32 currently supply native appearance). Actual version and
 optional-extra declarations live in `pyproject.toml`.
 PyInstaller Windows packaging is a scheduled milestone; no spec or released
 binary is supplied in this remediation.

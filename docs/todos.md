@@ -124,6 +124,14 @@ never starts before the layer beneath it is proven. Descriptions live in
   headless `tests/test_gui.py`. A test asserts importing the gui package does
   not import Qt, so a broken PySide6 install cannot take the CLI down with it.
   _Depends on: ui-sketch-approval-gate._
+- [x] **gui-theme** — implemented offline: WinUI tokens/type ramp/metrics,
+  scoped QSS, persisted `theme=system|light|dark`, live native theme/accent
+  updates and high-contrast preservation. Native Windows style fallbacks and
+  DWM attributes are build-guarded with logged failures. Normal launches keep
+  solid client painting; `ibackup-gui --mica-probe` is an opt-in rendering
+  experiment, not validated Mica support. Live Windows 11 22H2+ probe/chrome
+  qualification remains pending before transparent painting can be the default.
+  _Depends on: gui-scaffold, core-validation._
 - [ ] **gui-worker** — worker thread owning `AppService`, which is
   single-thread affine and holds an exclusive archive lock: request marshalling,
   queued progress/result/error signals, cancellation, clean shutdown. The risk
@@ -156,14 +164,6 @@ never starts before the layer beneath it is proven. Descriptions live in
 - [ ] **gui-packaging** — PyInstaller executable, icon, version resource and a
   smoke test of the built artifact. _Depends on: gui-parity-tests._
 
-- [ ] **gui-theme** — Windows 11 Fluent look (ADR-0010): a throwaway **Mica
-  probe** on Win11 22H2 first, then `gui/theme.py` (WinUI design tokens: type
-  ramp, 4/8px radii, light+dark color tokens, system accent, scoped QSS over
-  Qt's native `windows11` style) and `gui/win32_effects.py` (DWM Mica, rounded
-  corners, dark caption, each build-guarded). Requires PySide6>=6.7.
-  Log DWM failure and fall back to solid color; probe is unperformed and needs
-  a Windows 11 machine, which is not available on the Linux development host.
-  _Depends on: gui-scaffold, core-validation._
 - [ ] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
   operations_controller, reclaim_view, deleted_on_phone_view, marks_view,
