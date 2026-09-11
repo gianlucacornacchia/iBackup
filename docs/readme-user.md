@@ -63,7 +63,9 @@ No PyInstaller spec is included in this remediation.
 ### Desktop interface preview
 
 Run `ibackup-gui` to open the window shell. It does not open an archive or perform
-archive operations yet. Choose its appearance before launching:
+archive operations from the UI yet. Background-worker infrastructure is present,
+but archive-selection and operation controls are still planned. Choose its
+appearance before launching:
 
 ```powershell
 ibackup config set theme dark       # light or system are also accepted

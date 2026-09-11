@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-11 (Phase 2 step 2 implemented offline)._
+_Last updated: 2026-09-11 (Phase 2 step 3 implemented offline)._
 
 ## Current status
 
@@ -15,9 +15,9 @@ _Last updated: 2026-09-11 (Phase 2 step 2 implemented offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** continue the Phase 2 step list in order. Step 1
-  (`gui-scaffold`) and step 2 (`gui-theme`) are implemented offline; next is
-  step 3 (`gui-worker`). Live Windows theme/Mica qualification remains pending.
+- **Next action on resume:** continue the Phase 2 step list in order. Steps 1-3
+  (`gui-scaffold`, `gui-theme`, `gui-worker`) are implemented offline; next is
+  step 4 (`gui-models`). Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -34,8 +34,8 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 |---|---|---|
 | 1 | `gui-scaffold` — package, entry point, window shell, offscreen tests | **done** |
 | 2 | `gui-theme` — WinUI tokens, light/dark, guarded native effects | **done offline; Windows probe pending** |
-| 3 | `gui-worker` — thread owning `AppService`, progress/cancel | next |
-| 4 | `gui-models` — lazy-paging asset/album models, selection scope | pending |
+| 3 | `gui-worker` — thread owning `AppService`, progress/cancel | **done offline** |
+| 4 | `gui-models` — lazy-paging asset/album models, selection scope | next |
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | pending |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
 | 7 | `gui-gallery` — grid, multi-select, viewer | pending |
@@ -45,9 +45,13 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | pending |
 | 12 | `gui-packaging` — PyInstaller `.exe` | pending |
 
-Step 3 is the risk concentration: `AppService` is single-thread affine and holds
-an exclusive archive lock, so the threading backbone is isolated in one step
-rather than spread across the views.
+Step 3 centralizes the threading backbone: the window owns a lazy
+`WorkerController`, whose dedicated thread constructs/opens/uses/closes
+`AppService`. Requests are serialized and bounded (32 outstanding, plus a
+reserved shutdown slot); data is copied across the boundary and live resources
+are rejected. Progress is coalesced, cancellation uses the existing Event, and
+window close waits asynchronously for safe shutdown. No archive/device is
+automatically opened, and no archive-operation controls exist yet.
 
 Step 2 retains solid client painting for normal launches. The opt-in
 `ibackup-gui --mica-probe` requests Mica plus experimental translucent Qt
@@ -107,12 +111,31 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
 - [x] UI sketch and clickable mock approved (2026-09-11).
-- [~] Phase 2 — GUI: scaffold and theme layer implemented offline.
-- [x] Offline core/CLI checkpoint complete; GUI shell/theme tests now exist.
+- [~] Phase 2 — GUI: scaffold, theme and worker implemented offline.
+- [x] Offline core/CLI checkpoint complete; GUI shell/theme/worker tests now exist.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
 
+- 2026-09-11 — **Step 3 `gui-worker` implemented offline.** Added `gui/worker.py`:
+  worker-owned service and per-request device contexts, explicit archive
+  create/open/close, FIFO request IDs, detached parameters/results, text-only
+  error DTOs and explicitly queued Qt delivery. A full queue rejects new work
+  without dropping accepted requests; shutdown always has a reserved queue slot.
+  Progress retains the existing last-256 history and at most one outstanding
+  notification per request. Cancellation reaches active work directly through
+  its Event; queued cancelled requests never execute, and late cancellation does
+  not relabel completed operations. Expected errors leave the session usable;
+  unexpected failures close it, fail queued work without replay and allow a fresh
+  session on the next request after `stopped`. The window defers close until the
+  worker joins, and the application also joins on programmatic exit. Offline
+  tests exercise real fake-device import/verify, thread ownership, archive-lock
+  release, queue saturation, error cleanup, progress coalescing and cancellation.
+  Uncancellable I/O still has to return before shutdown can complete; the worker
+  is never forcibly terminated. No GUI operations or hardware qualification are
+  implied by this foundation.
+  Targeted GUI/Win32/service/progress/settings run: 165 passed. Ruff and
+  host/Windows-targeted mypy passed for the GUI modules.
 - 2026-09-11 — **Step 2 `gui-theme` implemented offline.** Added exact WinUI
   light/dark color tokens, logical-pixel type ramp, metrics and scoped QSS over
   native controls. Persisted `theme=system|light|dark` works through the existing

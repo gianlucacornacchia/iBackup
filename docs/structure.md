@@ -1,6 +1,6 @@
 # iPhone Archive — Project Structure
 
-Status: current core/CLI and GUI shell/theme map plus planned GUI contracts.
+Status: current core/CLI and GUI shell/theme/worker map plus planned GUI contracts.
 Implementation presence does not establish hardware or crash-safety validation;
 see [progress](progress.md) and [test plan](unit-tests.md).
 
@@ -40,10 +40,11 @@ All paths below are relative to `src/iphone_archive/`.
 | `browse/gallery.py` | Album/asset listings and `AssetView`; aligned `file_ids`/`paths` filtered by current album/location, including partially recycled assets; **no HTML generator**. |
 | `browse/thumbnails.py` | Cached previews and `ThumbnailResult`: still images via Pillow/pillow-heif, video poster frames via PyAV (display-matrix rotation applied, dark opening frames skipped). Previews only — never transcodes or modifies originals. |
 | `gui/__init__.py` | Package marker. Deliberately imports no Qt, so a broken PySide6 install cannot break the CLI. |
-| `gui/application.py` | Process bootstrap, logged `windows11`/`windowsvista`/Fusion style fallback, persisted theme, logging, `ibackup-gui` entry point and opt-in `--mica-probe`. |
-| `gui/main_window.py` | Window shell: title, page stack and status bar. Views are added by later Phase 2 steps. |
+| `gui/application.py` | Process bootstrap, logged style fallback, persisted theme, logging, entry point, opt-in `--mica-probe` and worker join on application exit. |
+| `gui/main_window.py` | Window shell, lazy worker owner, surfaced worker errors and deferred close until worker shutdown completes. Views arrive in later steps. |
 | `gui/theme.py` | WinUI tokens/type ramp/metrics, scoped QSS, live theme/accent controller and high-contrast preservation; GUI-thread-only. |
 | `gui/win32_effects.py` | Lazy native preference queries, build-guarded DWM attributes, checked HRESULTs and observable solid fallback; experimental frame extension for the Mica probe. |
+| `gui/worker.py` | GUI-affine `WorkerController`, dedicated FIFO `ServiceThread`, worker-only session, bounded/coalesced progress mailbox and detached `WorkerResult`/`WorkerFailure` transport. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.
@@ -53,7 +54,7 @@ Repository metadata/tool configuration is in `pyproject.toml`, `.github/`, and
 ## 2. Layering and data flow
 
 ```text
-CLI (current) / GUI (planned)
+CLI / GUI worker (operation views pending)
               |
         service/AppService
               |
@@ -164,24 +165,35 @@ only a complete successful scan publishes absence.
 
 ## 4. GUI execution contract — implementation in progress
 
-The sketch was approved on 2026-09-11. The shell/theme layer exists; archive
-operations, worker ownership and views still require the following:
+The sketch was approved on 2026-09-11. The shell, theme and worker foundation
+exist. Later operation views and models must preserve the following:
 
 - Create/open/use/close `AppService` and its SQLite connection **in the worker
   thread that owns them**. Never share a service/connection between QThreads,
-  and do not defeat SQLite thread checks. Prefer a single serialized archive
-  worker. The service rejects competing sessions as busy; any UI-side queue
-  must route work through that same owning worker, not open another session.
+  and do not defeat SQLite thread checks. `WorkerController` enforces GUI-side
+  affinity and queues work to one lazy `ServiceThread`; its worker-only session
+  constructs and closes the service. The service rejects competing sessions as
+  busy. Archive switching requires explicit close then open, not a second session.
 - Use `threading.Event` cancellation; emit progress/results through queued Qt
   signals. Worker callbacks must never touch widgets directly. Shutdown
   cancels, waits for safe completion, then closes the worker-owned session.
-  The current progress handle retains snapshots of only the last 256 events;
-  it is not an unbounded event log.
+  The current progress handle retains only the last 256 events; a locked mailbox
+  coalesces updates to at most one pending Qt notification per accepted request.
+  The FIFO accepts at most 32 outstanding requests, rejecting overflow, and
+  reserves a separate shutdown slot. Cancellation is cooperative, not rollback:
+  operations without checkpoints must finish; completed work remains successful.
+- Request parameters/results are detached plain data (including nested DTOs).
+  Live service/SQLite/device/widget objects cannot cross this boundary. Error
+  replies contain strings, not exceptions retaining worker traceback frames.
+  Device contexts are constructed/used/closed inside the operation on the worker.
+  Expected failures are reported without losing the session; unexpected failures
+  close it and fail pending requests without replay. The next request after the
+  `stopped` signal can start a fresh worker session.
 - Bound thumbnail workers, pending requests and decoded-image caches; request
   visible/prefetch tiles only, discard stale requests, and paginate metadata.
   Independent thumbnail workers receive immutable paths/DTOs, not SQLite.
-- `main_window.py`, `application.py`, `theme.py` and `win32_effects.py` exist
-  as of steps 1-2. `navigation_pane.py`, `command_bar.py`,
+- `main_window.py`, `application.py`, `theme.py`, `win32_effects.py` and
+  `worker.py` exist as of steps 1-3. `navigation_pane.py`, `command_bar.py`,
   `picture_grid_view.py`, `thumbnail_loader.py`, `operations_controller.py`,
   the review/settings views and the Qt models are **planned names** delivered by
   the remaining Phase 2 steps in `plan.md` §2b.
@@ -204,7 +216,7 @@ native appearance changes live; other GUI-only preferences await later steps.
 `app_service_reset_settings` / `config reset` can recover invalid configuration.
 
 `pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.
-PySide6 and pytest-qt support the GUI shell/theme layer (`darkdetect` remains
+PySide6 and pytest-qt support the GUI shell/theme/worker layer (`darkdetect` remains
 reserved; Qt/Win32 currently supply native appearance). Actual version and
 optional-extra declarations live in `pyproject.toml`.
 PyInstaller Windows packaging is a scheduled milestone; no spec or released

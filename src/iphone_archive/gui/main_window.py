@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from .theme import GROUP_GAP, PAGE_MARGIN
+from .worker import WorkerController, WorkerFailure
 
 LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +45,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(*WINDOW_DEFAULT_SIZE)
         self.setMinimumSize(*WINDOW_MINIMUM_SIZE)
+        self.worker = WorkerController(self)
+        self.close_pending = False
+        self.worker.stopped.connect(self.main_window_worker_stopped)
+        self.worker.failed.connect(self.main_window_worker_failed)
 
         self.pages = QStackedWidget()
         self.pages.setObjectName("ContentLayer")
@@ -63,6 +69,29 @@ class MainWindow(QMainWindow):
         status_bar = self.statusBar()
         if status_bar is not None:
             status_bar.showMessage(message)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Keep the window/event loop alive until worker-owned resources have been released."""
+        if self.worker.service_thread.isRunning():
+            event.ignore()
+            self.close_pending = True
+            self.main_window_show_status("Stopping archive work safely...")
+            self.worker.worker_shutdown()
+        else:
+            self.worker.worker_shutdown()
+            event.accept()
+
+    @Slot()
+    def main_window_worker_stopped(self) -> None:
+        """Complete a deferred window close after the worker has been joined."""
+        if self.close_pending:
+            self.close_pending = False
+            self.close()
+
+    @Slot(object)
+    def main_window_worker_failed(self, failure: WorkerFailure) -> None:
+        """Surface worker errors in the shell; operation-specific views arrive in later steps."""
+        self.main_window_show_status(f"{failure.operation} failed: {failure.message}")
 
 
 def main_window_placeholder_page() -> QWidget:
