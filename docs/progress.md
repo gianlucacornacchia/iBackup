@@ -5,25 +5,48 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-09 (core-hardening review checkpoint)._
+_Last updated: 2026-09-11 (Phase 2 GUI started)._
 
 ## Current status
 
-- **Phase:** core-hardening checkpoint complete offline.
-- **State:** documentation approved; source safety corrections and offline
-  regression/quality gates completed. Historical counts describe past runs only.
-- **Next action on resume:** perform the Windows/iPhone read/album/large-video
-  matrix before considering destructive real-phone reclaim, or obtain explicit
-  UI-sketch approval before beginning GUI work.
-- **GUI:** sketch written, **HARD BLOCKED on explicit approval**. Review/fix
-  requests do not grant GUI approval. The Windows Mica probe, GUI code, entry
-  point and GUI tests are all unimplemented/blocked.
-- **Not yet validated:** real-iPhone behaviour (`AfcDevice` has never run
-  against hardware), the Windows `.exe` packaging, and the Windows CI workflow —
-  development happened on Linux against the offline fake device.
-- **Release:** packaging is scheduled, not released. No PyInstaller spec is
-  added in this remediation. The broken `ibackup-gui` entry point is removed
-  until the actual GUI exists.
+- **Phase:** Phase 2 — building the GUI. Phase 1 (core engine + full CLI) and
+  the core-hardening checkpoint are complete offline.
+- **State:** the UI-sketch gate **passed on 2026-09-11**; the sketch and its
+  clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
+  `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
+  steps" below and in `plan.md` §2b.
+- **Next action on resume:** continue the Phase 2 step list in order. Step 1
+  (`gui-scaffold`) is done; step 2 is `gui-theme`, then `gui-worker`.
+- **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
+  window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
+  read path **has** now been exercised against a real iPhone 12 (see the
+  hardware-validation entries below); everything else is Linux + fake device.
+- **Release:** packaging is step 12 and has not started. `ibackup-gui` now
+  exists as a real entry point that opens the window shell.
+
+## Phase 2 GUI steps
+
+Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
+§2b; live state is in the todo DB and `todos.md`.
+
+| # | Step | State |
+|---|---|---|
+| 1 | `gui-scaffold` — package, entry point, window shell, offscreen tests | **done** |
+| 2 | `gui-theme` — WinUI tokens, light/dark, Mica on Windows | next |
+| 3 | `gui-worker` — thread owning `AppService`, progress/cancel | pending |
+| 4 | `gui-models` — lazy-paging asset/album models, selection scope | pending |
+| 5 | `gui-thumbnail-loader` — background previews, bounded cache | pending |
+| 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
+| 7 | `gui-gallery` — grid, multi-select, viewer | pending |
+| 8 | `gui-ops-safe` — import, verify, scan, dedup, move | pending |
+| 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | pending |
+| 10 | `gui-settings` — six panels; also closes `settings-store` | pending |
+| 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | pending |
+| 12 | `gui-packaging` — PyInstaller `.exe` | pending |
+
+Step 3 is the risk concentration: `AppService` is single-thread affine and holds
+an exclusive archive lock, so the threading backbone is isolated in one step
+rather than spread across the views.
 
 ### Final core-hardening validation report
 
@@ -81,6 +104,20 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
+
+- 2026-09-11 — **UI-sketch gate passed; Phase 2 started.** The user approved
+  both `gui-theme` and `gui-frontend` and asked for the GUI work to be broken
+  into smaller steps. `gui-frontend` is now twelve ordered steps (`plan.md` §2b)
+  with dependencies recorded in the todo DB, so no step starts before the layer
+  beneath it is proven.
+- 2026-09-11 — **Step 1 `gui-scaffold` complete.** Added
+  `src/iphone_archive/gui/` with `application.py` (QApplication bootstrap, style
+  selection, `--help` without Qt, readable message on a broken PySide6 install)
+  and `main_window.py` (window shell, page stack, status bar). Restored the
+  `ibackup-gui` entry point, now backed by real code. `tests/test_gui.py` runs
+  headless under `QT_QPA_PLATFORM=offscreen`; one test asserts that importing
+  `iphone_archive.gui` does **not** import Qt, so a broken Qt install can never
+  take the CLI down with it. 377 passed, 1 skipped; ruff and mypy clean.
 
 - 2026-09-10 — **Video thumbnails implemented** (`future-video-thumbnails`,
   one of the two gaps raised at the UI-mock review). `thumbnails` now extracts a

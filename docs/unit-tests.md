@@ -19,8 +19,9 @@ Choose targeted existing tests after code changes; run the full configured
 quality gates for a checkpoint. Docs-only edits need no Python test run.
 The suite uses fake devices and pytest `tmp_path`; configure a project-local
 test base when the execution environment prohibits system temporary folders.
-GUI tests will use `QT_QPA_PLATFORM=offscreen` after approval and implementation;
-there is no `tests/test_gui.py` to run now.
+GUI tests run headless: `tests/test_gui.py` forces `QT_QPA_PLATFORM=offscreen`
+itself, so no display is needed and CI behaves like a developer machine. They
+skip cleanly when PySide6 or pytest-qt is unavailable.
 
 ## 2. Existing test inventory
 

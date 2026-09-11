@@ -39,7 +39,9 @@ All paths below are relative to `src/iphone_archive/`.
 | `core/recycle.py` | Move to Deleted, restore, purge, `RecycleResult`. |
 | `browse/gallery.py` | Album/asset listings and `AssetView`; aligned `file_ids`/`paths` filtered by current album/location, including partially recycled assets; **no HTML generator**. |
 | `browse/thumbnails.py` | Cached previews and `ThumbnailResult`: still images via Pillow/pillow-heif, video poster frames via PyAV (display-matrix rotation applied, dark opening frames skipped). Previews only — never transcodes or modifies originals. |
-| `gui/__init__.py` | Placeholder package only; no implemented GUI or GUI entry point. |
+| `gui/__init__.py` | Package marker. Deliberately imports no Qt, so a broken PySide6 install cannot break the CLI. |
+| `gui/application.py` | Process bootstrap: QApplication, platform style (`windows11` on Windows, Fusion elsewhere), logging, and the `ibackup-gui` entry point. |
+| `gui/main_window.py` | Window shell: title, page stack and status bar. Views are added by later Phase 2 steps. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.
@@ -178,10 +180,11 @@ After approval:
 - Bound thumbnail workers, pending requests and decoded-image caches; request
   visible/prefetch tiles only, discard stale requests, and paginate metadata.
   Independent thumbnail workers receive immutable paths/DTOs, not SQLite.
-- `gui/theme.py`, `win32_effects.py`, `main_window.py`, `navigation_pane.py`,
-  `command_bar.py`, `picture_grid_view.py`, `thumbnail_loader.py`,
-  `operations_controller.py`, review/settings views and Qt models are
-  **planned names, not existing files**.
+- `main_window.py` and `application.py` exist as of step 1 (`gui-scaffold`).
+  `theme.py`, `win32_effects.py`, `navigation_pane.py`, `command_bar.py`,
+  `picture_grid_view.py`, `thumbnail_loader.py`, `operations_controller.py`,
+  the review/settings views and the Qt models are **planned names** delivered by
+  the remaining Phase 2 steps in `plan.md` §2b.
 - DWM failures must log the attribute/result and select a solid background.
   Probe Mica only after approval on Windows 11 22H2+; no probe result exists.
 - Full parity is an acceptance requirement, not guaranteed by a facade alone:

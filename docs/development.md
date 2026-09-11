@@ -96,8 +96,9 @@ pytest --cov=iphone_archive         # optional coverage
 
 ```
 
-`tests/test_gui.py` does not exist. After approval and implementation, GUI
-tests will run headless with `QT_QPA_PLATFORM=offscreen`.
+`tests/test_gui.py` runs headless: it sets `QT_QPA_PLATFORM=offscreen` on
+import, so GUI tests need no display and are part of the normal `pytest` run.
+They skip automatically if PySide6 or pytest-qt is missing.
 
 ### Running the UI mock
 
@@ -148,7 +149,16 @@ ibackup --help                      # CLI (console entry point)
 python -m iphone_archive.cli --help
 ```
 
-There is currently no `ibackup-gui` entry point.
+The desktop interface has its own entry point:
+
+```powershell
+ibackup-gui                         # GUI (gui-scripts entry point)
+# or, without console scripts:
+python -m iphone_archive.gui.application
+```
+
+It is being built in the twelve steps listed in `plan.md` §2b, so it currently
+opens the window shell without archive features wired up yet.
 
 ## 6. Project layout
 
