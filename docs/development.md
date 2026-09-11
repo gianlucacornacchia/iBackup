@@ -6,7 +6,7 @@ tests. **Keep this document up to date as the code evolves.**
 Target platform: **Windows 10/11 (64-bit)**, Python **3.11+**.
 
 Current evidence is offline core/CLI testing, not a validated Windows/iPhone
-release. The GUI sketch was approved on 2026-09-11; the shell and theme layer
+release. The GUI sketch was approved on 2026-09-11; the shell, theme and worker
 are implemented offline. Live Windows Mica/chrome qualification is still
 pending. See `progress.md` for evidence and remaining gates.
 
@@ -97,8 +97,9 @@ pytest --cov=iphone_archive         # optional coverage
 
 ```
 
-`tests/test_gui.py` and `tests/test_gui_theme.py` run headless: they set `QT_QPA_PLATFORM=offscreen` on
-import, so GUI tests need no display and are part of the normal `pytest` run.
+`tests/test_gui.py`, `tests/test_gui_theme.py` and `tests/test_gui_worker.py`
+run headless: they set `QT_QPA_PLATFORM=offscreen` on import, so GUI tests need
+no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
 `tests/test_win32_effects.py` tests the guarded native API with mocks on any
 host; this is not evidence of Windows rendering.
@@ -162,6 +163,8 @@ python -m iphone_archive.gui.application
 
 It is being built in the twelve steps listed in `plan.md` §2b, so it currently
 opens the window shell without archive features wired up yet.
+The worker backbone is installed but lazy: launching the shell does not start
+archive work, select an archive or connect a phone.
 
 Set `ibackup config set theme system` (or `light` / `dark`) before launching.
 The GUI reads this preference at startup; system theme/accent changes are
@@ -169,6 +172,46 @@ applied live. Windows accessibility/transparency preferences are polled every
 two seconds on the GUI thread because Qt 6.7 lacks those notifications.
 High-contrast mode removes scoped QSS and releases explicit color-scheme
 overrides; no background listener thread or archive service is involved.
+
+### Using the GUI worker from later views
+
+`MainWindow.worker` is the GUI-thread-owned `WorkerController`. Connect its
+signals before submitting requests. `worker_open(path, create=False)` explicitly
+opens an archive; pass `create=True` to initialize one. Switch archives by
+submitting `close_archive` before the next open. The archive-scoped dispatcher
+requires an open session for `app_service_*` calls; standalone settings/device
+screens and archive-selection controls remain later GUI steps.
+
+`worker_submit("app_service_list_assets", {"limit": 128, "offset": 0})` returns
+a request ID. Parameters and DTO results are recursively detached; live
+widgets, SQLite connections, services, sources and caller-owned progress handles
+are rejected. Device-using calls construct and close their source on the worker;
+tests inject a context-manager factory rather than a GUI-created device.
+
+| Signal | Payload |
+|---|---|
+| `result_ready` | `WorkerResult(request_id, operation, value, cancelled=False)` |
+| `cancelled` | `WorkerResult` with acknowledged cancellation and any partial result |
+| `failed` | `WorkerFailure` with request ID, operation, error type/message and traceback text; ID 0 denotes shutdown failure |
+| `progress_changed` | Request ID and the latest immutable `ProgressEvent` |
+| `stopped` | The thread has finished and been joined (also emitted for shutdown before first use) |
+
+Delivery to the controller is explicitly queued onto the GUI thread. At most 32
+requests can remain outstanding; overflow raises instead of dropping work.
+Progress is coalesced to one outstanding notification per request, with the
+existing last-256 history retained. `worker_cancel(request_id)` sets the shared
+Event immediately, without relying on the busy worker's event loop. Cancellation
+is not rollback: pending work is skipped, running work stops only at service
+checkpoints, and a completed operation is not relabelled cancelled.
+
+Window close calls nonblocking `worker_shutdown()` and remains alive until
+`stopped`. The application also shuts down and joins in `finally` if `app.quit()`
+bypasses window close. `worker_wait(timeout_ms)` is for teardown after shutdown;
+a timeout warns and leaves the thread alive. Final process exit waits for safe
+completion, even if a device call has not returned; never use `QThread.terminate()`.
+Expected operation failures preserve the session. Unexpected failures release
+it and fail pending requests without replay; a request after `stopped` starts a
+fresh worker and must explicitly reopen the archive.
 
 ### Running the Windows Mica probe
 

@@ -135,7 +135,12 @@ def application_main(argv: list[str] | None = None) -> int:
     window.show()
     theme_controller.theme_refresh()
     LOGGER.debug("desktop interface started")
-    return int(application.exec())
+    try:
+        return int(application.exec())
+    finally:
+        # Also cover programmatic app.quit(), which bypasses the window's closeEvent.
+        window.worker.worker_shutdown()
+        window.worker.worker_wait()
 
 
 if __name__ == "__main__":

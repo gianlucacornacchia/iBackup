@@ -132,10 +132,13 @@ never starts before the layer beneath it is proven. Descriptions live in
   experiment, not validated Mica support. Live Windows 11 22H2+ probe/chrome
   qualification remains pending before transparent painting can be the default.
   _Depends on: gui-scaffold, core-validation._
-- [ ] **gui-worker** — worker thread owning `AppService`, which is
-  single-thread affine and holds an exclusive archive lock: request marshalling,
-  queued progress/result/error signals, cancellation, clean shutdown. The risk
-  concentration of Phase 2. _Depends on: gui-scaffold, service-layer._
+- [x] **gui-worker** — implemented offline in `gui/worker.py`: lazy dedicated
+  thread owning `AppService` and its archive lock, bounded FIFO requests,
+  detached DTOs, coalesced queued progress/result/error delivery, direct Event
+  cancellation and same-thread resource cleanup. The window defers close until
+  the worker joins; application exit also joins. Real fake-device import/verify
+  and lifecycle/error/cancellation regressions cover the foundation; operation
+  views remain later steps. _Depends on: gui-scaffold, service-layer._
 - [ ] **gui-models** — lazy-paging Qt model over `gallery.AssetView` (the test
   phone holds 1 297 items, so eager loading would stall the window), album
   model, and the selection mapping that preserves album-copy scope instead of

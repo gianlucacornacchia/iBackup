@@ -13,6 +13,10 @@ without the app. The archive — not the phone — is the source of truth.
 > release is available. See [`docs/progress.md`](docs/progress.md)
 > for validation evidence and remaining gates.
 
+The GUI worker foundation now serializes archive work off the UI thread, with
+cooperative cancellation and safe shutdown. Operation controls and gallery
+models are still under development.
+
 ## Documentation
 
 | Doc | Purpose |

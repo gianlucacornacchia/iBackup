@@ -75,6 +75,10 @@ step never starts before the layer beneath it is proven.
    it and every call is marshalled, with queued progress/result/error signals,
    cancellation and clean shutdown. Isolated here deliberately rather than
    sprinkling thread calls through the views.
+   Implemented offline: `WorkerController` marshals detached data to a lazy
+   FIFO worker (32 outstanding requests), coalesces progress and rejects live
+   resources at the boundary. Window close is deferred until same-thread cleanup
+   and join; cancelled queued work and failed work are never automatically replayed.
 
 **Phase B — data plumbing**
 
@@ -270,8 +274,8 @@ See `todos.md` for the full checklist with dependencies and status.
   fake-device behavior is not a real-phone or release qualification.
 - **UI sketch: approved 2026-09-11** (`docs/ui-sketch/`), including the Windows
   11 Fluent visual spec and clickable mock.
-- **Phase 2 (GUI): in progress.** Scaffold and theme layer are implemented
-  offline; the worker is next. Live Windows Mica/chrome qualification is pending.
+- **Phase 2 (GUI): in progress.** Scaffold, theme and worker are implemented
+  offline; models are next. Live Windows Mica/chrome qualification is pending.
 - **Windows hardware and release milestones pending.** Migrations and basic
   destructive guardrails are core hardening, not optional future work. Catalog
   rebuild, tamper-proof audit logging, dependency automation and HTML gallery
