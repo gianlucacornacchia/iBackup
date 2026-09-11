@@ -44,17 +44,66 @@ Key decisions:
 4. **Windows/iPhone gate — pending.** Read/album/large-video matrix must pass
    before enabling real-phone destructive reclaim. Offline tests cannot lift
    this gate; see `unit-tests.md` §4.
-5. **UI sketch gate.** Before any GUI code, produce a **UI sketch/wireframe**
-   under `docs/ui-sketch/` and **STOP for explicit approval**.
-   (Status: **sketch written, plus a clickable mock in `docs/ui-sketch/mockup/`
-   built with PySide6 for review — BLOCKED**; review fix requests are not
-   approval, and the mock is a throwaway artifact that does not open the gate.)
-6. **Phase 2 — Build GUI.** Only after explicit approval and core-hardening
-   contracts stabilize. Mica probe is also behind approval and requires Windows.
+5. **UI sketch gate — PASSED (2026-09-11).** The sketch under `docs/ui-sketch/`
+   plus the clickable PySide6 mock in `docs/ui-sketch/mockup/` were reviewed and
+   **approved**, unblocking `gui-theme` and `gui-frontend`.
+6. **Phase 2 — Build GUI (in progress).** Broken into the twelve steps in §2b,
+   built bottom-up with tests and one commit per step. Mica remains unverifiable
+   off Windows.
 7. **Release milestone — scheduled after validation.** Windows-build and
    clean-machine smoke-test CLI packaging, notices and versioned artifacts.
    First add a CLI packaging recipe; no spec is added during this remediation.
    GUI packaging follows GUI implementation/tests; no release is available now.
+
+## 2b. Phase 2 GUI step breakdown
+
+Twelve steps, each one commit, built bottom-up with tests. Dependencies mean a
+step never starts before the layer beneath it is proven.
+
+**Phase A — foundations (nothing visible yet)**
+
+1. `gui-scaffold` — `src/iphone_archive/gui/` package, `ibackup-gui` entry
+   point, QApplication bootstrap, empty main window, offscreen smoke test.
+2. `gui-theme` — WinUI light/dark tokens promoted from the mock, system-follow
+   via settings, DWM Mica and rounded corners on Windows with honest fallback.
+3. `gui-worker` — **the highest-risk step.** `AppService` is single-thread
+   affine and holds an exclusive archive lock, so a dedicated worker thread owns
+   it and every call is marshalled, with queued progress/result/error signals,
+   cancellation and clean shutdown. Isolated here deliberately rather than
+   sprinkling thread calls through the views.
+
+**Phase B — data plumbing**
+
+4. `gui-models` — lazy-paging list model over `AssetView` (the test phone holds
+   1 297 items, so eager loading would stall the window), album model, and the
+   selection mapping that preserves album-copy scope rather than silently
+   promoting a selection to every copy of an asset.
+5. `gui-thumbnail-loader` — background thumbnail pipeline with a bounded LRU
+   cache, request coalescing, cancel-on-scroll and pending/failed placeholders.
+
+**Phase C — interface**
+
+6. `gui-shell` — navigation pane with live counts, stacked pages, command bar,
+   status bar, phone connected/disconnected state.
+7. `gui-gallery` — grid, rubber-band and Ctrl/Shift selection, selection bar,
+   viewer, context menu.
+8. `gui-ops-safe` — import, verify, scan-phone, dedup, stats, move to album,
+   behind a progress dialog that can be cancelled or hidden.
+9. `gui-ops-destructive` — typed-DELETE confirmation, deleted-on-phone
+   keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
+   dry-run first.
+10. `gui-settings` — the six settings panels; also closes `settings-store`.
+
+**Phase D — proof**
+
+11. `gui-parity-tests` — a test that fails if any CLI command or service method
+    has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
+12. `gui-packaging` — PyInstaller executable, icon, version resource and a
+    smoke test of the built artifact.
+
+Mica, native window chrome and the Apple USB driver path cannot be validated on
+the Linux development machine; they are built to spec and marked unverified
+until a Windows run.
 
 ## 3. Archive layout (plain, album-organized, append-only)
 
