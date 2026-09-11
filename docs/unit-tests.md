@@ -1,7 +1,8 @@
 # iPhone Archive — Tests and Validation Plan
 
 Status: offline core/CLI hardening and its regression checkpoint are complete.
-The GUI, real-iPhone behavior and Windows release are **not validated**.
+The GUI shell/theme has offline coverage; live Windows appearance, full GUI
+operations and the Windows release are **not validated**.
 Use the final validation report in [progress](progress.md), not stale copied
 test counts, for executed commands/results.
 
@@ -19,7 +20,7 @@ Choose targeted existing tests after code changes; run the full configured
 quality gates for a checkpoint. Docs-only edits need no Python test run.
 The suite uses fake devices and pytest `tmp_path`; configure a project-local
 test base when the execution environment prohibits system temporary folders.
-GUI tests run headless: `tests/test_gui.py` forces `QT_QPA_PLATFORM=offscreen`
+GUI tests run headless: `tests/test_gui.py` and `tests/test_gui_theme.py` set `QT_QPA_PLATFORM=offscreen`
 itself, so no display is needed and CI behaves like a developer machine. They
 skip cleanly when PySide6 or pytest-qt is unavailable.
 
@@ -54,6 +55,9 @@ scenario is covered or that the latest edited suite has passed.
 | `test_recycle.py` | Partial recycle/restore/purge, invalid paths, missing copies, sidecar-failure recovery and committed-operation restart finalization. |
 | `test_cli.py` | Command parsing, errors, confirmation and service wiring. |
 | `test_e2e.py` | Offline pipeline and selected crash/resume scenarios. |
+| `test_gui.py` | Offscreen window shell, entry point/style selection and Qt-free package/bootstrap imports in a fresh process. |
+| `test_gui_theme.py` | Exact color/alpha/type tokens, scoped QSS, persisted theme bootstrap, live system/accent changes, high-contrast precedence, Qt 6.7 fallback and rendered solid opacity. |
+| `test_win32_effects.py` | Mocked platform/build guards, native preference queries, pointer-sized HWND/32-bit arguments, HRESULT/load failures and opt-in Mica fallback. Not a live Windows probe. |
 
 `test_reclaim.py`, `test_recycle.py` and `test_selection.py` were added in core
 hardening; related integration cases remain in service/E2E files. Their presence
@@ -126,12 +130,15 @@ destructive tests. AFC file removal is not assumed equivalent to a supported
 Apple Photos deletion workflow; validate photo-library consistency and
 recoverability before lifting the gate. An offline fake delete is not enough.
 
-## 5. GUI and release gates (future)
+## 5. GUI and release gates
 
-After explicit sketch approval, test worker-owned service lifetime, queued
+The sketch was approved on 2026-09-11. Shell/theme tests now exist; still test worker-owned service lifetime, queued
 signals, cancellation/shutdown, serialized mutations, bounded thumbnail
 queues, the full parity map, accessibility and theme fallback. Perform the
-Mica probe on Windows 11 only after approval and retain its result/logs.
+Mica probe on Windows 11 22H2+ using `ibackup-gui --mica-probe` and retain its
+result/logs. Confirm both themes, wallpaper tint, native title bar, resize/snap/
+maximize, high contrast, transparency disabled and battery saver. Normal
+launches remain solid until that client-painting path is proven.
 
 Release requires passing Windows CI, a Windows-built CLI executable smoke test
 on a clean machine without Python, dependency/license notices, versioned

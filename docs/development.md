@@ -6,8 +6,9 @@ tests. **Keep this document up to date as the code evolves.**
 Target platform: **Windows 10/11 (64-bit)**, Python **3.11+**.
 
 Current evidence is offline core/CLI testing, not a validated Windows/iPhone
-release. All GUI work, including a Windows Mica probe, is blocked pending
-explicit sketch approval. See `progress.md` for the final validation report.
+release. The GUI sketch was approved on 2026-09-11; the shell and theme layer
+are implemented offline. Live Windows Mica/chrome qualification is still
+pending. See `progress.md` for evidence and remaining gates.
 
 ## 1. Prerequisites
 
@@ -53,8 +54,8 @@ pip install -e ".[dev]"          # editable install + dev extras
 | Library | Purpose |
 |---|---|
 | `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`). |
-| `PySide6` | Planned Qt GUI. **6.7+ required** for the target native `windows11` style — see ADR-0010/0011; installed dependency is not an implemented GUI. |
-| `darkdetect` | Planned GUI system-theme detection; no current GUI consumer. |
+| `PySide6` | GUI shell/theme layer. **6.7+ required** for native `windows11` style and palette accent; explicit native color-scheme hints are used where available (Qt 6.8+). |
+| `darkdetect` | Reserved dependency; live theme detection currently uses Qt hints and Windows preferences, without a listener thread. |
 | `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
 | `av` (PyAV) | Extract video poster frames for the thumbnail cache. Its wheels bundle FFmpeg, so **no system FFmpeg install is needed** on Windows. Imported lazily: if it is missing, videos fall back to a placeholder instead of breaking image thumbnails. |
 | `typer` | CLI argument parsing, subcommands, and help text. |
@@ -96,9 +97,11 @@ pytest --cov=iphone_archive         # optional coverage
 
 ```
 
-`tests/test_gui.py` runs headless: it sets `QT_QPA_PLATFORM=offscreen` on
+`tests/test_gui.py` and `tests/test_gui_theme.py` run headless: they set `QT_QPA_PLATFORM=offscreen` on
 import, so GUI tests need no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
+`tests/test_win32_effects.py` tests the guarded native API with mocks on any
+host; this is not evidence of Windows rendering.
 
 ### Running the UI mock
 
@@ -160,6 +163,32 @@ python -m iphone_archive.gui.application
 It is being built in the twelve steps listed in `plan.md` §2b, so it currently
 opens the window shell without archive features wired up yet.
 
+Set `ibackup config set theme system` (or `light` / `dark`) before launching.
+The GUI reads this preference at startup; system theme/accent changes are
+applied live. Windows accessibility/transparency preferences are polled every
+two seconds on the GUI thread because Qt 6.7 lacks those notifications.
+High-contrast mode removes scoped QSS and releases explicit color-scheme
+overrides; no background listener thread or archive service is involved.
+
+### Running the Windows Mica probe
+
+Normal launches retain opaque client painting. On Windows 11 22H2+ only:
+
+```powershell
+python -m iphone_archive.gui.application --mica-probe
+```
+
+This explicit experiment enables translucent Qt painting and requests a DWM
+client-frame extension plus Mica. It retains the system title bar (no frameless
+flag). Success HRESULTs are not visual proof: verify wallpaper tint behind
+content, readable text, resize/maximize/snap edges, rounded corners and dark
+caption in both themes. Also exercise high contrast, transparency off and
+battery saver; the fallback must be solid/readable, not black or transparent.
+Record the Windows build, Qt version, screenshots and DWM logs before enabling
+this painting path by default. On Windows 10/older builds, unsupported effects
+fall back; the probe command is rejected off Windows. It has **not** been
+visually validated on this Linux development host.
+
 ## 6. Project layout
 
 See `structure.md` for the full module map. Source lives under
@@ -174,7 +203,7 @@ Do not invoke a nonexistent `packaging/ibackup.spec`.
 
 A Linux build is not a Windows executable. Record clean-machine launch/help/
 offline-import smoke tests, artifact version and dependency/license notices
-before advertising a release. GUI bundling waits for approval/implementation;
+before advertising a release. GUI bundling waits for implementation/qualification;
 review Qt LGPL replacement/relinking obligations and icon notices (ADR-0011).
 MSIX/signing are release decisions, not currently provided deliverables.
 

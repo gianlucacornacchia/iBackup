@@ -1,15 +1,16 @@
 # iPhone Archive (`ibackup`)
 
-A **Windows-targeted** photo archive project (CLI implemented; GUI planned) that creates a permanent,
+A **Windows-targeted** photo archive project (CLI implemented; GUI in progress) that creates a permanent,
 **append-only** archive of photos and videos from a USB-connected iPhone. Media
 is stored as **plain files in album folders**, browsable in File Explorer
 without the app. The archive — not the phone — is the source of truth.
 
 > Status: **offline core-hardening complete**. Core and CLI implementations have
 > offline fake-device tests; that is not real-iPhone or Windows release
-> validation. No GUI or downloadable Windows release is available. GUI work,
-> including the Mica probe, is **blocked on explicit UI-sketch approval**;
-> review corrections do not constitute approval. See [`docs/progress.md`](docs/progress.md)
+> validation. The GUI sketch was approved on 2026-09-11; `ibackup-gui` opens a
+> themed window shell, without archive operations yet. Mica is an opt-in
+> Windows probe; normal launches use solid backgrounds. No downloadable Windows
+> release is available. See [`docs/progress.md`](docs/progress.md)
 > for validation evidence and remaining gates.
 
 ## Documentation
@@ -25,7 +26,7 @@ without the app. The archive — not the phone — is the source of truth.
 | [`docs/plan.md`](docs/plan.md) | Consolidated implementation plan. |
 | [`docs/todos.md`](docs/todos.md) | Build checklist with dependencies/status. |
 | [`docs/progress.md`](docs/progress.md) | Resumable progress log (update as you work). |
-| [`docs/ui-sketch/`](docs/ui-sketch/README.md) | GUI wireframes — **awaiting approval** before any GUI code. |
+| [`docs/ui-sketch/`](docs/ui-sketch/README.md) | Approved GUI wireframes and clickable reference mock. |
 
 ## Quick start (developers)
 
@@ -54,7 +55,7 @@ See [`docs/readme-user.md`](docs/readme-user.md) for the full command reference.
 
 ## Tech stack
 
-- Python 3.11+ · Typer (CLI) · PySide6 (GUI, pending) · `pymobiledevice3`
+- Python 3.11+ · Typer (CLI) · PySide6 (GUI, in progress) · `pymobiledevice3`
   (iPhone/AFC) · SQLite · Pillow + `pillow-heif` (HEIC thumbnails) ·
   pytest / hypothesis / pytest-qt · ruff · mypy · PyInstaller.
 

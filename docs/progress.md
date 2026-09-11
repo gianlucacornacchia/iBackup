@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-11 (Phase 2 GUI started)._
+_Last updated: 2026-09-11 (Phase 2 step 2 implemented offline)._
 
 ## Current status
 
@@ -16,7 +16,8 @@ _Last updated: 2026-09-11 (Phase 2 GUI started)._
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
 - **Next action on resume:** continue the Phase 2 step list in order. Step 1
-  (`gui-scaffold`) is done; step 2 is `gui-theme`, then `gui-worker`.
+  (`gui-scaffold`) and step 2 (`gui-theme`) are implemented offline; next is
+  step 3 (`gui-worker`). Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -32,8 +33,8 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | # | Step | State |
 |---|---|---|
 | 1 | `gui-scaffold` — package, entry point, window shell, offscreen tests | **done** |
-| 2 | `gui-theme` — WinUI tokens, light/dark, Mica on Windows | next |
-| 3 | `gui-worker` — thread owning `AppService`, progress/cancel | pending |
+| 2 | `gui-theme` — WinUI tokens, light/dark, guarded native effects | **done offline; Windows probe pending** |
+| 3 | `gui-worker` — thread owning `AppService`, progress/cancel | next |
 | 4 | `gui-models` — lazy-paging asset/album models, selection scope | pending |
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | pending |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
@@ -47,6 +48,13 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 Step 3 is the risk concentration: `AppService` is single-thread affine and holds
 an exclusive archive lock, so the threading backbone is isolated in one step
 rather than spread across the views.
+
+Step 2 retains solid client painting for normal launches. The opt-in
+`ibackup-gui --mica-probe` requests Mica plus experimental translucent Qt
+painting on Windows; accepted DWM requests are **not** visual proof. Validate
+the probe on Windows 11 22H2+ before enabling transparent client painting by
+default. Windows 10, unsupported attributes, disabled transparency,
+high-contrast mode and native-call failures use solid/native fallback.
 
 ### Final core-hardening validation report
 
@@ -78,7 +86,7 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 ## Approval gates (must not be passed without explicit approval)
 
 1. **Docs approval** — before writing any code. _(approved)_
-2. **UI-sketch approval** — before writing any GUI code. _(next gate — blocking)_
+2. **UI-sketch approval** — before writing any GUI code. _(approved 2026-09-11)_
 
 ## How to resume
 
@@ -98,13 +106,29 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [x] Core hardening and offline regression validation.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
-- [~] UI sketch produced (`docs/ui-sketch/`); **approval pending**.
-- [ ] Phase 2 — GUI.
-- [x] Current offline core/CLI suite green (GUI tests do not exist yet).
+- [x] UI sketch and clickable mock approved (2026-09-11).
+- [~] Phase 2 — GUI: scaffold and theme layer implemented offline.
+- [x] Offline core/CLI checkpoint complete; GUI shell/theme tests now exist.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
 
+- 2026-09-11 — **Step 2 `gui-theme` implemented offline.** Added exact WinUI
+  light/dark color tokens, logical-pixel type ramp, metrics and scoped QSS over
+  native controls. Persisted `theme=system|light|dark` works through the existing
+  settings/CLI/service APIs and is applied at GUI startup. The controller follows
+  system theme/accent changes, releases explicit overrides for high contrast,
+  and restores native colors/fonts. Windows style selection now logs
+  `windows11` -> `windowsvista` -> Fusion fallbacks. Native DWM requests use
+  pointer-sized handles, 32-bit arguments/HRESULTs and per-attribute build guards;
+  unsupported/failed effects log a solid fallback. The Mica probe is opt-in;
+  normal client painting stays opaque until real Windows validation. Offscreen
+  regression coverage includes settings, live theme changes, contrast/accent,
+  rendered fallback opacity and mocked native calls; no live Mica/chrome result
+  or Windows release qualification is claimed.
+  Targeted GUI/settings/service/CLI regression run: 171 passed, 94% GUI coverage
+  with branches measured; ruff and host/Windows-targeted mypy passed for the
+  changed modules.
 - 2026-09-11 — **UI-sketch gate passed; Phase 2 started.** The user approved
   both `gui-theme` and `gui-frontend` and asked for the GUI work to be broken
   into smaller steps. `gui-frontend` is now twelve ordered steps (`plan.md` §2b)

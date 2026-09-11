@@ -1,17 +1,16 @@
 # UI Sketch — iPhone Archive (`ibackup`) GUI
 
-**Status: awaiting user approval.** Per `specifications.md` §16.3 this is a hard
-gate: no PySide6 code is written until this sketch is explicitly approved.
-Review corrections are **not** that approval. The Mica probe is GUI work and is
-also blocked. All views and interactions below are requirements, not screenshots
-of implemented software. Core-hardening validation is a separate prerequisite.
+**Status: approved 2026-09-11**, together with the clickable mock. Phase 2
+implementation has started; the shell/theme layer exists. Views and interactions
+below remain requirements rather than screenshots of implemented software.
+Core-hardening and live Windows qualification are separate gates.
 
 > **A clickable mock of everything below now exists** in `mockup/`. Run
 > `python docs/ui-sketch/mockup/run_mock.py` to click through the real
 > interface, or look at the rendered screens in `mockup/screens/`. It is a
 > throwaway review artifact built with the selected framework: it uses fake
 > data, imports nothing from `iphone_archive`, and performs no operations.
-> **It is not application code and does not open this gate.**
+> **It is not application code; explicit user approval opened the gate.**
 
 Framework: **PySide6 (Qt for Python) 6.7+**, Windows 10/11. The GUI is a *thin
 adapter* — every button calls one `AppService` method, the same one the CLI
@@ -64,9 +63,11 @@ result/error and selected solid fallback (ADR-0011); never silently swallow it:
 - We keep the **system title bar**. A hand-drawn caption would look custom but
   loses Snap Layouts, accessibility and correct maximize behaviour.
 - **Unproven:** Mica behind Qt-painted content may need a translucent Qt
-  background. Only **after explicit approval**, run a probe on Win11 22H2+
-  before implementing the full views. No probe has run. If not clean, retain
-  solid `SolidBackgroundFillColorBase` and log the fallback.
+  background. Approval is recorded, but no live Windows probe has run. Step 2
+  retains solid `SolidBackgroundFillColorBase` for normal launches and exposes
+  `ibackup-gui --mica-probe` for the Windows 11 22H2+ experiment. Validate the
+  backdrop and native title bar before making transparent painting the default;
+  unsupported/failed requests log a solid fallback.
 
 ### 0.3 Design tokens
 
@@ -422,7 +423,7 @@ Design notes:
 
 ## 8. CLI ↔ GUI parity map
 
-Target parity map: GUI surfaces below are **planned** and remain blocked.
+Target parity map: GUI operation surfaces below are **planned**, not yet implemented.
 Current source CLI actions call the listed service APIs; tests must confirm
 selection, defaults and confirmation behavior match.
 
@@ -495,18 +496,19 @@ retain their active copies; this maps to CLI `--recycled-only`.
 
 ## 10. What approval unblocks
 
-Only explicit approval unblocks `ui-sketch-approval-gate`; core-hardening
-contracts must also pass before the GUI implementation starts:
+Explicit approval passed on 2026-09-11 after the core-hardening checkpoint.
+The twelve-step implementation order is tracked in `../plan.md` §2b:
 
-- **Theming first** — `gui/theme.py` (the §0.3 tokens + scoped QSS) and
-  `gui/win32_effects.py` (the §0.2 DWM calls), preceded by a throwaway Mica
-  probe on Windows 11 22H2 to confirm the backdrop renders behind Qt content.
+- **Scaffold and theming** — entry point/window shell, then `gui/theme.py`
+  (the §0.3 tokens + scoped QSS) and `gui/win32_effects.py` (the §0.2 DWM calls).
+  These exist offline; solid painting remains the default until the Windows
+  Mica probe confirms the backdrop renders correctly behind Qt content.
 - **Then the views** — `main_window`, `navigation_pane`, `command_bar`,
   `picture_grid_view`, `thumbnail_loader`, `operations_controller`,
   `deleted_on_phone_view`, `reclaim_view`, `marks_view`, `settings_dialog`,
   and the Qt models.
-- **Then** the `ibackup-gui` entry point and `tests/test_gui.py` under
-  `pytest-qt` (headless via `QT_QPA_PLATFORM=offscreen`).
+- **Tests accompany each step**, under `pytest-qt` with
+  `QT_QPA_PLATFORM=offscreen`; full parity and Windows rendering still need proof.
 
 The mock in `mockup/` is the reference for layout, wording and interaction, but
 it is **not** a starting point for the implementation: it has no service layer,
