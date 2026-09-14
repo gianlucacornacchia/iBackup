@@ -16,9 +16,11 @@ install degrades to a placeholder rather than breaking image thumbnails.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from ..config import ArchivePaths
 
@@ -266,9 +268,15 @@ def thumbnails_save_atomic(preview: PillowImage, target_path: Path) -> None:
     Returns None; raises on write failure.
     """
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    staging_path = target_path.with_name(target_path.name + ".part")
-    preview.save(staging_path, format="JPEG", quality=THUMBNAIL_QUALITY)
-    staging_path.replace(target_path)
+    # The GUI renders previews on several threads while the CLI may be running
+    # too, so the staging name is unique per writer; a shared one would let two
+    # writers interleave into the same partial file.
+    staging_path = target_path.with_name(f"{target_path.name}.{os.getpid()}.{uuid4().hex}.part")
+    try:
+        preview.save(staging_path, format="JPEG", quality=THUMBNAIL_QUALITY)
+        staging_path.replace(target_path)
+    finally:
+        staging_path.unlink(missing_ok=True)
 
 
 def thumbnails_render(source_path: Path, target_path: Path, size: int) -> None:

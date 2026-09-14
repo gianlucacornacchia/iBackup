@@ -254,6 +254,36 @@ Targeted validation, using the existing venv and dependencies:
 pytest tests/test_gui_models.py tests/test_gui_worker.py tests/test_gui.py tests/test_gallery.py tests/test_albums.py tests/test_service.py
 ```
 
+### Using the preview loader from later views
+
+`MainWindow.previews` is a `PreviewLoader`. Call
+`previews_entry(sha256, relative_path)` from a delegate or view with the values
+already carried by an asset row (`AssetRole.SHA256` and one entry of
+`AssetRole.PATHS`). It never touches the disk on the GUI thread: it returns a
+ready entry with a `QPixmap`, a failed entry with an error to paint as a
+placeholder, or a pending entry, scheduling one background render.
+
+Previews deliberately bypass the service worker. That worker holds the archive
+lock and serialises the catalog, so routing tiles through it would blank the
+grid during an import and flood its 32-slot queue while scrolling. Pool threads
+receive the archive root, the hash and a relative path only; never a connection,
+service, device or widget.
+
+Connect `preview_ready(sha256, size)` and `preview_failed(sha256, size, error)`
+and repaint the affected tiles. After scrolling, call
+`previews_cancel_stale(visible_and_prefetched_hashes)` so work for tiles that
+left the viewport is dropped before it starts. Use `previews_set_size()` when
+the `thumbnail_size` setting changes and `previews_retry()` to forget failures.
+The window rebinds `previews_set_archive()` whenever the open archive changes,
+which clears the cache because identical hashes resolve to different files in a
+different archive.
+
+Targeted validation, using the existing venv and dependencies:
+
+```powershell
+pytest tests/test_gui_previews.py tests/test_thumbnails.py tests/test_gui.py
+```
+
 ### Running the Windows Mica probe
 
 Normal launches retain opaque client painting. On Windows 11 22H2+ only:

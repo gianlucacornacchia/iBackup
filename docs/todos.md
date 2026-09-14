@@ -146,8 +146,13 @@ never starts before the layer beneath it is proven. Descriptions live in
   Tested with 1 297 assets, stale replies/indexes, mutation barriers, Qt
   notification reentrancy and album-copy recycle/restore isolation.
   _Depends on: gui-worker, browse-gallery._
-- [ ] **gui-thumbnail-loader** — background preview pipeline: bounded LRU cache,
-  request coalescing, cancel-on-scroll, pending/failed placeholders.
+- [x] **gui-thumbnail-loader** — implemented offline in `gui/previews.py`:
+  `PreviewLoader` renders previews on its own bounded thread pool instead of the
+  archive worker, coalesces requests per hash/size key, cancels scrolled-past
+  work, bounds decoded pixmaps with an LRU cache and remembers failures so a
+  broken file is not retried on every repaint. Shutdown waits for a safe
+  boundary without forcing threads. Thumbnail staging files are now uniquely
+  named so parallel and cross-process writers cannot corrupt a cache entry.
   _Depends on: gui-models, thumbnails._
 - [ ] **gui-shell** — navigation pane with live counts, page stack, command bar,
   status bar, phone connected/disconnected state.

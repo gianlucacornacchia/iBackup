@@ -94,6 +94,14 @@ step never starts before the layer beneath it is proven.
    listing APIs remain unbounded. No visible gallery is wired yet.
 5. `gui-thumbnail-loader` — background thumbnail pipeline with a bounded LRU
    cache, request coalescing, cancel-on-scroll and pending/failed placeholders.
+   Implemented offline: `MainWindow.previews` renders on a dedicated three-thread
+   pool **outside** the service worker, so an import or verify never blanks the
+   grid and a fast scroll cannot flood the worker's 32-slot queue. Pool threads
+   receive the archive root, SHA-256 and archive-relative path only - never a
+   connection, service or device. Decoded pixmaps are bounded by an LRU cache,
+   renders are coalesced per hash/size key, scrolled-past work is cancelled
+   before it starts, failures are remembered rather than retried each repaint,
+   and cache files stay identical to those of `ibackup thumbnail`.
 
 **Phase C — interface**
 

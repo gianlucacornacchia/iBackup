@@ -22,7 +22,10 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
+from ..browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
+from ..settings import settings_load
 from .models import ArchiveModels
+from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
 from .theme import GROUP_GAP, PAGE_MARGIN
 from .worker import WorkerController, WorkerFailure
 
@@ -51,6 +54,11 @@ class MainWindow(QMainWindow):
         self.worker.stopped.connect(self.main_window_worker_stopped)
         self.worker.failed.connect(self.main_window_worker_failed)
         self.models = ArchiveModels(self.worker, self)
+        self.previews = PreviewLoader(self, size=main_window_preview_size())
+        self.worker.result_ready.connect(self.main_window_sync_previews)
+        self.worker.failed.connect(self.main_window_sync_previews)
+        self.worker.cancelled.connect(self.main_window_sync_previews)
+        self.worker.stopped.connect(self.main_window_sync_previews)
 
         self.pages = QStackedWidget()
         self.pages.setObjectName("ContentLayer")
@@ -74,6 +82,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Keep the window/event loop alive until worker-owned resources have been released."""
+        self.previews.previews_cancel_all()
         if self.worker.service_thread.isRunning():
             event.ignore()
             self.close_pending = True
@@ -81,6 +90,7 @@ class MainWindow(QMainWindow):
             self.worker.worker_shutdown()
         else:
             self.worker.worker_shutdown()
+            self.previews.previews_shutdown()
             event.accept()
 
     @Slot()
@@ -90,10 +100,31 @@ class MainWindow(QMainWindow):
             self.close_pending = False
             self.close()
 
+    def main_window_sync_previews(self, reply: object = None) -> None:
+        """Rebind previews when the open archive changes; identical hashes differ per archive."""
+        self.previews.previews_set_archive(self.worker.archive_root)
+
     @Slot(object)
     def main_window_worker_failed(self, failure: WorkerFailure) -> None:
         """Surface worker errors in the shell; operation-specific views arrive in later steps."""
         self.main_window_show_status(f"{failure.operation} failed: {failure.message}")
+
+
+def main_window_preview_size() -> int:
+    """Read the persisted thumbnail size, falling back to the default.
+
+    Returns a usable bounding-box size. A hand-edited settings file must never
+    stop the window from opening, and ``settings_load`` validates as it reads,
+    so the read itself is guarded rather than only its result.
+    """
+    try:
+        size = settings_load().thumbnail_size
+    except Exception as error:
+        LOGGER.warning("using the default thumbnail size: %s", error)
+        return DEFAULT_THUMBNAIL_SIZE
+    if not isinstance(size, int) or isinstance(size, bool):
+        return DEFAULT_THUMBNAIL_SIZE
+    return size if MIN_PREVIEW_SIZE <= size <= MAX_PREVIEW_SIZE else DEFAULT_THUMBNAIL_SIZE
 
 
 def main_window_placeholder_page() -> QWidget:
