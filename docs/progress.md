@@ -15,11 +15,9 @@ _Last updated: 2026-09-14 (interrupted Phase 2 step 4 completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 5 (`gui-thumbnail-loader`). Steps 1-4
-  (`gui-scaffold`, `gui-theme`, `gui-worker`, `gui-models`) are implemented
-  offline. The 2026-09-14 recovery completed the previously requested step 4;
-  it did not start later GUI steps. Live Windows theme/Mica qualification
-  remains pending.
+- **Next action on resume:** step 6 (`gui-shell`). Steps 1-5 (`gui-scaffold`,
+  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`) are
+  implemented offline. Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -38,7 +36,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 2 | `gui-theme` — WinUI tokens, light/dark, guarded native effects | **done offline; Windows probe pending** |
 | 3 | `gui-worker` — thread owning `AppService`, progress/cancel | **done offline** |
 | 4 | `gui-models` — lazy-paging asset/album models, selection scope | **done offline** |
-| 5 | `gui-thumbnail-loader` — background previews, bounded cache | pending |
+| 5 | `gui-thumbnail-loader` — background previews, bounded cache | **done offline** |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
 | 7 | `gui-gallery` — grid, multi-select, viewer | pending |
 | 8 | `gui-ops-safe` — import, verify, scan, dedup, move | pending |
@@ -140,12 +138,26 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
 - [x] UI sketch and clickable mock approved (2026-09-11).
-- [~] Phase 2 — GUI: scaffold, theme, worker and models implemented offline.
+- [~] Phase 2 — GUI: scaffold, theme, worker, models and preview loader
+  implemented offline.
 - [x] Offline core/CLI checkpoint complete; GUI foundation/model tests now exist.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
 
+- 2026-09-14 — **Step 5 `gui-thumbnail-loader` implemented offline.** Previews
+  render on a dedicated bounded thread pool rather than the archive worker, so
+  a running import cannot blank the grid and fast scrolling cannot flood the
+  worker's request queue. Pool threads receive only the archive root, a hash and
+  a relative path. Added a bounded LRU pixmap cache, per-key coalescing,
+  cancel-on-scroll with an outstanding-render bound, remembered failures with
+  explicit retry and a bounded shutdown that never forces threads. Review caught
+  a cancelled render's reply being applied to the re-request that replaced it,
+  which could fail a valid tile permanently; replies now carry a per-render
+  token. An invalid persisted `thumbnail_size` no longer stops the window
+  opening. Thumbnail staging files are now uniquely named, because
+  concurrent GUI renders and a concurrently running CLI previously shared one
+  `.part` path. No gallery is visible yet; the grid arrives in step 7.
 - 2026-09-14 — **Recovered and completed step 4 `gui-models`.** Steps 2 and 3
   were already committed (`0928835`, `8e8cf24`); the worktree held unfinished
   step-4 source/tests without matching progress documentation. Completed
