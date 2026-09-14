@@ -139,14 +139,16 @@ never starts before the layer beneath it is proven. Descriptions live in
   the worker joins; application exit also joins. Real fake-device import/verify
   and lifecycle/error/cancellation regressions cover the foundation; operation
   views remain later steps. _Depends on: gui-scaffold, service-layer._
-- [ ] **gui-models** — lazy-paging Qt model over `gallery.AssetView` (the test
-  phone holds 1 297 items, so eager loading would stall the window), album
-  model, and the selection mapping that preserves album-copy scope instead of
-  silently promoting a selection to every copy of an asset.
+- [x] **gui-models** — implemented offline in `gui/models.py`: paged asset and
+  album models owned by the window, cached roles, shared selection and
+  exact-copy parameters for all/album/unsorted/recycled scopes. Default pages
+  contain 128 rows plus one lookahead; queries run only on the service worker.
+  Tested with 1 297 assets, stale replies/indexes, mutation barriers, Qt
+  notification reentrancy and album-copy recycle/restore isolation.
   _Depends on: gui-worker, browse-gallery._
 - [ ] **gui-thumbnail-loader** — background preview pipeline: bounded LRU cache,
   request coalescing, cancel-on-scroll, pending/failed placeholders.
-  _Depends on: gui-worker, browse-thumbnails._
+  _Depends on: gui-models, thumbnails._
 - [ ] **gui-shell** — navigation pane with live counts, page stack, command bar,
   status bar, phone connected/disconnected state.
   _Depends on: gui-theme, gui-models._
@@ -160,21 +162,23 @@ never starts before the layer beneath it is proven. Descriptions live in
   keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
   dry-run first. _Depends on: gui-ops-safe, recycle-bin, phone-diff, marks._
 - [ ] **gui-settings** — the six settings panels bound to the service; also
-  closes `settings-store`. _Depends on: gui-shell, settings-store._
+  closes the aggregate `settings-store` item (persisted settings already exist).
+  _Depends on: gui-shell, service-layer._
 - [ ] **gui-parity-tests** — a test that fails if any CLI command or service
   method has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
   _Depends on: gui-ops-destructive, gui-settings._
 - [ ] **gui-packaging** — PyInstaller executable, icon, version resource and a
   smoke test of the built artifact. _Depends on: gui-parity-tests._
 
-- [ ] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
+- [~] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
   operations_controller, reclaim_view, deleted_on_phone_view, marks_view,
   settings_dialog, Qt models); `ibackup-gui` entry point; progress/cancel via
   QThread with worker-owned SQLite, queued UI signals and Event cancellation;
   serialized mutations and bounded thumbnail queues.
   **No menu bar** — NavigationView + command bar per the sketch.
-  Now tracked as the `gui-*` step list above rather than as one item.
+  Aggregate tracked by the `gui-*` step list above; steps 1-4 are complete
+  offline. It is not a separate implementation task.
   _Depends on: archive-edit, browse-gallery, gui-theme, phone-diff,
   recycle-bin, service-layer, ui-sketch-approval-gate._
 
@@ -186,7 +190,8 @@ never starts before the layer beneath it is proven. Descriptions live in
   _Depends on: archive-edit, dedup, gui-frontend, hashing-layout, importer,
   name-safety, phone-diff, recycle-bin, service-layer, thumbnails, verifier._
   Status: offline core/CLI and recovery regressions pass; see `progress.md`.
-  GUI tests and Windows/hardware qualification remain separate future gates.
+  GUI foundation/model tests exist; full GUI parity and Windows/hardware
+  qualification remain separate future gates.
 
 ## Scheduled release milestone
 

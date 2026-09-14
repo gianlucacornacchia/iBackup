@@ -22,6 +22,7 @@ from typing import Literal
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
+from ..config import ArchivePaths
 from ..device.interface import MediaSource
 from ..service.app_service import AppService
 from ..service.progress import ProgressEvent, ProgressHandle
@@ -294,6 +295,7 @@ class WorkerController(QObject):
     cancelled = Signal(object)
     progress_changed = Signal(int, object)
     stopped = Signal()
+    request_submitted = Signal(int, str)
 
     def __init__(
         self,
@@ -319,6 +321,7 @@ class WorkerController(QObject):
         # GUI-thread-only metadata; request parameters are not accessed after enqueueing.
         self.pending: dict[int, WorkerRequest] = {}
         self.next_request_id = 1
+        self.archive_root: Path | None = None
         self.state: Literal["idle", "running", "stopping", "stopped"] = "idle"
 
     def worker_check_thread(self) -> None:
@@ -346,6 +349,8 @@ class WorkerController(QObject):
         if device_udid is not None and not isinstance(device_udid, str):
             raise TypeError("device_udid must be a string or None")
         parameters = {} if parameters is None else parameters
+        if operation == "close_archive" and parameters:
+            raise TypeError("close_archive accepts no parameters")
         if "source" in parameters or "progress" in parameters:
             raise ValueError("The worker owns source and progress parameters")
         copied = {name: worker_copy_data(value) for name, value in parameters.items()}
@@ -358,6 +363,7 @@ class WorkerController(QObject):
         if self.state == "idle":
             self.state = "running"
             self.service_thread.start()
+        self.request_submitted.emit(request_id, operation)
         return request_id
 
     def worker_open(self, archive_root: Path, *, create: bool = False) -> int:
@@ -419,6 +425,20 @@ class WorkerController(QObject):
         if reply.request_id:
             self.worker_deliver_progress(reply.request_id)
             self.pending.pop(reply.request_id, None)
+        if isinstance(reply, WorkerResult) and not reply.cancelled:
+            if reply.operation in {"open_archive", "create_archive"}:
+                if isinstance(reply.value, ArchivePaths):
+                    self.archive_root = reply.value.root
+                else:
+                    reply = worker_failure(
+                        reply.request_id,
+                        reply.operation,
+                        TypeError("Archive open returned invalid paths"),
+                    )
+            elif reply.operation == "close_archive":
+                self.archive_root = None
+        elif isinstance(reply, WorkerFailure) and reply.operation == "close_archive":
+            self.archive_root = None
         if isinstance(reply, WorkerFailure):
             self.failed.emit(reply)
         elif reply.cancelled:
@@ -432,6 +452,7 @@ class WorkerController(QObject):
         self.worker_check_thread()
         self.service_thread.wait()
         shutting_down = self.state == "stopping"
+        self.archive_root = None
         abandoned = list(self.pending.values())
         self.pending.clear()
         while True:

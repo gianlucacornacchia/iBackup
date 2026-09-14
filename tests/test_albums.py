@@ -96,6 +96,27 @@ def test_parses_album_membership(tmp_path):
     assert membership["IMG_0001.HEIC"] == ["Trip", "Favorites"]
 
 
+def test_album_pages_use_one_query_with_deterministic_ties(archive):
+    _, connection = archive
+    connection.executemany(
+        "INSERT INTO albums(name, safe_name) VALUES (?, 'same')",
+        [(f"Album {index}",) for index in range(7)],
+    )
+    connection.commit()
+    queries = []
+    connection.set_trace_callback(queries.append)
+    page = albums.albums_list(connection, limit=3, offset=2)
+    connection.set_trace_callback(None)
+    assert len(queries) == 1
+    assert [row.name for row in page] == ["Album 2", "Album 3", "Album 4"]
+    assert all(row.asset_count == 0 for row in page)
+    assert albums.albums_list(connection, offset=5) == albums.albums_list(connection)[5:]
+    assert albums.albums_list(connection, limit=0) == []
+    for limit, offset in [(-1, 0), (None, -1), (False, 0)]:
+        with pytest.raises(ValueError):
+            albums.albums_list(connection, limit, offset)
+
+
 @pytest.mark.parametrize("ordinal", [28, 33, 41])
 def test_join_table_ordinal_is_discovered(tmp_path, ordinal):
     """The join table is found whatever entity ordinal the iOS version used.

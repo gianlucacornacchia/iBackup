@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-11 (Phase 2 step 3 implemented offline)._
+_Last updated: 2026-09-14 (interrupted Phase 2 step 4 completed offline)._
 
 ## Current status
 
@@ -15,9 +15,11 @@ _Last updated: 2026-09-11 (Phase 2 step 3 implemented offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** continue the Phase 2 step list in order. Steps 1-3
-  (`gui-scaffold`, `gui-theme`, `gui-worker`) are implemented offline; next is
-  step 4 (`gui-models`). Live Windows theme/Mica qualification remains pending.
+- **Next action on resume:** step 5 (`gui-thumbnail-loader`). Steps 1-4
+  (`gui-scaffold`, `gui-theme`, `gui-worker`, `gui-models`) are implemented
+  offline. The 2026-09-14 recovery completed the previously requested step 4;
+  it did not start later GUI steps. Live Windows theme/Mica qualification
+  remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -35,7 +37,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 1 | `gui-scaffold` — package, entry point, window shell, offscreen tests | **done** |
 | 2 | `gui-theme` — WinUI tokens, light/dark, guarded native effects | **done offline; Windows probe pending** |
 | 3 | `gui-worker` — thread owning `AppService`, progress/cancel | **done offline** |
-| 4 | `gui-models` — lazy-paging asset/album models, selection scope | next |
+| 4 | `gui-models` — lazy-paging asset/album models, selection scope | **done offline** |
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | pending |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
 | 7 | `gui-gallery` — grid, multi-select, viewer | pending |
@@ -53,12 +55,39 @@ are rejected. Progress is coalesced, cancellation uses the existing Event, and
 window close waits asynchronously for safe shutdown. No archive/device is
 automatically opened, and no archive-operation controls exist yet.
 
+Step 4 adds `MainWindow.models`: lazy asset/album metadata and shared selection,
+with all/album/unsorted/recycled scopes, default 128-row pages plus lookahead,
+and one outstanding page per model. Metadata accumulates until reset; decoded
+image caching belongs to step 5. Mutation barriers and model generations reject
+stale pages/selections; insertion/reset notifications cannot reenter paging or
+change selection scope halfway through an insertion. Proxy selections require
+persistent indexes captured while valid. Backend optional pagination preserves
+the CLI's existing unbounded defaults. The visible grid is still a later step.
+
 Step 2 retains solid client painting for normal launches. The opt-in
 `ibackup-gui --mica-probe` requests Mica plus experimental translucent Qt
 painting on Windows; accepted DWM requests are **not** visual proof. Validate
 the probe on Windows 11 22H2+ before enabling transparent client painting by
 default. Windows 10, unsupported attributes, disabled transparency,
 high-contrast mode and native-call failures use solid/native fallback.
+
+### Step 4 recovery checkpoint
+
+2026-09-14, Linux host, existing Python 3.12 virtual environment:
+
+| Command / evidence | Result |
+|---|---|
+| `pytest tests/test_gui_models.py tests/test_gui_worker.py tests/test_gui.py tests/test_gallery.py tests/test_albums.py tests/test_service.py -ra` | 115 passed. |
+| `pytest --cov=iphone_archive --cov-report=term --cov-fail-under=85 -ra` | 524 passed, 1 skipped; 89.86% coverage. |
+| `ruff check .` / `ruff format --check .` | Passed; 96 files formatted. Mock review artifacts explicitly excluded as documented. |
+| `mypy src` / `mypy --platform win32 src` | Passed, 42 source files. Windows target is static analysis only. |
+| `mypy --strict src/iphone_archive/core src/iphone_archive/catalog` | Passed, 17 source files. |
+| `pip check` / `git diff --check` | Passed. |
+| Follow-up review of step 4 | No significant remaining findings. |
+
+The single skipped case remains the inapplicable purge/publication checkpoint.
+No real-phone operations or Windows builds were performed. The Windows CI
+commands were exercised locally where applicable, not on a Windows runner.
 
 ### Final core-hardening validation report
 
@@ -111,11 +140,29 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
 - [x] UI sketch and clickable mock approved (2026-09-11).
-- [~] Phase 2 — GUI: scaffold, theme and worker implemented offline.
-- [x] Offline core/CLI checkpoint complete; GUI shell/theme/worker tests now exist.
+- [~] Phase 2 — GUI: scaffold, theme, worker and models implemented offline.
+- [x] Offline core/CLI checkpoint complete; GUI foundation/model tests now exist.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
+
+- 2026-09-14 — **Recovered and completed step 4 `gui-models`.** Steps 2 and 3
+  were already committed (`0928835`, `8e8cf24`); the worktree held unfinished
+  step-4 source/tests without matching progress documentation. Completed
+  `gui/models.py`, window ownership and optional backend album/unsorted/recycled
+  pagination. Selection snapshots retain exact copy IDs and reject changed
+  scopes, archives and generations. Review exposed reentrant Qt insertion/reset
+  callbacks that could repeat offsets or relabel active copies as recycled, and
+  stale ordinary proxy indexes that could crash native Qt mapping. Added
+  transaction guards, deferred scope resets, a persistent-proxy-index contract
+  and regressions. Invalid close requests no longer lose the controller's
+  archive identity. No thumbnail loader, visible gallery or operation controls
+  were added; step 5 is next.
+- 2026-09-14 — **Reconciled CI scope and living docs.** Repository-wide Ruff
+  commands included throwaway mockups despite the documented exclusion.
+  Added the explicit mock directory exclusion, leaving application/tests
+  covered, and ran the repository checkpoint above. Updated README, plan,
+  checklist, architecture, development/testing guide and session task states.
 
 - 2026-09-11 — **Step 3 `gui-worker` implemented offline.** Added `gui/worker.py`:
   worker-owned service and per-request device contexts, explicit archive

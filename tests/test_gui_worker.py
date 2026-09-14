@@ -155,12 +155,29 @@ def test_close_then_open_serializes_archive_switches(workers, qtbot, tmp_path):
     refused = worker.worker_open(tmp_path / "second", create=True)
     qtbot.waitUntil(lambda: refused in failures)
     assert "Close the current archive" in failures[refused].message
+    assert worker.archive_root == tmp_path / "first"
     assert not (tmp_path / "second").exists()
     close_id = worker.worker_submit("close_archive")
     open_id = worker.worker_open(tmp_path / "second", create=True)
     stats_id = worker.worker_submit("app_service_stats")
     wait_reply(qtbot, stats_id, replies, failures)
     assert list(replies)[-3:] == [close_id, open_id, stats_id]
+    assert worker.archive_root == tmp_path / "second"
+
+
+def test_invalid_close_keeps_the_controller_archive_identity(workers, qtbot, tmp_path):
+    """Rejected close parameters must not leave models believing the open session is closed."""
+    worker, replies, failures, _, _ = workers()
+    root = tmp_path / "archive"
+    initialize(qtbot, worker, replies, failures, root)
+    assert worker.archive_root == root
+    with pytest.raises(TypeError, match="no parameters"):
+        worker.worker_submit("close_archive", {"invalid": True})
+    assert worker.archive_root == root
+    request_id = worker.worker_submit("app_service_stats")
+    assert wait_reply(qtbot, request_id, replies, failures).value["assets"] == 0
+    wait_reply(qtbot, worker.worker_submit("close_archive"), replies, failures)
+    assert worker.archive_root is None
 
 
 def test_real_import_verify_and_source_lifetime_stay_on_worker(workers, qtbot, tmp_path):

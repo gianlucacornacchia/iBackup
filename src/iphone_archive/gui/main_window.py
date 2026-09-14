@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
+from .models import ArchiveModels
 from .theme import GROUP_GAP, PAGE_MARGIN
 from .worker import WorkerController, WorkerFailure
 
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         self.close_pending = False
         self.worker.stopped.connect(self.main_window_worker_stopped)
         self.worker.failed.connect(self.main_window_worker_failed)
+        self.models = ArchiveModels(self.worker, self)
 
         self.pages = QStackedWidget()
         self.pages.setObjectName("ContentLayer")

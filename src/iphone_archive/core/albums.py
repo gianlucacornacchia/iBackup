@@ -63,9 +63,7 @@ def albums_discover_join(connection: sqlite3.Connection) -> tuple[str, str, str]
     matching the iOS naming convention is present.
     """
     try:
-        rows = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall()
+        rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     except sqlite3.Error:
         return None
 
@@ -163,33 +161,36 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
     return membership
 
 
-def albums_list(connection: sqlite3.Connection) -> list[AlbumSummary]:
+def albums_list(
+    connection: sqlite3.Connection, limit: int | None = None, offset: int = 0
+) -> list[AlbumSummary]:
     """List albums with their archived asset counts.
 
     connection: an open catalog connection.
+    limit: maximum albums, or None for all.
+    offset: rows to skip in deterministic safe-name/id order.
     Returns one ``AlbumSummary`` per album, excluding recycled assets.
     """
-    summaries: list[AlbumSummary] = []
-    for album in repository.repository_list_albums(connection):
-        if album.album_id is None:
-            continue
-        row = connection.execute(
-            """
-            SELECT COUNT(DISTINCT asset_id) AS total
-            FROM asset_files
-            WHERE album_id = ? AND location = ?
-            """,
-            (album.album_id, FileLocation.PHOTOS.value),
-        ).fetchone()
-        summaries.append(
-            AlbumSummary(
-                album_id=album.album_id,
-                name=album.name,
-                safe_name=album.safe_name,
-                asset_count=int(row["total"]) if row is not None else 0,
-            )
+    paging, parameters = repository.repository_page_clause(limit, offset)
+    rows = connection.execute(
+        """
+        SELECT albums.id, albums.name, albums.safe_name,
+            (SELECT COUNT(DISTINCT asset_id) FROM asset_files
+             WHERE album_id = albums.id AND location = ?) AS asset_count
+        FROM albums ORDER BY safe_name, id
+        """
+        + paging,
+        [FileLocation.PHOTOS.value, *parameters],
+    ).fetchall()
+    return [
+        AlbumSummary(
+            album_id=int(row["id"]),
+            name=str(row["name"]),
+            safe_name=str(row["safe_name"]),
+            asset_count=int(row["asset_count"]),
         )
-    return summaries
+        for row in rows
+    ]
 
 
 def albums_unsorted_count(connection: sqlite3.Connection) -> int:

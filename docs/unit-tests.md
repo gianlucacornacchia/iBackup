@@ -1,7 +1,7 @@
 # iPhone Archive — Tests and Validation Plan
 
 Status: offline core/CLI hardening and its regression checkpoint are complete.
-The GUI shell/theme/worker has offline coverage; live Windows appearance, full GUI
+The GUI shell/theme/worker/models have offline coverage; live Windows appearance, full GUI
 operations and the Windows release are **not validated**.
 Use the final validation report in [progress](progress.md), not stale copied
 test counts, for executed commands/results.
@@ -20,8 +20,9 @@ Choose targeted existing tests after code changes; run the full configured
 quality gates for a checkpoint. Docs-only edits need no Python test run.
 The suite uses fake devices and pytest `tmp_path`; configure a project-local
 test base when the execution environment prohibits system temporary folders.
-GUI tests run headless: `tests/test_gui.py`, `tests/test_gui_theme.py` and
-`tests/test_gui_worker.py` set `QT_QPA_PLATFORM=offscreen`, so no display is
+GUI tests run headless: `tests/test_gui.py`, `tests/test_gui_theme.py`,
+`tests/test_gui_worker.py` and `tests/test_gui_models.py` set
+`QT_QPA_PLATFORM=offscreen`, so no display is
 needed and CI behaves like a developer machine. They
 skip cleanly when PySide6 or pytest-qt is unavailable.
 
@@ -59,6 +60,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_gui.py` | Offscreen window shell, entry point/style selection and Qt-free package/bootstrap imports in a fresh process. |
 | `test_gui_theme.py` | Exact color/alpha/type tokens, scoped QSS, persisted theme bootstrap, live system/accent changes, high-contrast precedence, Qt 6.7 fallback and rendered solid opacity. |
 | `test_gui_worker.py` | Real QThread service/device ownership, queued GUI delivery, archive-lock release, fake-device import/verify, detached request/result data, FIFO/overflow, coalesced progress, direct and queued cancellation, failure cleanup/restart without replay and window/application shutdown. |
+| `test_gui_models.py` | Lazy 1 297-asset paging on the worker, roles and bounded queries, Qt model contracts/reentrant notifications, stale replies/indexes, persistent proxy selections, mutation barriers and exact-copy recycle/restore isolation. |
 | `test_win32_effects.py` | Mocked platform/build guards, native preference queries, pointer-sized HWND/32-bit arguments, HRESULT/load failures and opt-in Mica fallback. Not a live Windows probe. |
 
 `test_reclaim.py`, `test_recycle.py` and `test_selection.py` were added in core
