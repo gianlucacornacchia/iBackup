@@ -145,3 +145,25 @@ def test_offset_without_limit_and_negative_paging(archive):
     assert len(gallery.gallery_list_assets(connection, offset=1)) == 1
     with pytest.raises(ValueError):
         gallery.gallery_list_assets(connection, limit=-1)
+
+
+@pytest.mark.parametrize("listing", [gallery.gallery_list_unsorted, gallery.gallery_list_recycled])
+def test_special_scopes_have_stable_bounded_pages(archive, listing):
+    paths, connection = archive
+    importer.importer_run(
+        connection,
+        paths,
+        FakeDevice({f"/DCIM/{index}/same.jpg": bytes([index]) for index in range(5)}),
+    )
+    if listing is gallery.gallery_list_recycled:
+        identifiers = [view.asset_id for view in gallery.gallery_list_assets(connection)]
+        recycle.recycle_move_to_deleted(connection, paths, identifiers)
+    whole = listing(connection)
+    pages = [view for offset in (0, 2, 4) for view in listing(connection, limit=2, offset=offset)]
+    assert [view.asset_id for view in pages] == [view.asset_id for view in whole]
+    assert len({view.asset_id for view in pages}) == 5
+    assert listing(connection, limit=0) == []
+    assert listing(connection, offset=2) == whole[2:]
+    for limit, offset in [(-1, 0), (None, -1), (True, 0), (1, 0.5)]:
+        with pytest.raises(ValueError):
+            listing(connection, limit=limit, offset=offset)

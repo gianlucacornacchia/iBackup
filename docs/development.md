@@ -97,7 +97,8 @@ pytest --cov=iphone_archive         # optional coverage
 
 ```
 
-`tests/test_gui.py`, `tests/test_gui_theme.py` and `tests/test_gui_worker.py`
+`tests/test_gui.py`, `tests/test_gui_theme.py`, `tests/test_gui_worker.py` and
+`tests/test_gui_models.py`
 run headless: they set `QT_QPA_PLATFORM=offscreen` on import, so GUI tests need
 no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
@@ -118,6 +119,9 @@ imports nothing from `iphone_archive`, and is deliberately **excluded from
 `ruff`, `mypy` and `pytest`** because it is a throwaway review artifact, not
 application code. Rendered light/dark reference screens are in
 `docs/ui-sketch/mockup/screens/`.
+Ruff's `extend-exclude` explicitly excludes that directory, including when CI
+runs `ruff check .` and `ruff format --check .`; application GUI code and tests
+remain included.
 
 The suite runs **offline** with a fake device and temporary archives — no real
 iPhone required.
@@ -194,6 +198,7 @@ tests inject a context-manager factory rather than a GUI-created device.
 | `cancelled` | `WorkerResult` with acknowledged cancellation and any partial result |
 | `failed` | `WorkerFailure` with request ID, operation, error type/message and traceback text; ID 0 denotes shutdown failure |
 | `progress_changed` | Request ID and the latest immutable `ProgressEvent` |
+| `request_submitted` | Request ID and operation; synchronous GUI-side notification after acceptance, used to invalidate model scopes before any reply is delivered |
 | `stopped` | The thread has finished and been joined (also emitted for shutdown before first use) |
 
 Delivery to the controller is explicitly queued onto the GUI thread. At most 32
@@ -212,6 +217,42 @@ completion, even if a device call has not returned; never use `QThread.terminate
 Expected operation failures preserve the session. Unexpected failures release
 it and fail pending requests without replay; a request after `stopped` starts a
 fresh worker and must explicitly reopen the archive.
+
+### Using the paged models from later views
+
+`MainWindow.models` owns `assets`, `albums` and the shared `selection`
+(`QItemSelectionModel`). The window constructs them without opening an archive
+or loading rows. After a successful worker open, call `fetchMore()` on a model
+when `canFetchMore()` permits it. `rowCount()` and `data()` read cached metadata
+only; no SQLite access or thumbnail decoding occurs on the GUI thread.
+
+`AssetScope()` lists active assets; `AssetScope("album", album_id)`,
+`AssetScope("unsorted")` and `AssetScope("recycled")` choose other scopes through
+`asset_model_set_scope()`. Pages default to 128 rows (configurable 1-512), with
+one extra lookahead row to determine whether another page exists. Each model
+has at most one outstanding request; already fetched metadata remains cached
+until reset. This bounds individual queries, not total metadata after browsing
+an entire library. The thumbnail cache is a separate step.
+
+Connect `loading_changed`, `error_changed` and `page_loaded` for view updates.
+Failures stop automatic paging; `model_retry()` retries the same offset.
+Accepted archive mutations reset models and invalidate selections before any
+reply is delivered; fetching resumes only after all such requests finish.
+Reentrant Qt insert/reset callbacks cannot fetch or submit stale selections.
+
+Use `asset_model_selection(indexes)` to capture an immutable snapshot, then
+`asset_model_selection_parameters(snapshot)` immediately before submitting a
+copy-scoped service mutation. This returns explicit `asset_ids` and `file_ids`;
+never omit the file IDs to turn an album selection into an asset-wide action.
+Snapshot validation rejects changed archives, generations and scopes. For proxy
+views, capture `QPersistentModelIndex(index)` while each index is current and
+pass those persistent indexes, not ordinary proxy indexes retained over resets.
+
+Targeted validation, using the existing venv and dependencies:
+
+```powershell
+pytest tests/test_gui_models.py tests/test_gui_worker.py tests/test_gui.py tests/test_gallery.py tests/test_albums.py tests/test_service.py
+```
 
 ### Running the Windows Mica probe
 

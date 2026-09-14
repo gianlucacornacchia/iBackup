@@ -86,6 +86,12 @@ step never starts before the layer beneath it is proven.
    1 297 items, so eager loading would stall the window), album model, and the
    selection mapping that preserves album-copy scope rather than silently
    promoting a selection to every copy of an asset.
+   Implemented offline: `MainWindow.models` owns asset/album models and shared
+   selection. Pages default to 128 rows plus one lookahead row; all queries run
+   on the service worker. Mutation barriers and reset generations invalidate
+   stale pages/selections, including reentrant Qt notifications. Proxy selections
+   require persistent indexes captured while valid. Defaults of the CLI/service
+   listing APIs remain unbounded. No visible gallery is wired yet.
 5. `gui-thumbnail-loader` — background thumbnail pipeline with a bounded LRU
    cache, request coalescing, cancel-on-scroll and pending/failed placeholders.
 

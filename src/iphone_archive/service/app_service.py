@@ -183,13 +183,16 @@ class AppService:
         connection, paths = self.app_service_require()
         return dedup.dedup_report(connection, paths)
 
-    def app_service_list_albums(self) -> list[albums.AlbumSummary]:
+    def app_service_list_albums(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[albums.AlbumSummary]:
         """List albums with their active asset counts.
 
+        limit/offset: optional bounded page; defaults preserve the full CLI listing.
         Returns the album summaries.
         """
         connection, _ = self.app_service_require()
-        return albums.albums_list(connection)
+        return albums.albums_list(connection, limit, offset)
 
     def app_service_list_assets(
         self,
@@ -209,21 +212,27 @@ class AppService:
         connection, _ = self.app_service_require()
         return gallery.gallery_list_assets(connection, album_id, include_deleted, limit, offset)
 
-    def app_service_list_unsorted(self) -> list[gallery.AssetView]:
+    def app_service_list_unsorted(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[gallery.AssetView]:
         """List assets that belong to no album.
 
+        limit/offset: optional bounded page; defaults preserve the full CLI listing.
         Returns the album-less ``AssetView`` models.
         """
         connection, _ = self.app_service_require()
-        return gallery.gallery_list_unsorted(connection)
+        return gallery.gallery_list_unsorted(connection, limit, offset)
 
-    def app_service_list_recycled(self) -> list[gallery.AssetView]:
+    def app_service_list_recycled(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[gallery.AssetView]:
         """List assets held in the ``Deleted/`` recycle bin.
 
+        limit/offset: optional bounded page; defaults preserve the full CLI listing.
         Returns the recycled ``AssetView`` models.
         """
         connection, _ = self.app_service_require()
-        return gallery.gallery_list_recycled(connection)
+        return gallery.gallery_list_recycled(connection, limit, offset)
 
     def app_service_scan_phone(self, source: MediaSource) -> None:
         """Refresh present-on-phone state from a metadata-only device scan.

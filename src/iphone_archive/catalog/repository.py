@@ -324,6 +324,19 @@ def repository_link_asset_album(
     )
 
 
+def repository_page_clause(limit: int | None, offset: int = 0) -> tuple[str, list[int]]:
+    """Build validated SQLite pagination; None preserves existing unbounded listings."""
+    if type(offset) is not int or offset < 0:
+        raise ValueError("listing offset must be a non-negative integer")
+    if limit is not None and (type(limit) is not int or limit < 0):
+        raise ValueError("listing limit must be a non-negative integer or None")
+    if limit is not None:
+        return " LIMIT ? OFFSET ?", [limit, offset]
+    if offset:
+        return " LIMIT -1 OFFSET ?", [offset]
+    return "", []
+
+
 def repository_list_albums(connection: sqlite3.Connection) -> list[Album]:
     """List all albums known to the catalog.
 

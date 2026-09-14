@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
+from ..catalog import repository
 from ..catalog.models import ArchiveState, FileLocation
 from ..config import ArchivePaths
 
@@ -137,8 +138,7 @@ def gallery_list_assets(
     offset: number of assets to skip, for paged/virtualized views.
     Returns a list of ``AssetView`` models ordered by capture time then name.
     """
-    if offset < 0 or (limit is not None and limit < 0):
-        raise ValueError("listing limit and offset must not be negative")
+    paging, paging_parameters = repository.repository_page_clause(limit, offset)
     clauses = []
     parameters: list[object] = []
     if not include_deleted:
@@ -154,12 +154,8 @@ def gallery_list_assets(
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     query = f"SELECT * FROM assets {where} ORDER BY COALESCE(captured_at, ''), original_name, id"
-    if limit is not None:
-        query += " LIMIT ? OFFSET ?"
-        parameters.extend([limit, offset])
-    elif offset:
-        query += " LIMIT -1 OFFSET ?"
-        parameters.append(offset)
+    query += paging
+    parameters.extend(paging_parameters)
 
     rows = connection.execute(query, parameters).fetchall()
     return gallery_build_views(
@@ -170,34 +166,45 @@ def gallery_list_assets(
     )
 
 
-def gallery_list_unsorted(connection: sqlite3.Connection) -> list[AssetView]:
+def gallery_list_unsorted(
+    connection: sqlite3.Connection, limit: int | None = None, offset: int = 0
+) -> list[AssetView]:
     """List active assets that belong to no album.
 
     connection: an open catalog connection.
+    limit: maximum rows, or None for all.
+    offset: rows to skip in deterministic capture-time/name/id order.
     Returns the album-less assets as view models.
     """
+    paging, parameters = repository.repository_page_clause(limit, offset)
     rows = connection.execute(
         """
         SELECT * FROM assets
         WHERE archive_state = ?
           AND id NOT IN (SELECT asset_id FROM asset_albums)
-        ORDER BY COALESCE(captured_at, ''), original_name
-        """,
-        (ArchiveState.ACTIVE.value,),
+        ORDER BY COALESCE(captured_at, ''), original_name, id
+        """
+        + paging,
+        [ArchiveState.ACTIVE.value, *parameters],
     ).fetchall()
     return gallery_build_views(connection, rows, FileLocation.PHOTOS)
 
 
-def gallery_list_recycled(connection: sqlite3.Connection) -> list[AssetView]:
+def gallery_list_recycled(
+    connection: sqlite3.Connection, limit: int | None = None, offset: int = 0
+) -> list[AssetView]:
     """List assets currently held in the ``Deleted/`` recycle bin.
 
     connection: an open catalog connection.
+    limit: maximum rows, or None for all.
+    offset: rows to skip in deterministic name/id order.
     Returns the recycled assets as view models.
     """
+    paging, parameters = repository.repository_page_clause(limit, offset)
     rows = connection.execute(
         "SELECT * FROM assets WHERE id IN "
-        "(SELECT asset_id FROM asset_files WHERE location = ?) ORDER BY original_name, id",
-        (FileLocation.DELETED.value,),
+        "(SELECT asset_id FROM asset_files WHERE location = ?) ORDER BY original_name, id" + paging,
+        [FileLocation.DELETED.value, *parameters],
     ).fetchall()
     return gallery_build_views(connection, rows, FileLocation.DELETED)
 

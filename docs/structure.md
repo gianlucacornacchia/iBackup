@@ -1,6 +1,6 @@
 # iPhone Archive — Project Structure
 
-Status: current core/CLI and GUI shell/theme/worker map plus planned GUI contracts.
+Status: current core/CLI and GUI shell/theme/worker/models map plus planned GUI contracts.
 Implementation presence does not establish hardware or crash-safety validation;
 see [progress](progress.md) and [test plan](unit-tests.md).
 
@@ -31,7 +31,7 @@ All paths below are relative to `src/iphone_archive/`.
 | `core/archive_layout.py` | Copy/hardlink placement and `PlacedFile`. |
 | `core/file_operations.py` | Journaled archive edit preflight, placement, rollback/finalization and sidecar recovery. |
 | `core/importer.py` | Incremental import, placement, catalog/sidecars, `ImportResult`. |
-| `core/albums.py` | Archive album queries and `AlbumSummary` (not the phone database parser). |
+| `core/albums.py` | Paged archive album summaries/counts and best-effort phone `Photos.sqlite` album membership parsing. |
 | `core/dedup.py` | Read-only storage report, `DuplicateGroup`, `DedupResult`. |
 | `core/verifier.py` | Verify all cataloged copies, `VerifyIssue`, `VerifyResult`. |
 | `core/phone_diff.py` | Device inventory reconciliation, `DeletedFromPhoneItem`, `PhoneDiffResult`. |
@@ -45,6 +45,7 @@ All paths below are relative to `src/iphone_archive/`.
 | `gui/theme.py` | WinUI tokens/type ramp/metrics, scoped QSS, live theme/accent controller and high-contrast preservation; GUI-thread-only. |
 | `gui/win32_effects.py` | Lazy native preference queries, build-guarded DWM attributes, checked HRESULTs and observable solid fallback; experimental frame extension for the Mica probe. |
 | `gui/worker.py` | GUI-affine `WorkerController`, dedicated FIFO `ServiceThread`, worker-only session, bounded/coalesced progress mailbox and detached `WorkerResult`/`WorkerFailure` transport. |
+| `gui/models.py` | `ArchiveModels`, lazy `AssetModel`/`AlbumModel`, cached roles, generation-bound exact-copy selections and mutation barriers; no direct SQLite/device access. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.
@@ -165,8 +166,8 @@ only a complete successful scan publishes absence.
 
 ## 4. GUI execution contract — implementation in progress
 
-The sketch was approved on 2026-09-11. The shell, theme and worker foundation
-exist. Later operation views and models must preserve the following:
+The sketch was approved on 2026-09-11. The shell, theme, worker and paged models
+exist. Later operation views must preserve the following:
 
 - Create/open/use/close `AppService` and its SQLite connection **in the worker
   thread that owns them**. Never share a service/connection between QThreads,
@@ -192,10 +193,22 @@ exist. Later operation views and models must preserve the following:
 - Bound thumbnail workers, pending requests and decoded-image caches; request
   visible/prefetch tiles only, discard stale requests, and paginate metadata.
   Independent thumbnail workers receive immutable paths/DTOs, not SQLite.
-- `main_window.py`, `application.py`, `theme.py`, `win32_effects.py` and
-  `worker.py` exist as of steps 1-3. `navigation_pane.py`, `command_bar.py`,
+- Models fetch at most one page each (128 rows by default, 1-512 configurable,
+  plus one lookahead row). Metadata access is cached and performs no I/O;
+  loaded metadata accumulates until reset, not a fixed-size cache of the whole
+  library. Archive mutations invalidate pages/selections before GUI reply
+  delivery. Qt insertion/reset notifications cannot trigger overlapping
+  fetches or relabel copies into a new scope.
+- Selection snapshots bind model token, generation, archive and scope to exact
+  `asset_ids`/`file_ids`. Ordinary source indexes carry the generation; proxy
+  indexes must be captured as `QPersistentModelIndex` while valid, since mapping
+  a stale ordinary proxy index can crash Qt. Recheck snapshots immediately before
+  submission. Empty selections pass explicit empty lists, never an all-assets
+  fallback.
+- `main_window.py`, `application.py`, `theme.py`, `win32_effects.py`,
+  `worker.py` and `models.py` exist as of steps 1-4. `navigation_pane.py`, `command_bar.py`,
   `picture_grid_view.py`, `thumbnail_loader.py`, `operations_controller.py`,
-  the review/settings views and the Qt models are **planned names** delivered by
+  and the review/settings views are **planned names** delivered by
   the remaining Phase 2 steps in `plan.md` §2b.
 - DWM failures log the attribute/result and select a solid background.
   Normal launches remain opaque; `--mica-probe` opts into experimental
@@ -216,7 +229,7 @@ native appearance changes live; other GUI-only preferences await later steps.
 `app_service_reset_settings` / `config reset` can recover invalid configuration.
 
 `pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.
-PySide6 and pytest-qt support the GUI shell/theme/worker layer (`darkdetect` remains
+PySide6 and pytest-qt support the GUI shell/theme/worker/models layer (`darkdetect` remains
 reserved; Qt/Win32 currently supply native appearance). Actual version and
 optional-extra declarations live in `pyproject.toml`.
 PyInstaller Windows packaging is a scheduled milestone; no spec or released
