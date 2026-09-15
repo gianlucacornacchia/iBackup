@@ -284,6 +284,41 @@ Targeted validation, using the existing venv and dependencies:
 pytest tests/test_gui_previews.py tests/test_thumbnails.py tests/test_gui.py
 ```
 
+### Extending the shell with new views and commands
+
+`MainWindow.shell` is an `ArchiveShell`. It owns the navigation pane, the page
+stack, the command bar and the status line, and deliberately owns no archive
+data: counters come from `app_service_stats`, album rows are pumped out of the
+shared paged album model, and both are re-read when the models' mutation
+barriers clear. Never query the catalog from a shell method - submit through
+the worker like `shell_refresh` does.
+
+To add a page, add a `NavigationView` to `LIBRARY_VIEWS` (or emit an album key
+through `navigation_album_key`) and map it in `VIEW_SCOPES` so selecting it
+points the shared asset model at the right scope. `shell_page()` creates the
+page lazily; replace its placeholder body in the step that implements the view.
+
+To add a command, add a `CommandSpec` in `gui/commands.py` naming the service
+operation it performs. A test fails if a command names an operation the worker
+does not accept, which is what keeps the GUI from drifting away from the CLI.
+Set `requires_archive`/`requires_phone` rather than disabling buttons by hand,
+and put secondary verbs in the overflow menu with `overflow=True`.
+
+Phone presence has no cheap probe: the only device call enumerates the whole
+library, which took about 36 seconds on the test iPhone. The state therefore
+stays `unknown` until a device operation succeeds or fails, and unknown keeps
+commands enabled rather than blocking the user.
+
+Icons are drawn by `gui/icons.py` in the caller's colour, so add a glyph there
+instead of bundling an image; unknown glyph names raise rather than drawing a
+blank icon.
+
+Targeted validation, using the existing venv and dependencies:
+
+```powershell
+pytest tests/test_gui_shell.py tests/test_gui_models.py tests/test_gui.py tests/test_gui_theme.py
+```
+
 ### Running the Windows Mica probe
 
 Normal launches retain opaque client painting. On Windows 11 22H2+ only:

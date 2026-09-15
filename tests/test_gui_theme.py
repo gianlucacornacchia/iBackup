@@ -90,9 +90,23 @@ def test_unknown_theme_is_rejected(themed_window):
 
 
 def test_scoped_styles_leave_native_controls_alone():
+    """Every rule must name a specific surface, so native controls keep their own style."""
     stylesheet = theme.theme_stylesheet(True)
-    for selector in ("QWidget {", "QPushButton", "QLineEdit", "QScrollBar", "QCheckBox"):
+    for selector in (
+        "QWidget {",
+        "QPushButton {",
+        "QPushButton:",
+        "QLineEdit",
+        "QScrollBar",
+        "QCheckBox",
+        "QListWidget {",
+    ):
         assert selector not in stylesheet
+    for rule in stylesheet.split("}"):
+        head = rule.split("{")[0].strip()
+        if not head or head.startswith("/*"):
+            continue
+        assert "#" in head or "[" in head, f"unscoped style rule: {head}"
     assert "QMainWindow#ArchiveWindow" in stylesheet
     assert "rgba(32, 32, 32, 255)" in stylesheet
 

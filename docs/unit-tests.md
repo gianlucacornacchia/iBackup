@@ -22,7 +22,7 @@ The suite uses fake devices and pytest `tmp_path`; configure a project-local
 test base when the execution environment prohibits system temporary folders.
 GUI tests run headless: `tests/test_gui.py`, `tests/test_gui_theme.py`,
 `tests/test_gui_worker.py`, `tests/test_gui_models.py` and
-`tests/test_gui_previews.py` set
+`tests/test_gui_previews.py` and `tests/test_gui_shell.py` set
 `QT_QPA_PLATFORM=offscreen`, so no display is
 needed and CI behaves like a developer machine. They
 skip cleanly when PySide6 or pytest-qt is unavailable.
@@ -63,6 +63,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_gui_worker.py` | Real QThread service/device ownership, queued GUI delivery, archive-lock release, fake-device import/verify, detached request/result data, FIFO/overflow, coalesced progress, direct and queued cancellation, failure cleanup/restart without replay and window/application shutdown. |
 | `test_gui_models.py` | Lazy 1 297-asset paging on the worker, roles and bounded queries, Qt model contracts/reentrant notifications, stale replies/indexes, persistent proxy selections, mutation barriers and exact-copy recycle/restore isolation. |
 | `test_gui_previews.py` | Preview key/path validation, LRU eviction, background render and cache reuse, per-key coalescing, remembered failures and retry, cancel-on-scroll, pending bound, superseded/cancelled replies, archive/size switching, off-GUI-thread rendering, cross-thread rejection, bounded shutdown, concurrent cache writers, invalid persisted sizes and window ownership. |
+| `test_gui_shell.py` | Drawn-glyph coverage and colour, album/library navigation keys, live counts and albums from real worker imports, preserved selection across refreshes, rail collapse, command-to-service mapping and availability rules, phone state from device failures, page/scope switching, archive close and shutdown cleanup, and status precedence over errors. |
 | `test_win32_effects.py` | Mocked platform/build guards, native preference queries, pointer-sized HWND/32-bit arguments, HRESULT/load failures and opt-in Mica fallback. Not a live Windows probe. |
 
 `test_reclaim.py`, `test_recycle.py` and `test_selection.py` were added in core

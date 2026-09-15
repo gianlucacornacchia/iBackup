@@ -107,6 +107,15 @@ step never starts before the layer beneath it is proven.
 
 6. `gui-shell` — navigation pane with live counts, stacked pages, command bar,
    status bar, phone connected/disconnected state.
+   Implemented offline: `MainWindow.shell` composes the pane, page stack,
+   command bar and status line. Counts and album rows are read through the
+   worker and re-read once the models' mutation barriers clear, so an import
+   cannot leave stale numbers on screen. Every command names a real service
+   operation, which a test enforces; commands needing an archive or a phone are
+   disabled with an explanatory tooltip. There is no cheap AFC presence probe,
+   so the phone state stays "unknown" - and commands stay available - until a
+   device operation succeeds or fails. Icons are drawn rather than bundled.
+   Operation dialogs and the gallery arrive in steps 7-10.
 7. `gui-gallery` — grid, rubber-band and Ctrl/Shift selection, selection bar,
    viewer, context menu.
 8. `gui-ops-safe` — import, verify, scan-phone, dedup, stats, move to album,

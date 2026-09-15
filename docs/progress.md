@@ -15,9 +15,11 @@ _Last updated: 2026-09-14 (interrupted Phase 2 step 4 completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 6 (`gui-shell`). Steps 1-5 (`gui-scaffold`,
-  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`) are
-  implemented offline. Live Windows theme/Mica qualification remains pending.
+- **Next action on resume:** step 7 (`gui-gallery`). Steps 1-6 (`gui-scaffold`,
+  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`, `gui-shell`)
+  are implemented offline. The shell is visible but its pages are still
+  placeholders: the grid arrives in step 7 and the operation dialogs in steps
+  8-10. Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -37,7 +39,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 3 | `gui-worker` — thread owning `AppService`, progress/cancel | **done offline** |
 | 4 | `gui-models` — lazy-paging asset/album models, selection scope | **done offline** |
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | **done offline** |
-| 6 | `gui-shell` — navigation, pages, command bar, status bar | pending |
+| 6 | `gui-shell` — navigation, pages, command bar, status bar | **done offline** |
 | 7 | `gui-gallery` — grid, multi-select, viewer | pending |
 | 8 | `gui-ops-safe` — import, verify, scan, dedup, move | pending |
 | 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | pending |
@@ -138,13 +140,28 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
 - [x] UI sketch and clickable mock approved (2026-09-11).
-- [~] Phase 2 — GUI: scaffold, theme, worker, models and preview loader
+- [~] Phase 2 — GUI: scaffold, theme, worker, models, preview loader and shell
   implemented offline.
 - [x] Offline core/CLI checkpoint complete; GUI foundation/model tests now exist.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
 
+- 2026-09-15 — **Step 6 `gui-shell` implemented offline.** The window now shows
+  the sketch's frame: navigation pane with live counts, page stack, the command
+  bar that replaces a menu bar, and a status line. The shell holds no archive
+  data; counters and album rows are read through the service worker and re-read
+  once the models' mutation barriers clear, so an import cannot leave stale
+  numbers on screen. Every command names a real service operation and a test
+  fails if it does not, which is the first half of the CLI/GUI parity proof.
+  Commands needing an archive or a phone are disabled with an explanatory
+  tooltip; since there is no cheap AFC presence probe, the phone state stays
+  unknown - and those commands stay available - until a device operation
+  succeeds or fails. Icons are drawn with QPainter rather than bundled, so they
+  follow light, dark and high-contrast themes with no extra assets. A regression
+  found while wiring the shell: routine status refreshes overwrote worker error
+  messages, so errors are now held until the next success or command. Pages are
+  still placeholders; the grid is step 7.
 - 2026-09-14 — **Step 5 `gui-thumbnail-loader` implemented offline.** Previews
   render on a dedicated bounded thread pool rather than the archive worker, so
   a running import cannot blank the grid and fast scrolling cannot flood the
