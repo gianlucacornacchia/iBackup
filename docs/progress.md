@@ -160,8 +160,16 @@ Do not infer Windows CI, live-device, or release qualification from this report.
   succeeds or fails. Icons are drawn with QPainter rather than bundled, so they
   follow light, dark and high-contrast themes with no extra assets. A regression
   found while wiring the shell: routine status refreshes overwrote worker error
-  messages, so errors are now held until the next success or command. Pages are
-  still placeholders; the grid is step 7.
+  messages, so errors are now held until the next success or command. Review
+  then found four more defects a green suite had missed - cancelled mutations
+  never reaching the shell even though a cancelled import has already committed
+  what it copied, the page stack drifting out of step with the navigation pane,
+  "disconnected" being an unrecoverable dead end because the phone probe itself
+  was gated on the phone, and a failed mutation erasing its own error. The last
+  fix first depended on Qt signal-connection order and was replaced by a bounded
+  housekeeping history; the lesson is that status correctness must never depend
+  on connection order. Each regression test was checked by reverting its fix.
+  Pages are still placeholders; the grid is step 7.
 - 2026-09-14 — **Step 5 `gui-thumbnail-loader` implemented offline.** Previews
   render on a dedicated bounded thread pool rather than the archive worker, so
   a running import cannot blank the grid and fast scrolling cannot flood the

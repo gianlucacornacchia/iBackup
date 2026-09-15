@@ -143,7 +143,11 @@ The sketch was approved on 2026-09-11. Shell/theme and worker lifetime,
 queued delivery, bounded request/progress transport, error cleanup and
 cancellation/shutdown now have offscreen tests. Worker tests assert actual
 thread IDs and exclusive archive-lock contention; coverage alone is not proof
-of correct thread placement. Still validate the view/model integration,
+of correct thread placement. Any GUI test that starts a worker must join it in
+a `finally` block: a failing assertion that leaves a `QThread` running aborts
+the whole process, which hides the assertion message. Tests must also wait for
+the refresh a mutation triggers, not just for the mutation itself, or they pass
+against broken status handling. Still validate the view/model integration,
 bounded thumbnail queues, full parity map and native accessibility/theme
 behavior. Perform the
 Mica probe on Windows 11 22H2+ using `ibackup-gui --mica-probe` and retain its
