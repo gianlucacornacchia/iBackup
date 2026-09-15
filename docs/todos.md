@@ -162,8 +162,11 @@ never starts before the layer beneath it is proven. Descriptions live in
   refresh after mutations rather than going stale, and worker errors are no
   longer overwritten by the next routine status update.
   _Depends on: gui-theme, gui-models._
-- [ ] **gui-gallery** — icon-mode grid, rubber-band and Ctrl/Shift selection,
-  selection bar, viewer dialog, context menu.
+- [x] **gui-gallery** — icon-mode grid, rubber-band and Ctrl/Shift selection,
+  selection bar, viewer dialog, context menu. The grid binds to the shared paged
+  model and paints tiles with a delegate, so only visible tiles cost anything and
+  painting never reads the disk. Selections are captured as exact asset+file IDs
+  on the GUI thread, and the viewer owns a second large-preview loader.
   _Depends on: gui-shell, gui-thumbnail-loader._
 - [ ] **gui-ops-safe** — import, verify, scan-phone, dedup report, stats and
   move-to-album behind a progress dialog that can be cancelled or hidden.

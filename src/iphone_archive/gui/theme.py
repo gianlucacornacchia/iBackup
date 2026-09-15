@@ -158,6 +158,9 @@ def theme_stylesheet(dark: bool, *, mica: bool = False) -> str:
     QFrame#Overlay {{
         background: {card}; border: 1px solid {stroke}; border-radius: {OVERLAY_RADIUS}px;
     }}
+    QListView#AssetGrid {{ background: transparent; border: none; outline: none; }}
+    QDialog#ViewerDialog {{ background: {base}; }}
+    QLabel#ViewerImage {{ background: {layer}; border-radius: {CONTROL_RADIUS}px; }}
     QStatusBar#ArchiveStatusBar {{
         background: transparent; border-top: 1px solid {divider}; color: {secondary};
     }}
