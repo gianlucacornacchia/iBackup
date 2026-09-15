@@ -97,8 +97,9 @@ pytest --cov=iphone_archive         # optional coverage
 
 ```
 
-`tests/test_gui.py`, `tests/test_gui_theme.py`, `tests/test_gui_worker.py` and
-`tests/test_gui_models.py`
+`tests/test_gui.py`, `tests/test_gui_theme.py`, `tests/test_gui_worker.py`,
+`tests/test_gui_models.py`, `tests/test_gui_previews.py`,
+`tests/test_gui_shell.py` and `tests/test_gui_gallery.py`
 run headless: they set `QT_QPA_PLATFORM=offscreen` on import, so GUI tests need
 no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
@@ -317,6 +318,52 @@ Targeted validation, using the existing venv and dependencies:
 
 ```powershell
 pytest tests/test_gui_shell.py tests/test_gui_models.py tests/test_gui.py tests/test_gui_theme.py
+```
+
+### Extending the gallery and the viewer
+
+`ArchiveShell` hosts one `AssetGallery`, because there is one shared
+`AssetModel`. `shell_apply_state` re-parents it into the page being shown and
+must release the previous host, or the old page keeps a dangling reference.
+
+`AssetGrid` is icon mode with extended selection and a rubber band. Tiles are
+painted by `TileDelegate`, never built as widgets, so a 200 000-asset archive
+costs only what is on screen. `TileDelegate.paint` must stay I/O-free: call
+`previews_entry()` and paint whatever it returns. It also swallows that call's
+`ValueError`, because an exception raised during Qt painting is extremely
+disruptive.
+
+Selection verbs live in `SELECTION_ACTIONS` and are gated per scope by
+`VIEW_ACTIONS` in `gui/shell.py`; the selection bar and the context menu are
+both generated from that table so they cannot drift apart. Add a verb in one
+place. `shell_gallery_action` captures the selection **on the GUI thread, at
+click time**, as an `AssetSelection` of exact asset and file IDs bound to the
+model generation, so an operation started later acts on the copies the user
+actually saw and a reset in between is refused rather than silently retargeted.
+
+Two constraints worth keeping:
+
+- Never scan every loaded row to find what is visible. `grid_anchor_row()`
+  probes the viewport with `indexAt` and walks outward until the first tile
+  past the area; the full scan measured 37.6 ms at 20 000 rows, twice per
+  scroll event, which defeats the point of a paged model.
+- Never use a bare `QTimer.singleShot` bound to a method of a destroyable
+  object. Use a child timer (like the grid's `pump_timer`) so the timer dies
+  with its owner; a deferred call into a destroyed model or worker aborts the
+  process.
+
+The viewer owns a **second** `PreviewLoader` at `VIEWER_PREVIEW_SIZE` with a
+tiny cache. Sharing the grid's loader would either evict every tile on each open
+or scale a 256 px thumbnail up. `ViewerDialog` sets `WA_DeleteOnClose`, and
+closes itself on `modelReset` because "row 12" then means a different asset.
+
+Offscreen tests must not call `QMenu.exec`; it hangs the suite in a modal loop.
+Build the menu with `gallery_build_menu()` and assert on it.
+
+Targeted validation, using the existing venv and dependencies:
+
+```powershell
+pytest tests/test_gui_gallery.py tests/test_gui_shell.py tests/test_gui_previews.py tests/test_gui_models.py
 ```
 
 ### Running the Windows Mica probe

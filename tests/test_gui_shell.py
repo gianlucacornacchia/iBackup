@@ -34,6 +34,7 @@ from iphone_archive.gui.navigation import (  # noqa: E402
     navigation_album_key,
     navigation_format_count,
 )
+from iphone_archive.gui.previews import PreviewLoader  # noqa: E402
 from iphone_archive.gui.shell import ArchiveShell  # noqa: E402
 from iphone_archive.gui.worker import WorkerController  # noqa: E402
 
@@ -46,12 +47,13 @@ def shell(qapp, qtbot, tmp_path):
     def create(**kwargs):
         worker = WorkerController(**kwargs)
         models = ArchiveModels(worker)
-        instance = ArchiveShell(worker, models)
+        previews = PreviewLoader()
+        instance = ArchiveShell(worker, models, previews)
         qtbot.addWidget(instance)
         replies, failures = {}, {}
         worker.result_ready.connect(lambda reply: replies.update({reply.request_id: reply}))
         worker.failed.connect(lambda error: failures.update({error.request_id: error}))
-        created.append((worker, models, instance))
+        created.append((worker, models, previews, instance))
 
         def wait(request_id):
             qtbot.waitUntil(lambda: request_id in replies or request_id in failures, timeout=10000)
@@ -61,11 +63,13 @@ def shell(qapp, qtbot, tmp_path):
         return worker, models, instance, wait, root
 
     yield create
-    for worker, models, instance in created:
+    for worker, models, previews, instance in created:
         worker.worker_shutdown()
         assert worker.worker_wait(5000)
+        previews.previews_shutdown()
         qapp.processEvents()
         instance.deleteLater()
+        previews.deleteLater()
         models.deleteLater()
         worker.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

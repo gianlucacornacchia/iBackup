@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-14 (interrupted Phase 2 step 4 completed offline)._
+_Last updated: 2026-09-14 (Phase 2 step 7 `gui-gallery` completed offline)._
 
 ## Current status
 
@@ -15,17 +15,19 @@ _Last updated: 2026-09-14 (interrupted Phase 2 step 4 completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 7 (`gui-gallery`). Steps 1-6 (`gui-scaffold`,
-  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`, `gui-shell`)
-  are implemented offline. The shell is visible but its pages are still
-  placeholders: the grid arrives in step 7 and the operation dialogs in steps
-  8-10. Live Windows theme/Mica qualification remains pending.
+- **Next action on resume:** step 8 (`gui-ops-safe`). Steps 1-7 (`gui-scaffold`,
+  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`, `gui-shell`,
+  `gui-gallery`) are implemented offline. The window now shows a real thumbnail
+  grid with multi-select and a full-size viewer, but every command and selection
+  verb still only acknowledges itself in the status bar: the operation dialogs
+  arrive in steps 8-10. Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
   hardware-validation entries below); everything else is Linux + fake device.
 - **Release:** packaging is step 12 and has not started. `ibackup-gui` now
-  exists as a real entry point that opens the window shell.
+  exists as a real entry point that opens the window shell and browses the
+  archive read-only.
 
 ## Phase 2 GUI steps
 
@@ -40,7 +42,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 4 | `gui-models` — lazy-paging asset/album models, selection scope | **done offline** |
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | **done offline** |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | **done offline** |
-| 7 | `gui-gallery` — grid, multi-select, viewer | pending |
+| 7 | `gui-gallery` — grid, multi-select, viewer | **done offline** |
 | 8 | `gui-ops-safe` — import, verify, scan, dedup, move | pending |
 | 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | pending |
 | 10 | `gui-settings` — six panels; also closes `settings-store` | pending |
@@ -70,6 +72,20 @@ painting on Windows; accepted DWM requests are **not** visual proof. Validate
 the probe on Windows 11 22H2+ before enabling transparent client painting by
 default. Windows 10, unsupported attributes, disabled transparency,
 high-contrast mode and native-call failures use solid/native fallback.
+
+### Step 7 validation checkpoint
+
+2026-09-14, Linux host, existing Python 3.12 virtual environment:
+
+| Command / evidence | Result |
+|---|---|
+| `pytest -q --cov --cov-fail-under=85` | 602 tests, 1 skipped; 89.78% coverage. |
+| `ruff check .` / `ruff format --check .` | Passed; 107 files formatted. |
+| `mypy src` / `mypy --platform win32 src` | Passed, 49 source files. |
+| `mypy --strict src/iphone_archive/core src/iphone_archive/catalog` | Passed, 17 source files. |
+| Every step-7 regression test | Confirmed to fail with its fix reverted. |
+
+No real-phone operations, Windows builds or Windows CI runs were performed.
 
 ### Step 4 recovery checkpoint
 
@@ -147,6 +163,40 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-15 — **Step 7 `gui-gallery` implemented offline.** The window finally
+  shows photographs. `gui/gallery.py` binds an icon-mode grid **directly to the
+  shared paged asset model** and paints tiles with a `QStyledItemDelegate`, so a
+  200 000-asset archive costs only the tiles on screen and painting never reads
+  the disk - it answers from the preview cache or schedules a background render.
+  There is one model and therefore one gallery, re-hosted by whichever page is
+  shown. Selection verbs are gated by scope, so the recycle bin offers
+  restore/purge while ordinary views offer move/mark/delete, and the selection
+  bar and context menu are generated from one table so they cannot drift apart.
+  Every verb captures the selection **immediately, on the GUI thread**, as exact
+  asset and file IDs bound to the model generation, so later steps act on the
+  copies the user actually saw. `gui/viewer.py` adds a full-size viewer with its
+  own second preview loader at 1024 px and a tiny cache, because sharing the
+  grid's loader would evict every tile on each open; it navigates with the arrow
+  keys, pages the model when it runs off the end, and closes itself on a model
+  reset because "row 12" then means a different asset. Two bugs were found while
+  building: a bare `QTimer.singleShot` fired a deferred method into an already
+  destroyed grid, model and worker, and the gallery's automatic page reads were
+  erasing the user's error message - the rule is now "ignore any automatic read",
+  backed by bounded request histories so correctness never depends on Qt
+  signal-connection order. Review then found five more defects a green suite had
+  missed: a viewport scan that visited every loaded row (37.6 ms per scan at
+  20 000 rows, twice per scroll, defeating the paged model), closed viewers that
+  were never destroyed and kept a multi-megabyte pixmap plus live model and
+  loader connections, and three tests that could not fail for the reasons they
+  named. The scan is now an `indexAt` probe plus an outward walk that stops at
+  the first tile past the viewport, and scrolling no longer cancels renders when
+  no tile can be located, so a momentarily unlaid-out viewport cannot discard
+  images about to be painted. The lesson recorded from this round is that a
+  *cost* fix needs a *cost* assertion: the regression counts how many rows the
+  scan touches, because the returned rows are identical either way. Also learned
+  offscreen: `QMenu.exec` hangs a headless suite in a modal loop, so menu
+  construction is separated from showing it. Commands and selection verbs still
+  only acknowledge themselves; the dialogs are step 8.
 - 2026-09-15 — **Step 6 `gui-shell` implemented offline.** The window now shows
   the sketch's frame: navigation pane with live counts, page stack, the command
   bar that replaces a menu bar, and a status line. The shell holds no archive

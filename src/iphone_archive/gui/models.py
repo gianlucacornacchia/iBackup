@@ -7,6 +7,7 @@ mutation barriers keep stale pages and selections out of the current view.
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
@@ -35,6 +36,9 @@ from .worker import WorkerController, WorkerFailure, WorkerResult, worker_copy_d
 LOGGER = logging.getLogger(__name__)
 DEFAULT_PAGE_SIZE = 128
 MAX_PAGE_SIZE = 512
+# Page requests are remembered after they are answered, because whether another
+# receiver has already seen the reply depends on Qt's signal connection order.
+PAGE_HISTORY = 128
 ROOT_INDEX = QModelIndex()
 ModelIndex = QModelIndex | QPersistentModelIndex
 Row = TypeVar("Row", AssetView, AlbumSummary)
@@ -139,6 +143,7 @@ class PagedListModel(QAbstractListModel, Generic[Row]):
         self.rows: list[Row] = []
         self.identifiers: set[int] = set()
         self.pending_request: int | None = None
+        self.page_requests: OrderedDict[int, None] = OrderedDict()
         self.submitting: bool = False
         self.transitioning: bool = False
         self.reset_requested: bool = False
@@ -219,6 +224,7 @@ class PagedListModel(QAbstractListModel, Generic[Row]):
             if revision == self.revision:
                 self.model_error(str(error))
         else:
+            self.model_remember_page(request_id)
             if revision == self.revision:
                 self.pending_request = request_id
             elif request_id in self.worker.pending:
@@ -226,6 +232,25 @@ class PagedListModel(QAbstractListModel, Generic[Row]):
         finally:
             self.submitting = False
         self.loading_changed.emit(self.loading)
+
+    def model_remember_page(self, request_id: int) -> None:
+        """Record a page request so its reply can be recognised as automatic.
+
+        request_id: the accepted worker request.
+        Returns None. The history is bounded; only recent replies can still be
+        in flight.
+        """
+        self.page_requests[request_id] = None
+        while len(self.page_requests) > PAGE_HISTORY:
+            self.page_requests.popitem(last=False)
+
+    def model_is_page_request(self, request_id: int) -> bool:
+        """Report whether a request was one of this model's own page reads.
+
+        request_id: the worker request being answered.
+        Returns True for automatic paging reads.
+        """
+        return request_id in self.page_requests
 
     def model_reset(self, *, active: bool | None = None) -> None:
         """Cancel stale pages and defer reentrant resets until Qt's transaction has closed."""
@@ -591,6 +616,17 @@ class ArchiveModels(QObject):
         )
         self.assets.model_reset(active=active)
         self.albums.model_reset(active=active)
+
+    def models_is_page_request(self, request_id: int) -> bool:
+        """Report whether a reply answers an automatic page read of either model.
+
+        request_id: the worker request being answered.
+        Returns True when the user did not ask for this read. Scrolling must not
+        be able to clear the error message of an operation that failed.
+        """
+        return self.assets.model_is_page_request(request_id) or self.albums.model_is_page_request(
+            request_id
+        )
 
     @Slot()
     def models_stopped(self) -> None:

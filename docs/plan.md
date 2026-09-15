@@ -118,6 +118,17 @@ step never starts before the layer beneath it is proven.
    Operation dialogs and the gallery arrive in steps 7-10.
 7. `gui-gallery` — grid, rubber-band and Ctrl/Shift selection, selection bar,
    viewer, context menu.
+   Implemented offline: `gui/gallery.py` binds a delegate-painted icon grid
+   directly to the shared paged asset model, so only visible tiles cost anything
+   and painting never reads the disk - it answers from the preview cache or
+   schedules a render. One model means one gallery, re-hosted by whichever page
+   is shown. Selection verbs are gated by scope (restore/purge in the recycle
+   bin, move/mark/delete elsewhere) and the selection bar and context menu are
+   generated from one table. Every verb captures the selection immediately on
+   the GUI thread as exact asset and file IDs bound to the model generation.
+   `gui/viewer.py` adds a full-size viewer with its own 1024 px preview loader,
+   arrow-key navigation that pages the model on demand, and close-on-reset.
+   The verbs still only acknowledge themselves; dialogs arrive in steps 8-10.
 8. `gui-ops-safe` — import, verify, scan-phone, dedup, stats, move to album,
    behind a progress dialog that can be cancelled or hidden.
 9. `gui-ops-destructive` — typed-DELETE confirmation, deleted-on-phone

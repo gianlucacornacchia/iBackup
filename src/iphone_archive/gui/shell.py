@@ -31,8 +31,10 @@ from PySide6.QtWidgets import (
 )
 
 from .commands import CommandBar, PhoneState
-from .models import MODEL_MUTATIONS, ArchiveModels, AssetScope
+from .gallery import AssetGallery
+from .models import MODEL_MUTATIONS, ArchiveModels, AssetScope, AssetSelection
 from .navigation import LIBRARY_VIEWS, NavigationPane, navigation_album_id
+from .previews import PreviewLoader
 from .theme import GROUP_GAP, PAGE_MARGIN, theme_font
 from .worker import WorkerController, WorkerFailure, WorkerResult
 
@@ -59,6 +61,16 @@ DEVICE_OPERATIONS = frozenset(
 # for archive-side reasons - a full disk, a hash mismatch - and latching
 # "disconnected" on those would disable the phone commands for no reason.
 PHONE_PROBE_OPERATION = "app_service_device_info"
+
+# Which batch actions each view offers. The recycle bin is the only place where
+# restoring or permanently purging makes sense, and recycling something that is
+# already recycled does not.
+VIEW_ACTIONS: dict[str, tuple[str, ...]] = {
+    "all": ("open", "move", "mark", "delete"),
+    "unsorted": ("open", "move", "mark", "delete"),
+    "recycled": ("open", "restore", "purge"),
+    "album": ("open", "move", "mark", "delete"),
+}
 
 
 class ShellPage(QWidget):
@@ -88,6 +100,28 @@ class ShellPage(QWidget):
         layout.addWidget(self.title_label)
         layout.addWidget(self.subtitle_label)
         layout.addWidget(self.body_label, 1)
+        self.body_layout = layout
+        self.body_widget: QWidget | None = None
+
+    def shell_page_take_body(self, widget: QWidget | None) -> None:
+        """Host the shared gallery, or fall back to this page's placeholder text.
+
+        widget: the widget to show, or None to show the placeholder again.
+        Returns None. There is a single asset model, so there is a single
+        gallery; it moves between pages rather than being duplicated per view.
+        """
+        if self.body_widget is not None and self.body_widget is not widget:
+            self.body_layout.removeWidget(self.body_widget)
+            self.body_widget.setParent(None)
+        self.body_widget = widget
+        if widget is None:
+            self.body_label.setVisible(True)
+            return
+        self.body_label.setVisible(False)
+        if widget.parent() is not self:
+            widget.setParent(self)
+            self.body_layout.addWidget(widget, 1)
+        widget.setVisible(True)
 
     def shell_page_set_header(self, title: str, subtitle: str) -> None:
         """Update the page heading and its caption.
@@ -113,14 +147,21 @@ class ArchiveShell(QWidget):
 
     shell_status_changed = Signal(str)
     shell_command = Signal(str)
+    shell_selection_action = Signal(str, object)
+    shell_open_asset = Signal(int)
 
     def __init__(
-        self, worker: WorkerController, models: ArchiveModels, parent: QWidget | None = None
+        self,
+        worker: WorkerController,
+        models: ArchiveModels,
+        previews: PreviewLoader,
+        parent: QWidget | None = None,
     ) -> None:
         """Compose the shell; no query runs until an archive is opened.
 
         worker: the GUI-affine service worker controller.
         models: the shared asset/album models.
+        previews: the GUI-affine preview loader the tiles render through.
         parent: optional parent widget.
         """
         super().__init__(parent)
@@ -142,6 +183,12 @@ class ArchiveShell(QWidget):
         self.navigation.navigation_settings.connect(lambda: self.shell_command.emit("settings"))
         self.command_bar = CommandBar(self)
         self.command_bar.command_triggered.connect(self.shell_command.emit)
+        # One model means one gallery; it is re-hosted by the page being shown
+        # rather than being duplicated per view.
+        self.gallery = AssetGallery(models.assets, previews, self)
+        self.gallery.gallery_action.connect(self.shell_gallery_action)
+        self.gallery.gallery_status.connect(self.shell_status_changed.emit)
+        self.gallery.gallery_open_requested.connect(self.shell_open_asset.emit)
         self.stack = QStackedWidget(self)
         self.stack.setObjectName("ContentLayer")
 
@@ -225,7 +272,7 @@ class ArchiveShell(QWidget):
         self.shell_apply_state()
 
     def shell_apply_state(self) -> None:
-        """Re-apply command availability, page headers and the status line."""
+        """Re-apply command availability, page headers, the gallery host and status."""
         self.worker.worker_check_thread()
         self.command_bar.commands_set_state(self.archive_open, self.phone)
         key = self.navigation.current_key
@@ -234,10 +281,47 @@ class ArchiveShell(QWidget):
             self.stack.setCurrentWidget(page)
         if page is not None:
             page.shell_page_set_header(page.title_label.text(), self.shell_subtitle(key))
-            page.shell_page_set_body(
-                "No archive open." if not self.archive_open else "The gallery arrives in step 7."
-            )
+            actions = self.shell_view_actions(key)
+            if actions is None:
+                page.shell_page_take_body(None)
+                page.shell_page_set_body(
+                    "No archive open."
+                    if not self.archive_open
+                    else "This view gets its own listing in a later step."
+                )
+            else:
+                for other in self.pages.values():
+                    if other is not page and other.body_widget is self.gallery:
+                        other.shell_page_take_body(None)
+                page.shell_page_take_body(self.gallery)
+                self.gallery.gallery_set_actions(actions)
         self.shell_status_changed.emit(self.shell_status_text())
+
+    def shell_view_actions(self, key: str) -> tuple[str, ...] | None:
+        """Return the batch actions a view offers, or None when it has no gallery.
+
+        key: the navigation key being displayed.
+        Returns the action keys, or None for views not backed by the asset model.
+        """
+        if navigation_album_id(key) is not None:
+            return VIEW_ACTIONS["album"]
+        scope = VIEW_SCOPES.get(key)
+        return None if scope is None else VIEW_ACTIONS[scope]
+
+    def shell_gallery_action(self, key: str) -> None:
+        """Forward a batch action together with the exact copies it applies to.
+
+        key: the action key the gallery requested.
+        Returns None. The selection is captured here, on the GUI thread and
+        immediately, so it still refers to the rows the user actually saw.
+        """
+        self.worker.worker_check_thread()
+        try:
+            selection: AssetSelection | None = self.gallery.grid.grid_selection()
+        except ValueError as error:
+            self.shell_status_changed.emit(f"Selection is no longer valid: {error}")
+            return
+        self.shell_selection_action.emit(key, selection)
 
     def shell_subtitle(self, key: str) -> str:
         """Build a page caption from the latest counts.
@@ -396,6 +480,7 @@ class ArchiveShell(QWidget):
         self.navigation.navigation_set_counts({})
         self.navigation.navigation_set_albums([])
         self.requests.clear()
+        self.gallery.grid.grid_clear_selection()
         self.shell_show_view(LIBRARY_VIEWS[0].key)
         if opened:
             self.shell_refresh()

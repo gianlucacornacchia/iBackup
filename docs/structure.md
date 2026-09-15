@@ -51,6 +51,8 @@ All paths below are relative to `src/iphone_archive/`.
 | `gui/commands.py` | `CommandSpec` table binding every command-bar verb to a service operation, plus availability/tooltip rules for missing archive or phone. |
 | `gui/shell.py` | `ArchiveShell`: navigation, page stack, command bar and status composition. Holds no archive data; counts and albums come from the worker and follow the models' mutation barriers. |
 | `gui/previews.py` | `PreviewLoader`: dedicated render pool off the service worker, bounded LRU pixmap cache, per-key coalescing, cancel-on-scroll, remembered failures and bounded shutdown. Pool threads receive immutable paths/hashes only. |
+| `gui/gallery.py` | `AssetGallery`: delegate-painted icon grid bound directly to the shared paged model, rubber-band/Ctrl/Shift selection, scope-gated selection bar and context menu. Painting never touches the disk; it reads the preview cache or schedules a render. |
+| `gui/viewer.py` | `ViewerDialog`: full-size single-asset view with its own large-preview loader, keyboard navigation that pages the model on demand, metadata facts and close-on-reset. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.

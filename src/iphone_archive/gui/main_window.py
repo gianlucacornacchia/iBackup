@@ -20,6 +20,7 @@ from ..settings import settings_load
 from .models import ArchiveModels
 from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
 from .shell import ArchiveShell
+from .viewer import VIEWER_PREVIEW_SIZE, ViewerDialog
 from .worker import WorkerController, WorkerFailure
 
 LOGGER = logging.getLogger(__name__)
@@ -55,9 +56,18 @@ class MainWindow(QMainWindow):
         self.worker.cancelled.connect(self.main_window_sync_previews)
         self.worker.stopped.connect(self.main_window_sync_previews)
 
-        self.shell = ArchiveShell(self.worker, self.models, self)
+        # The viewer renders at a much larger bounding box than a tile. Sharing
+        # the grid's loader would either evict every tile on each open or force
+        # the viewer to enlarge a 256px thumbnail, so it gets its own bounded
+        # cache instead.
+        self.viewer_previews = PreviewLoader(self, size=VIEWER_PREVIEW_SIZE, cache_entries=8)
+        self.viewer: ViewerDialog | None = None
+
+        self.shell = ArchiveShell(self.worker, self.models, self.previews, self)
         self.shell.shell_status_changed.connect(self.main_window_show_state)
         self.shell.shell_command.connect(self.main_window_command)
+        self.shell.shell_selection_action.connect(self.main_window_selection_action)
+        self.shell.shell_open_asset.connect(self.main_window_open_viewer)
         # Connected after the shell so its housekeeping reads can be recognised.
         self.worker.result_ready.connect(self.main_window_clear_error)
         self.setCentralWidget(self.shell)
@@ -94,6 +104,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Keep the window/event loop alive until worker-owned resources have been released."""
         self.previews.previews_cancel_all()
+        self.viewer_previews.previews_cancel_all()
+        if self.viewer is not None:
+            self.viewer.close()
+            self.viewer = None
         if self.worker.service_thread.isRunning():
             event.ignore()
             self.close_pending = True
@@ -102,6 +116,7 @@ class MainWindow(QMainWindow):
         else:
             self.worker.worker_shutdown()
             self.previews.previews_shutdown()
+            self.viewer_previews.previews_shutdown()
             event.accept()
 
     @Slot()
@@ -114,6 +129,80 @@ class MainWindow(QMainWindow):
     def main_window_sync_previews(self, reply: object = None) -> None:
         """Rebind previews when the open archive changes; identical hashes differ per archive."""
         self.previews.previews_set_archive(self.worker.archive_root)
+        self.viewer_previews.previews_set_archive(self.worker.archive_root)
+
+    @Slot(int)
+    def main_window_open_viewer(self, row: int) -> None:
+        """Open the single-asset viewer on a grid row.
+
+        row: the asset model row that was activated.
+        Returns None. Only one viewer exists at a time, so activating another
+        tile re-targets the open dialog instead of stacking windows.
+        """
+        if not self.models.assets.index(row).isValid():
+            self.main_window_show_status("That asset is no longer in this view.")
+            return
+        if self.viewer is not None and self.viewer.isVisible():
+            self.viewer.viewer_show_row(row)
+            self.viewer.raise_()
+            return
+        viewer = ViewerDialog(self.models.assets, self.viewer_previews, row, self)
+        viewer.viewer_set_actions(self.main_window_viewer_actions())
+        viewer.viewer_action.connect(self.main_window_viewer_action)
+        viewer.finished.connect(self.main_window_viewer_closed)
+        self.viewer = viewer
+        viewer.show()
+
+    def main_window_viewer_actions(self) -> tuple[str, ...]:
+        """Return the per-asset actions the current view supports.
+
+        Returns the action keys, without the gallery's own "open" verb.
+        """
+        actions = self.shell.shell_view_actions(self.shell.navigation.current_key) or ()
+        return tuple(key for key in actions if key != "open")
+
+    @Slot(int)
+    def main_window_viewer_closed(self, result: int = 0) -> None:
+        """Forget the viewer and stop rendering large previews for it.
+
+        result: the dialog's result code, unused.
+        Returns None. The dialog deletes itself on close, so the reference is
+        dropped here to avoid touching a destroyed object.
+        """
+        self.viewer = None
+        self.viewer_previews.previews_cancel_all()
+
+    @Slot(str, int)
+    def main_window_viewer_action(self, key: str, row: int) -> None:
+        """Apply a viewer action to the asset on screen.
+
+        key: the action key requested.
+        row: the model row the viewer is showing.
+        Returns None. The row is selected in the grid first so the action runs
+        through exactly the same exact-copy selection path as a batch action.
+        """
+        grid = self.shell.gallery.grid
+        index = self.models.assets.index(row)
+        if not index.isValid():
+            self.main_window_show_status("That asset is no longer in this view.")
+            return
+        grid.grid_clear_selection()
+        grid.setCurrentIndex(index)
+        self.shell.shell_gallery_action(key)
+
+    @Slot(str, object)
+    def main_window_selection_action(self, key: str, selection: object) -> None:
+        """Acknowledge a selection action until its dialog exists.
+
+        key: the action key requested.
+        selection: the captured AssetSelection.
+        Returns None. Steps 8-9 replace this with the real operations; the
+        selection is already exact-copy scoped, so nothing is lost here.
+        """
+        count = len(getattr(selection, "asset_ids", ()))
+        self.main_window_show_status(
+            f"{key}: {count} selected - available once its dialog is implemented (step 8+)."
+        )
 
     @Slot(object)
     def main_window_worker_failed(self, failure: WorkerFailure) -> None:
@@ -127,14 +216,25 @@ class MainWindow(QMainWindow):
         """Stop holding an error once a user-initiated operation has succeeded.
 
         reply: the worker result being delivered.
-        Returns None. A failed mutation makes the shell re-read its counters,
-        and those reads succeed; treating them as success would wipe the very
-        error that caused them.
+        Returns None. A failed mutation makes the shell re-read its counters and
+        the gallery fetch pages; those reads succeed, so treating them as
+        success would wipe the very error that caused them. Only a read the user
+        actually asked for clears the message.
         """
         request_id = getattr(reply, "request_id", None)
-        if isinstance(request_id, int) and self.shell.shell_is_housekeeping(request_id):
+        if isinstance(request_id, int) and self.main_window_is_automatic(request_id):
             return
         self.status_override = None
+
+    def main_window_is_automatic(self, request_id: int) -> bool:
+        """Report whether a request was issued by the GUI itself rather than the user.
+
+        request_id: the worker request being answered.
+        Returns True for shell counter refreshes and model page reads.
+        """
+        return self.shell.shell_is_housekeeping(request_id) or self.models.models_is_page_request(
+            request_id
+        )
 
     @Slot(str)
     def main_window_command(self, key: str) -> None:
