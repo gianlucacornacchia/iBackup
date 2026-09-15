@@ -160,6 +160,25 @@ def theme_stylesheet(dark: bool, *, mica: bool = False) -> str:
     }}
     QListView#AssetGrid {{ background: transparent; border: none; outline: none; }}
     QDialog#ViewerDialog {{ background: {base}; }}
+    QDialog#OperationDialog, QDialog#ReportDialog, QDialog#MoveDialog {{
+        background: {base};
+    }}
+    QProgressBar#OperationProgress {{
+        background: {layer};
+        border: none;
+        border-radius: {CONTROL_RADIUS}px;
+        height: 6px;
+    }}
+    QProgressBar#OperationProgress::chunk {{
+        background: palette(highlight);
+        border-radius: {CONTROL_RADIUS}px;
+    }}
+    QPlainTextEdit#ReportBody {{
+        background: {card};
+        border: 1px solid {stroke};
+        border-radius: {CONTROL_RADIUS}px;
+        padding: 8px;
+    }}
     QLabel#ViewerImage {{ background: {layer}; border-radius: {CONTROL_RADIUS}px; }}
     QStatusBar#ArchiveStatusBar {{
         background: transparent; border-top: 1px solid {divider}; color: {secondary};

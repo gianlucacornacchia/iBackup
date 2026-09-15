@@ -352,10 +352,13 @@ def test_main_window_hosts_the_shell_and_reports_commands(qtbot):
     qtbot.addWidget(window)
     assert window.centralWidget() is window.shell
     assert window.menuBar().isVisible() is False
-    window.shell.command_bar.command_triggered.emit("verify")
-    assert "verify" in window.statusBar().currentMessage()
+    # A verb that is gated behind a later step must say so rather than appear
+    # to work; this one needs no worker, so the window starts no archive session.
+    window.shell.command_bar.command_triggered.emit("reclaim")
+    assert "step 9" in window.statusBar().currentMessage()
     window.shell.shell_status_changed.emit("hello")
     assert window.statusBar().currentMessage() == "hello"
+    assert window.worker.service_thread.isRunning() is False
 
 
 def test_errors_are_not_wiped_by_the_next_status_refresh(qtbot):

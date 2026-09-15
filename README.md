@@ -8,9 +8,10 @@ without the app. The archive — not the phone — is the source of truth.
 > Status: **offline core-hardening complete**. Core and CLI implementations have
 > offline fake-device tests; that is not real-iPhone or Windows release
 > validation. The GUI sketch was approved on 2026-09-11; `ibackup-gui` opens a
-> themed window with navigation, a command bar, live counts and a working
-> thumbnail grid with multi-select and a full-size viewer, but no archive
-> operation can be launched from it yet.
+> themed window with navigation, a command bar, live counts, a thumbnail grid
+> with multi-select and a full-size viewer, and it can now open an archive and
+> run every non-destructive operation. Deleting, purging, restoring, marking and
+> reclaiming phone space are still CLI-only pending their confirmation dialogs.
 > Mica is an opt-in Windows probe; normal launches use solid backgrounds. No
 > downloadable Windows release is available. See
 > [`docs/progress.md`](docs/progress.md) for validation evidence and remaining
@@ -18,10 +19,11 @@ without the app. The archive — not the phone — is the source of truth.
 
 The GUI worker foundation serializes archive work off the UI thread, with
 cooperative cancellation and safe shutdown. Paged asset/album models,
-copy-scoped selection, a background preview pipeline, the application shell and
-the photo gallery are implemented (Phase 2 steps 1-7). The import, verify and
-deletion dialogs remain later steps, so browsing works but every command the bar
-offers is still inert.
+copy-scoped selection, a background preview pipeline, the application shell, the
+photo gallery and the safe operations are implemented (Phase 2 steps 1-8).
+Import, verify, scan, the duplicate report and move-to-album run behind a
+progress dialog that can be cancelled where the backend supports it, or hidden.
+The destructive operations remain later steps.
 
 ## Documentation
 
