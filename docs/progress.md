@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-15 (Phase 2 step 8 `gui-ops-safe` completed offline)._
+_Last updated: 2026-09-15 (Phase 2 step 9 `gui-ops-destructive` completed offline)._
 
 ## Current status
 
@@ -15,13 +15,18 @@ _Last updated: 2026-09-15 (Phase 2 step 8 `gui-ops-safe` completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 9 (`gui-ops-destructive`). Steps 1-8 are
+- **Next action on resume:** step 10 (`gui-settings`). Steps 1-9 are
   implemented offline. The GUI can now open or create an archive, import,
   verify, scan the phone, check the phone, report duplicates, refresh counts,
   clear the preview cache and move a selection into an album - all off the GUI
-  thread, behind the sketch's progress dialog where the work is long. Every
-  destructive verb is still deliberately refused and names step 9. Live Windows
-  theme/Mica qualification remains pending.
+  thread, behind the sketch's progress dialog where the work is long. Step 9
+  added the destructive half: moving copies to the `Deleted/` recycle bin,
+  restoring them, purging permanently, the deleted-on-phone review, the marks
+  queue and phone-space reclamation. **Nothing destructive reaches the worker
+  without passing the confirmation dialog**, and anything permanent requires the
+  word `DELETE` to be typed, mirroring the CLI's `--confirm`. Only `settings`
+  still names a later step. Live Windows theme/Mica qualification remains
+  pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -45,7 +50,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | **done offline** |
 | 7 | `gui-gallery` — grid, multi-select, viewer | **done offline** |
 | 8 | `gui-ops-safe` — import, verify, scan, dedup, move | **done offline** |
-| 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | pending |
+| 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | **done offline** |
 | 10 | `gui-settings` — six panels; also closes `settings-store` | pending |
 | 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | pending |
 | 12 | `gui-packaging` — PyInstaller `.exe` | pending |
@@ -73,6 +78,25 @@ painting on Windows; accepted DWM requests are **not** visual proof. Validate
 the probe on Windows 11 22H2+ before enabling transparent client painting by
 default. Windows 10, unsupported attributes, disabled transparency,
 high-contrast mode and native-call failures use solid/native fallback.
+
+### Step 9 validation checkpoint
+
+2026-09-15, Linux host, existing Python 3.12 virtual environment:
+
+| Command / evidence | Result |
+|---|---|
+| `pytest -q --cov --cov-fail-under=85` | 683 tests, 1 skipped; 90% coverage. |
+| `ruff check .` / `ruff format --check .` | Passed; 114 files formatted. |
+| `mypy src` / `mypy --platform win32 src` | Passed, 54 source files. |
+| `mypy --strict src/iphone_archive/core src/iphone_archive/catalog` | Passed, 17 source files. |
+| Every step-9 safety guard | Confirmed to fail with its fix reverted (six reverts). |
+
+Recycling, restoring, purging, marking, mark commits and reclamation dry runs
+were exercised against a fake device and temporary archives, and the purge tests
+assert that the bytes really are gone. **No real phone files were deleted**:
+`AfcDevice.device_delete` still refuses unconditionally, so reclamation cannot
+free space on a real iPhone yet. No Windows builds or Windows CI runs were
+performed.
 
 ### Step 8 validation checkpoint
 
@@ -180,6 +204,43 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-15 — **Step 9 `gui-ops-destructive` implemented offline.** The GUI
+  can now delete things, which makes this the step where the archive's core
+  promise had to be enforced in code rather than by refusing the verb. New
+  `gui/confirm.py` (the sketch's §5 dialog), `gui/review.py` (§3 deleted-on-phone
+  review and §6 marks queue) and `gui/reclaim.py` (§4, opened only by a dry run).
+  Decisions worth remembering:
+  - **Two strengths of confirmation.** Permanent verbs - purge, permanent mark
+    commit, phone reclamation - require the typed word `DELETE`, because the CLI
+    requires `--confirm` on exactly those and the GUI must not be the weaker
+    frontend. Reversible verbs - moving to `Deleted/` - ask explicitly but do
+    not demand the word: asking for it everywhere would teach the user to type
+    it without reading, which costs more safety than it buys.
+  - **The typed word is re-checked when the button is pressed**, not only when
+    it enables the button. The enabled state is a hint; a programmatic click or
+    a future change to the enabling rule must not be able to bypass the gate.
+  - **Reclaim is always a dry run first.** "Free up space" runs
+    `app_service_reclaim` with `confirmed` absent; only that report can open the
+    dialog that leads to a real deletion, and the service re-verifies the
+    candidates again at execution because a preview is not an authorization.
+  - **A recycle-bin purge passes `recycled_only=True`**, so purging what you can
+    see in the bin cannot reach an asset's still-active copies.
+  - **Marking is whole-asset and says so.** There is no bulk copy-scoped mark
+    API, so marking from an album view states plainly that it covers the copies
+    in other albums rather than implying album scope.
+  - **Unmark is bounded.** There is no bulk unmark call and the worker queue
+    holds 32, so a selection over 16 is refused with the one-request
+    alternative instead of being turned into a flood.
+  - A refreshed review list **drops its ticks**; silently re-checking a replaced
+    row would aim a deletion at something the user never chose.
+  Two Qt lifetime bugs of the same class were found and fixed: a slot that
+  enables a footer button was connected before the footer existed, so filling
+  the list raised inside Qt's event loop (`ReclaimDialog`, `ReviewPage`, and
+  pre-emptively `ConfirmDialog`). `mypy` caught a third defect: `ReclaimDialog`
+  stored its preview as `self.result`, shadowing `QDialog.result()` and breaking
+  every caller asking whether the user had confirmed. Three earlier placeholder
+  tests asserting the old "step 9" refusals were updated to assert the new
+  behaviour.
 - 2026-09-15 — **Step 8 `gui-ops-safe` implemented offline.** The command bar
   stopped being decorative: opening and creating archives, importing, verifying,
   scanning the phone, checking the phone, the duplicate report, refreshing

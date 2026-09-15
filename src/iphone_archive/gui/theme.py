@@ -160,8 +160,33 @@ def theme_stylesheet(dark: bool, *, mica: bool = False) -> str:
     }}
     QListView#AssetGrid {{ background: transparent; border: none; outline: none; }}
     QDialog#ViewerDialog {{ background: {base}; }}
-    QDialog#OperationDialog, QDialog#ReportDialog, QDialog#MoveDialog {{
+    QDialog#OperationDialog, QDialog#ReportDialog, QDialog#MoveDialog,
+    QDialog#ConfirmDialog, QDialog#ReclaimDialog {{
         background: {base};
+    }}
+    QListWidget#ReviewList {{
+        background: {card};
+        border: 1px solid {stroke};
+        border-radius: {CONTROL_RADIUS}px;
+        outline: none;
+    }}
+    QListWidget#ReviewList::item {{
+        padding: 6px 8px;
+        border-radius: {CONTROL_RADIUS}px;
+    }}
+    QLineEdit#ConfirmEntry {{
+        background: {card};
+        border: 1px solid {stroke};
+        border-radius: {CONTROL_RADIUS}px;
+        padding: 4px 8px;
+    }}
+    QPushButton#DangerButton:enabled {{
+        background: palette(highlight);
+        color: palette(highlighted-text);
+        border: 1px solid palette(highlight);
+        border-radius: {CONTROL_RADIUS}px;
+        padding: 4px 12px;
+        font-weight: 600;
     }}
     QProgressBar#OperationProgress {{
         background: {layer};

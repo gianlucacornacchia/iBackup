@@ -175,9 +175,15 @@ never starts before the layer beneath it is proven. Descriptions live in
   keeps the operation running; a hidden run's summary is held in the status bar
   and an erroring one re-opens the dialog. Destructive verbs are still refused
   and name the step that will gate them. _Depends on: gui-gallery._
-- [ ] **gui-ops-destructive** — typed-DELETE confirmation, deleted-on-phone
+- [x] **gui-ops-destructive** — typed-DELETE confirmation, deleted-on-phone
   keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
-  dry-run first. _Depends on: gui-ops-safe, recycle-bin, phone-diff, marks._
+  dry-run first. Nothing destructive is submitted by a button press: the press
+  builds a spec describing exactly what would happen, and only the confirmation
+  dialog's approval reaches the worker. Permanent verbs demand the typed word
+  and re-check it when the button is pressed; reversible ones ask without it, so
+  the word keeps its meaning. A recycle-bin purge sets `recycled_only=True`, and
+  a refreshed report drops its ticks. _Depends on: gui-ops-safe, recycle-bin,
+  phone-diff, marks._
 - [ ] **gui-settings** — the six settings panels bound to the service; also
   closes the aggregate `settings-store` item (persisted settings already exist).
   _Depends on: gui-shell, service-layer._

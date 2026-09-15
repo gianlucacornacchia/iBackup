@@ -354,8 +354,8 @@ def test_main_window_hosts_the_shell_and_reports_commands(qtbot):
     assert window.menuBar().isVisible() is False
     # A verb that is gated behind a later step must say so rather than appear
     # to work; this one needs no worker, so the window starts no archive session.
-    window.shell.command_bar.command_triggered.emit("reclaim")
-    assert "step 9" in window.statusBar().currentMessage()
+    window.shell.command_bar.command_triggered.emit("settings")
+    assert "step 10" in window.statusBar().currentMessage()
     window.shell.shell_status_changed.emit("hello")
     assert window.statusBar().currentMessage() == "hello"
     assert window.worker.service_thread.isRunning() is False

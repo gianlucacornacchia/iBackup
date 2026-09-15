@@ -62,9 +62,22 @@ No PyInstaller spec is included in this remediation.
 
 ### Desktop interface preview
 
-Run `ibackup-gui` to open the window shell. It does not open an archive or perform
-archive operations from the UI yet. Background-worker infrastructure is present,
-but archive-selection and operation controls are still planned. Choose its
+Run `ibackup-gui` to open the window. It can open or create an archive, browse
+albums, the unsorted pool and the recycle bin in a thumbnail grid, view a photo
+full size, and run the archive operations: import, verify, scan phone, duplicate
+report, move to album, move to the `Deleted/` recycle bin, restore, permanent
+delete, the deleted-from-phone review, the marks queue and a phone-space
+reclamation preview.
+
+**Nothing is deleted without confirming it.** Anything permanent - deleting from
+the archive, committing marks permanently, deleting from the phone - asks you to
+type `DELETE`, exactly as the CLI requires `--confirm`. Moving to the `Deleted/`
+folder is reversible and asks a simple yes/no instead. Freeing phone space always
+shows you a checked, re-verified list first; that preview deletes nothing. Note
+that device-side deletion is still disabled pending hardware validation, so
+reclamation cannot yet free space on a real iPhone.
+
+Settings still have no dialog; use `ibackup config` for now. Choose the
 appearance before launching:
 
 ```powershell
