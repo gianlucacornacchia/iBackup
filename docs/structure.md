@@ -53,6 +53,8 @@ All paths below are relative to `src/iphone_archive/`.
 | `gui/previews.py` | `PreviewLoader`: dedicated render pool off the service worker, bounded LRU pixmap cache, per-key coalescing, cancel-on-scroll, remembered failures and bounded shutdown. Pool threads receive immutable paths/hashes only. |
 | `gui/gallery.py` | `AssetGallery`: delegate-painted icon grid bound directly to the shared paged model, rubber-band/Ctrl/Shift selection, scope-gated selection bar and context menu. Painting never touches the disk; it reads the preview cache or schedules a render. |
 | `gui/viewer.py` | `ViewerDialog`: full-size single-asset view with its own large-preview loader, keyboard navigation that pages the model on demand, metadata facts and close-on-reset. |
+| `gui/operations.py` | `OperationDialog`: progress, elapsed/remaining, cancellation where the backend implements it, Hide, and the per-operation result summaries. `CANCELLABLE_OPERATIONS` is derived from the real service signatures, not hand-listed. |
+| `gui/dialogs.py` | `MoveToAlbumDialog` and `ReportDialog`: non-blocking prompts and read-only reports, shown rather than `exec`-ed so no nested event loop runs inside the GUI. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.

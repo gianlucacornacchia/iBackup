@@ -99,7 +99,8 @@ pytest --cov=iphone_archive         # optional coverage
 
 `tests/test_gui.py`, `tests/test_gui_theme.py`, `tests/test_gui_worker.py`,
 `tests/test_gui_models.py`, `tests/test_gui_previews.py`,
-`tests/test_gui_shell.py` and `tests/test_gui_gallery.py`
+`tests/test_gui_shell.py`, `tests/test_gui_gallery.py` and
+`tests/test_gui_operations.py`
 run headless: they set `QT_QPA_PLATFORM=offscreen` on import, so GUI tests need
 no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
@@ -364,6 +365,52 @@ Targeted validation, using the existing venv and dependencies:
 
 ```powershell
 pytest tests/test_gui_gallery.py tests/test_gui_shell.py tests/test_gui_previews.py tests/test_gui_models.py
+```
+
+### Adding a new operation surface
+
+`MainWindow` routes every verb. A long operation goes through
+`main_window_start`, which submits one request and hands the accepted request ID
+to an `OperationDialog`; a short read goes through `main_window_start_quiet`,
+which reports a single status line. Both funnel into `main_window_submit`, so a
+refused request - a full queue, a worker shutting down - is reported as "could
+not start" and held on screen rather than raising into Qt.
+
+To add an operation: put a `CommandSpec` in `gui/commands.py`, list the key in
+`DIALOG_COMMANDS` or `QUIET_COMMANDS`, and add a summary builder to
+`SUMMARY_BUILDERS` in `gui/operations.py`. An operation with no builder still
+reports completion rather than raising, because that text is produced while the
+user is waiting for a result.
+
+Rules that are easy to get wrong here:
+
+- **Never hand-list which operations can be cancelled.** Only a service method
+  that takes a `ProgressHandle` ever observes the cancel event.
+  `operations_cancellable()` derives the set from the real signatures; a
+  hand-written set already drifted once, and the failure mode is a Cancel button
+  that silently does nothing.
+- **Clear an owner's reference to a self-deleting dialog on `destroyed`, not
+  `finished`** - `finished` does not fire on every close path. Bind the identity
+  (a request ID or token) at connect time, because the object is destroyed one
+  event-loop turn *after* it closes and may already have been replaced; an
+  unconditional handler will then orphan the live dialog.
+- **A hidden operation's summary must be sticky.** The status bar is the only
+  place it is reported, and the mutation that produced it makes the shell re-read
+  its counters, which would otherwise overwrite it immediately.
+- **Show dialogs; never `exec` them.** A nested modal loop inside a GUI that owns
+  a worker thread, a preview pool and a paged model can process a reply in the
+  middle of another operation, and it hangs the offscreen suite. Because prompts
+  are non-blocking, re-check an `AssetSelection` with
+  `asset_model_selection_parameters` when the user confirms, not when the prompt
+  was shown.
+- **Quiesce the preview pools before deleting anything they read.** They
+  deliberately bypass the service worker, so "Clear previews" would otherwise
+  unlink files three pool threads have open - a sharing violation on Windows.
+
+Targeted validation, using the existing venv and dependencies:
+
+```powershell
+pytest tests/test_gui_operations.py tests/test_gui_shell.py tests/test_gui_gallery.py tests/test_gui_worker.py
 ```
 
 ### Running the Windows Mica probe

@@ -131,6 +131,16 @@ step never starts before the layer beneath it is proven.
    The verbs still only acknowledge themselves; dialogs arrive in steps 8-10.
 8. `gui-ops-safe` — import, verify, scan-phone, dedup, stats, move to album,
    behind a progress dialog that can be cancelled or hidden.
+   Implemented offline: `gui/operations.py` adds the sketch's §2 dialog with
+   progress, elapsed/remaining, Hide and per-operation summaries;
+   `gui/dialogs.py` adds the move prompt and the duplicate report. Long work
+   gets the dialog, short reads report one status line. Cancellation is offered
+   only for operations whose service method accepts a `ProgressHandle`, and
+   that set is derived from the real signatures so it cannot drift into
+   claiming cancellation the backend does not implement. Hide leaves the work
+   running; a hidden run's summary is held in the status bar, and a run that
+   ends with errors re-opens the dialog. Moves stay scoped to the album being
+   browsed. Destructive verbs are still refused and name step 9.
 9. `gui-ops-destructive` — typed-DELETE confirmation, deleted-on-phone
    keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
    dry-run first.

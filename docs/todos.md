@@ -168,9 +168,13 @@ never starts before the layer beneath it is proven. Descriptions live in
   painting never reads the disk. Selections are captured as exact asset+file IDs
   on the GUI thread, and the viewer owns a second large-preview loader.
   _Depends on: gui-shell, gui-thumbnail-loader._
-- [ ] **gui-ops-safe** — import, verify, scan-phone, dedup report, stats and
+- [x] **gui-ops-safe** — import, verify, scan-phone, dedup report, stats and
   move-to-album behind a progress dialog that can be cancelled or hidden.
-  _Depends on: gui-gallery._
+  Cancellation is offered only where the service method actually takes a
+  progress handle, and that set is derived from the real signatures. Hiding
+  keeps the operation running; a hidden run's summary is held in the status bar
+  and an erroring one re-opens the dialog. Destructive verbs are still refused
+  and name the step that will gate them. _Depends on: gui-gallery._
 - [ ] **gui-ops-destructive** — typed-DELETE confirmation, deleted-on-phone
   keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
   dry-run first. _Depends on: gui-ops-safe, recycle-bin, phone-diff, marks._

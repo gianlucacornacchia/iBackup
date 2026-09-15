@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-14 (Phase 2 step 7 `gui-gallery` completed offline)._
+_Last updated: 2026-09-15 (Phase 2 step 8 `gui-ops-safe` completed offline)._
 
 ## Current status
 
@@ -15,19 +15,20 @@ _Last updated: 2026-09-14 (Phase 2 step 7 `gui-gallery` completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 8 (`gui-ops-safe`). Steps 1-7 (`gui-scaffold`,
-  `gui-theme`, `gui-worker`, `gui-models`, `gui-thumbnail-loader`, `gui-shell`,
-  `gui-gallery`) are implemented offline. The window now shows a real thumbnail
-  grid with multi-select and a full-size viewer, but every command and selection
-  verb still only acknowledges itself in the status bar: the operation dialogs
-  arrive in steps 8-10. Live Windows theme/Mica qualification remains pending.
+- **Next action on resume:** step 9 (`gui-ops-destructive`). Steps 1-8 are
+  implemented offline. The GUI can now open or create an archive, import,
+  verify, scan the phone, check the phone, report duplicates, refresh counts,
+  clear the preview cache and move a selection into an album - all off the GUI
+  thread, behind the sketch's progress dialog where the work is long. Every
+  destructive verb is still deliberately refused and names step 9. Live Windows
+  theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
   hardware-validation entries below); everything else is Linux + fake device.
 - **Release:** packaging is step 12 and has not started. `ibackup-gui` now
-  exists as a real entry point that opens the window shell and browses the
-  archive read-only.
+  exists as a real entry point that opens an archive, browses it and runs every
+  non-destructive operation.
 
 ## Phase 2 GUI steps
 
@@ -43,7 +44,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 5 | `gui-thumbnail-loader` — background previews, bounded cache | **done offline** |
 | 6 | `gui-shell` — navigation, pages, command bar, status bar | **done offline** |
 | 7 | `gui-gallery` — grid, multi-select, viewer | **done offline** |
-| 8 | `gui-ops-safe` — import, verify, scan, dedup, move | pending |
+| 8 | `gui-ops-safe` — import, verify, scan, dedup, move | **done offline** |
 | 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | pending |
 | 10 | `gui-settings` — six panels; also closes `settings-store` | pending |
 | 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | pending |
@@ -72,6 +73,22 @@ painting on Windows; accepted DWM requests are **not** visual proof. Validate
 the probe on Windows 11 22H2+ before enabling transparent client painting by
 default. Windows 10, unsupported attributes, disabled transparency,
 high-contrast mode and native-call failures use solid/native fallback.
+
+### Step 8 validation checkpoint
+
+2026-09-15, Linux host, existing Python 3.12 virtual environment:
+
+| Command / evidence | Result |
+|---|---|
+| `pytest -q --cov --cov-fail-under=85` | 647 tests, 1 skipped; 89.94% coverage. |
+| `ruff check .` / `ruff format --check .` | Passed; 110 files formatted. |
+| `mypy src` / `mypy --platform win32 src` | Passed, 51 source files. |
+| `mypy --strict src/iphone_archive/core src/iphone_archive/catalog` | Passed, 17 source files. |
+| Every step-8 regression test | Confirmed to fail with its fix reverted. |
+
+Imports, verifies and moves were exercised against a fake device and temporary
+archives. No real-phone operations, Windows builds or Windows CI runs were
+performed.
 
 ### Step 7 validation checkpoint
 
@@ -163,6 +180,42 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-15 — **Step 8 `gui-ops-safe` implemented offline.** The command bar
+  stopped being decorative: opening and creating archives, importing, verifying,
+  scanning the phone, checking the phone, the duplicate report, refreshing
+  counts, clearing the preview cache and moving a selection into an album all
+  run for real, on the worker thread, through the existing bounded request
+  boundary. Long work gets the sketch's §2 progress dialog; short reads report
+  one status line, because a modal dialog for a counter refresh flashes open and
+  shut without telling the user anything. Two honesty rules shaped the dialog.
+  First, **cancellation is only offered where it exists**: only a service method
+  that accepts a `ProgressHandle` ever observes the cancel event, so the
+  cancellable set is *derived from the real signatures* rather than hand-listed,
+  and operations that cannot be interrupted say so instead of showing a button
+  that quietly does nothing. The first version of that set was hand-written and
+  the test caught it immediately - it had missed `app_service_reclaim` - which
+  is precisely why it is now computed. Second, **hiding is not finishing**: Hide
+  leaves the work running, and a run that ends with errors re-opens the dialog,
+  because a list of failures must not be reduced to one status line. Building it
+  surfaced two more bugs of a kind this project keeps meeting. A `WA_DeleteOnClose`
+  dialog does **not** emit `finished` on every destruction path, so the window
+  held a pointer to a dead dialog and aborted on the next window close; owners
+  now clear their reference on `destroyed`. And a *hidden* import's summary was
+  being erased milliseconds later by the counter refresh the import itself
+  triggered - the third time a routine read has overwritten something the user
+  needed - so a hidden run's summary is now held like an error. Review then
+  found two further defects: because a finished dialog is destroyed one
+  event-loop turn *after* it closes, a dying dialog could clear the window's
+  reference to the live dialog that had already replaced it, leaving a running
+  operation with nothing watching it and a modal dialog that survived window
+  shutdown; the viewer had the same hole, where the stale handler also cancelled
+  the renders of the viewer the user was looking at. Both now bind the identity
+  at connect time. Review also caught that "Clear previews" was the first caller
+  to unlink cache files while the preview pools - which deliberately bypass the
+  worker - were reading and writing them; on Windows that fails with a sharing
+  violation, so the pools are quiesced first and the sweep now tolerates a
+  locked file rather than aborting. Destructive verbs remain refused and name
+  step 9; nothing in this step deletes anything.
 - 2026-09-15 — **Step 7 `gui-gallery` implemented offline.** The window finally
   shows photographs. `gui/gallery.py` binds an icon-mode grid **directly to the
   shared paged asset model** and paints tiles with a `QStyledItemDelegate`, so a

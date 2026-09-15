@@ -356,6 +356,13 @@ def thumbnails_clear_cache(paths: ArchivePaths) -> int:
     removed = 0
     if paths.thumbnails_dir.is_dir():
         for cached in paths.thumbnails_dir.glob(f"*{THUMBNAIL_SUFFIX}"):
-            cached.unlink()
+            try:
+                cached.unlink()
+            except OSError as error:
+                # A GUI preview thread may hold this file open, and Windows
+                # refuses to unlink an open file. The cache is regenerable, so
+                # one locked entry must not abort the whole sweep.
+                LOGGER.info("could not delete cached preview %s: %s", cached, error)
+                continue
             removed += 1
     return removed
