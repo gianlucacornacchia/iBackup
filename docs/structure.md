@@ -55,6 +55,9 @@ All paths below are relative to `src/iphone_archive/`.
 | `gui/viewer.py` | `ViewerDialog`: full-size single-asset view with its own large-preview loader, keyboard navigation that pages the model on demand, metadata facts and close-on-reset. |
 | `gui/operations.py` | `OperationDialog`: progress, elapsed/remaining, cancellation where the backend implements it, Hide, and the per-operation result summaries. `CANCELLABLE_OPERATIONS` is derived from the real service signatures, not hand-listed. |
 | `gui/dialogs.py` | `MoveToAlbumDialog` and `ReportDialog`: non-blocking prompts and read-only reports, shown rather than `exec`-ed so no nested event loop runs inside the GUI. |
+| `gui/confirm.py` | `ConfirmDialog` and the `ConfirmSpec` builders: the single gate between a selection and a deletion. Permanent verbs require the typed word `DELETE`, re-checked when the button is pressed; reversible ones ask explicitly without it. The spec carries the exact operation and parameters that were described to the user. |
+| `gui/review.py` | `ReviewList`/`ReviewPage` plus `DeletedPhonePage` (sketch §3) and `MarksPage` (§6): bounded checkable listings of decisions rather than photo grids. A refreshed listing drops its ticks so a replaced row cannot inherit a deletion. |
+| `gui/reclaim.py` | `ReclaimDialog` (sketch §4): the report of a completed **dry run**, and the only route to a real phone-side deletion, which still has to pass the typed confirmation. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,
 `device_manager.py`, `afc_client.py`, or `media_source.py`.

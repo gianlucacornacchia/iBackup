@@ -144,6 +144,20 @@ step never starts before the layer beneath it is proven.
 9. `gui-ops-destructive` — typed-DELETE confirmation, deleted-on-phone
    keep/move/purge, recycle-bin restore/purge, marks commit and reclaim, always
    dry-run first.
+   Implemented offline: `gui/confirm.py` is the sketch's §5 content dialog and
+   the only gate between a selection and a deletion. It has two strengths, and
+   the difference is deliberate: permanent verbs (purge, permanent mark commit,
+   phone reclamation) require the word `DELETE` to be typed because the CLI
+   requires `--confirm` on exactly those, while reversible ones (move to
+   `Deleted/`) ask explicitly but without the word, so that typing it never
+   becomes a reflex. The word is re-checked when the button is pressed, not
+   merely used to enable it. `gui/review.py` adds the §3 deleted-on-phone review
+   and the §6 marks queue as checkable listings rather than photo grids, and
+   `gui/reclaim.py` adds §4, which only a completed **dry run** can open; the
+   service re-verifies the chosen candidates again at execution. A recycle-bin
+   purge passes `recycled_only=True` so it cannot reach an asset's active
+   copies, marking is whole-asset and says so in an album view, and unmark is
+   bounded because the worker queue is.
 10. `gui-settings` — the six settings panels; also closes `settings-store`.
 
 **Phase D — proof**

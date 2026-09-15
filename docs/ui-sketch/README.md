@@ -1,8 +1,10 @@
 # UI Sketch — iPhone Archive (`ibackup`) GUI
 
 **Status: approved 2026-09-11**, together with the clickable mock. Phase 2
-implementation has started; the shell/theme layer exists. Views and interactions
-below remain requirements rather than screenshots of implemented software.
+implementation has reached step 9: the shell, theme, gallery, viewer, progress
+dialog (§2), deleted-on-phone review (§3), reclaim review (§4), confirmation
+dialog (§5) and marks queue (§6) are built. Only §7b (settings) remains a
+requirement rather than implemented software.
 Core-hardening and live Windows qualification are separate gates.
 
 > **A clickable mock of everything below now exists** in `mockup/`. Run

@@ -215,14 +215,16 @@ def test_each_view_offers_only_the_actions_that_make_sense(gallery, qtbot):
     )
 
 
-def test_views_without_a_listing_keep_their_placeholder(gallery):
+def test_report_views_show_their_own_listing_not_the_photo_grid(gallery):
     """Views the asset model cannot scope must not show another view's photos."""
     worker, models, previews, shell, wait = gallery(count=2)
     shell.shell_show_view("marked")
     page = shell.pages["marked"]
-    assert page.body_widget is None
+    # The marks queue is a list of staged decisions, not a grid of photos: the
+    # asset model cannot scope it, so it must never host the shared gallery.
+    assert page.body_widget is shell.reviews["marked"]
+    assert page.body_widget is not shell.gallery
     assert shell.shell_view_actions("marked") is None
-    assert "later step" in page.body_label.text()
 
 
 def test_the_gallery_moves_between_pages_instead_of_being_duplicated(gallery, qtbot):

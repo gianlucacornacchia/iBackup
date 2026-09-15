@@ -406,11 +406,47 @@ Rules that are easy to get wrong here:
 - **Quiesce the preview pools before deleting anything they read.** They
   deliberately bypass the service worker, so "Clear previews" would otherwise
   unlink files three pool threads have open - a sharing violation on Windows.
+- **Connect a selection-changed slot only after the widgets it enables exist.**
+  Filling a list emits that signal, so wiring it earlier in `__init__` raises
+  inside Qt's event loop on the way to opening the dialog. This bit twice in
+  step 9.
+- **Do not name an attribute `result` on a `QDialog`.** It shadows
+  `QDialog.result()`, so every caller asking whether the user confirmed gets the
+  payload instead. `mypy` catches this; do not silence it.
+
+### Adding a destructive operation
+
+Nothing that deletes anything may be submitted directly by a button press. The
+press builds a `ConfirmSpec` naming the operation and its parameters, and only
+`ConfirmDialog.confirmed` reaches the worker. Choose the strength deliberately:
+
+- **Permanent** (purge, permanent mark commit, reclaim) - `permanent=True`, so
+  the user must type `DELETE`. These are exactly the CLI's `--confirm` verbs;
+  the GUI must not be the weaker frontend.
+- **Reversible** (move to `Deleted/`, reversible mark commit) - `permanent=False`.
+  Asking for the word everywhere trains the user to type it without reading,
+  which costs more safety than it buys.
+
+Further rules:
+
+- **Re-validate a selection at confirmation time** with
+  `asset_model_selection_parameters`; the prompt is non-blocking, so the archive,
+  view or model generation may have changed while it was open. Report the refusal
+  and hold it on screen rather than submitting something the user never chose.
+- **Preserve scope.** `file_ids` keep an album-view action on that album's
+  copies. A recycle-bin purge must set `recycled_only=True`. Where a promotion is
+  unavoidable - marking has no bulk copy-scoped API - say so in the status line.
+- **Preview before deleting outside the archive.** Reclaim runs with `confirmed`
+  absent first; only that report opens the dialog that can delete phone files,
+  and the service re-verifies the candidates again at execution.
+- **Bound bulk actions.** The worker queue holds 32; an action with no bulk
+  service call is refused above `MAX_BULK_REQUESTS` with a usable alternative
+  rather than being turned into a flood of requests.
 
 Targeted validation, using the existing venv and dependencies:
 
 ```powershell
-pytest tests/test_gui_operations.py tests/test_gui_shell.py tests/test_gui_gallery.py tests/test_gui_worker.py
+pytest tests/test_gui_operations.py tests/test_gui_destructive.py tests/test_gui_shell.py tests/test_gui_gallery.py tests/test_gui_worker.py
 ```
 
 ### Running the Windows Mica probe

@@ -323,18 +323,20 @@ def test_the_move_dialog_states_whether_the_move_is_album_scoped(qtbot):
     assert "Moving 1 photo or video" in MoveToAlbumDialog(1, [], False, None).caption.text()
 
 
-def test_a_command_that_needs_step_nine_says_so(window):
+def test_a_command_that_needs_a_later_step_says_so(window):
     """Silently doing nothing, or silently deleting, are both unacceptable."""
     main, wait, root = window(count=1)
 
-    main.main_window_command("reclaim")
-    assert "step 9" in main.statusBar().currentMessage()
+    main.main_window_command("settings")
+    assert "step 10" in main.statusBar().currentMessage()
 
+    # The destructive verbs now exist, but they still refuse an empty selection
+    # rather than acting on nothing or on everything.
     main.main_window_selection_action("purge", None)
-    assert "step 9" in main.statusBar().currentMessage()
+    assert "Select at least one" in main.statusBar().currentMessage()
 
     main.main_window_selection_action("delete", None)
-    assert "step 9" in main.statusBar().currentMessage()
+    assert "Select at least one" in main.statusBar().currentMessage()
 
 
 def test_opening_an_archive_uses_the_folder_the_user_chose(window, qtbot):

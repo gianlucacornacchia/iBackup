@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
@@ -35,6 +36,15 @@ from .gallery import AssetGallery
 from .models import MODEL_MUTATIONS, ArchiveModels, AssetScope, AssetSelection
 from .navigation import LIBRARY_VIEWS, NavigationPane, navigation_album_id
 from .previews import PreviewLoader
+from .review import (
+    DeletedPhonePage,
+    MarksPage,
+    ReviewPage,
+    review_mark_caption,
+    review_mark_rows,
+    review_phone_caption,
+    review_phone_rows,
+)
 from .theme import GROUP_GAP, PAGE_MARGIN, theme_font
 from .worker import WorkerController, WorkerFailure, WorkerResult
 
@@ -42,8 +52,8 @@ LOGGER = logging.getLogger(__name__)
 ScopeKind = Literal["all", "album", "unsorted", "recycled"]
 HOUSEKEEPING_HISTORY = 64
 
-# Views backed by the paged asset model; the rest get their own listings in the
-# destructive-operations and marks steps.
+# Views backed by the paged asset model. The remaining two views are reports
+# rather than galleries, so they get their own checkable listings.
 VIEW_SCOPES: dict[str, ScopeKind] = {
     "all": "all",
     "unsorted": "unsorted",
@@ -61,6 +71,27 @@ DEVICE_OPERATIONS = frozenset(
 # for archive-side reasons - a full disk, a hash mismatch - and latching
 # "disconnected" on those would disable the phone commands for no reason.
 PHONE_PROBE_OPERATION = "app_service_device_info"
+# The review pages are lists of decisions, not photo grids, so they are read
+# directly rather than through the paged asset model.
+REVIEW_VIEWS = {
+    "deleted-phone": "app_service_deleted_on_phone",
+    "marked": "app_service_list_marks",
+}
+# Operations after which a review listing no longer describes the archive.
+REVIEW_REFRESH_OPERATIONS = frozenset(
+    {
+        "app_service_scan_phone",
+        "app_service_import",
+        "app_service_move_to_deleted",
+        "app_service_restore",
+        "app_service_purge",
+        "app_service_mark",
+        "app_service_mark_many",
+        "app_service_unmark",
+        "app_service_clear_marks",
+        "app_service_commit_marks",
+    }
+)
 
 # Which batch actions each view offers. The recycle bin is the only place where
 # restoring or permanently purging makes sense, and recycling something that is
@@ -149,6 +180,7 @@ class ArchiveShell(QWidget):
     shell_command = Signal(str)
     shell_selection_action = Signal(str, object)
     shell_open_asset = Signal(int)
+    shell_review_action = Signal(str, str)
 
     def __init__(
         self,
@@ -205,8 +237,17 @@ class ArchiveShell(QWidget):
         layout.addWidget(self.navigation)
         layout.addWidget(content, 1)
 
+        self.reviews: dict[str, ReviewPage] = {}
         for view in LIBRARY_VIEWS:
-            self.shell_page(view.key, view.label)
+            page = self.shell_page(view.key, view.label)
+            if view.key in REVIEW_VIEWS:
+                review = DeletedPhonePage(page) if view.key == "deleted-phone" else MarksPage(page)
+                # The page already draws the heading, so the review widget keeps
+                # only its caption and list.
+                review.title_label.setVisible(False)
+                review.review_action.connect(partial(self.shell_review_action.emit, view.key))
+                self.reviews[view.key] = review
+                page.shell_page_take_body(review)
         self.stack.setCurrentWidget(self.pages[LIBRARY_VIEWS[0].key])
 
         worker.result_ready.connect(self.shell_reply)
@@ -269,6 +310,8 @@ class ArchiveShell(QWidget):
             self.models.assets.asset_model_set_scope(AssetScope("album", album_id))
         elif key in VIEW_SCOPES:
             self.models.assets.asset_model_set_scope(AssetScope(VIEW_SCOPES[key]))
+        elif key in REVIEW_VIEWS:
+            self.shell_refresh_review(key)
         self.shell_apply_state()
 
     def shell_apply_state(self) -> None:
@@ -282,7 +325,13 @@ class ArchiveShell(QWidget):
         if page is not None:
             page.shell_page_set_header(page.title_label.text(), self.shell_subtitle(key))
             actions = self.shell_view_actions(key)
-            if actions is None:
+            review = self.reviews.get(key)
+            if review is not None:
+                # A report page owns its body for the window's lifetime; only
+                # its data is refreshed, so it is never swapped for a placeholder.
+                page.shell_page_take_body(review)
+                review.setEnabled(self.archive_open)
+            elif actions is None:
                 page.shell_page_take_body(None)
                 page.shell_page_set_body(
                     "No archive open."
@@ -380,6 +429,38 @@ class ArchiveShell(QWidget):
         self.shell_track(self.worker.worker_submit("app_service_list_marks"), "marks")
         self.shell_pump_albums()
 
+    def shell_refresh_review(self, key: str) -> None:
+        """Re-read the listing behind one of the report pages.
+
+        key: the review view to refresh.
+        Returns None. The marks queue rides on the counter refresh the shell
+        already issues, so only the phone report needs its own read; issuing a
+        second marks query would double the work for the same answer.
+        """
+        self.worker.worker_check_thread()
+        operation = REVIEW_VIEWS.get(key)
+        if operation is None or not self.archive_open:
+            return
+        if key == "marked":
+            self.shell_track(self.worker.worker_submit("app_service_list_marks"), "marks")
+            return
+        self.shell_track(self.worker.worker_submit(operation), f"review:{key}")
+
+    def shell_set_review(self, key: str, value: object) -> None:
+        """Fill one report page from a completed read.
+
+        key: the review view being filled.
+        value: the worker's detached result.
+        Returns None.
+        """
+        review = self.reviews.get(key)
+        if review is None:
+            return
+        if key == "marked":
+            review.review_set_rows(review_mark_rows(value), review_mark_caption(value))
+        else:
+            review.review_set_rows(review_phone_rows(value), review_phone_caption(value))
+
     def shell_track(self, request_id: int, kind: str) -> None:
         """Remember one of the shell's own reads.
 
@@ -460,6 +541,10 @@ class ArchiveShell(QWidget):
             if isinstance(marks, list):
                 self.counts["marked"] = len(marks)
                 self.navigation.navigation_set_counts(self.counts)
+                self.shell_set_review("marked", marks)
+        elif isinstance(tracked, str) and tracked.startswith("review:"):
+            if isinstance(reply, WorkerResult) and not reply.cancelled:
+                self.shell_set_review(tracked.split(":", 1)[1], reply.value)
         if reply.operation in {"open_archive", "create_archive"}:
             self.shell_archive_changed(isinstance(reply, WorkerResult))
         elif reply.operation == "close_archive":
@@ -468,6 +553,14 @@ class ArchiveShell(QWidget):
             # An import or a purge changes what the counters and album rows mean,
             # so they are re-read once the models' barriers have cleared.
             self.shell_refresh()
+        if reply.operation in REVIEW_REFRESH_OPERATIONS and self.archive_open:
+            # A report that still lists a purged asset would offer the user a
+            # second deletion of something that is already gone. Marking changes
+            # no files, so it never reaches the mutation branch above, yet it
+            # does change the queue's count in the navigation pane.
+            self.shell_track(self.worker.worker_submit("app_service_list_marks"), "marks")
+            if self.navigation.current_key == "deleted-phone":
+                self.shell_refresh_review("deleted-phone")
         self.shell_apply_state()
 
     def shell_archive_changed(self, opened: bool) -> None:
@@ -480,6 +573,8 @@ class ArchiveShell(QWidget):
         self.navigation.navigation_set_counts({})
         self.navigation.navigation_set_albums([])
         self.requests.clear()
+        for key in self.reviews:
+            self.shell_set_review(key, None)
         self.gallery.grid.grid_clear_selection()
         self.shell_show_view(LIBRARY_VIEWS[0].key)
         if opened:

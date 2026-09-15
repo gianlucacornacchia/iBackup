@@ -96,9 +96,9 @@ def test_scoped_styles_leave_native_controls_alone():
         "QWidget {",
         "QPushButton {",
         "QPushButton:",
-        "QLineEdit",
-        "QScrollBar",
-        "QCheckBox",
+        "QLineEdit {",
+        "QScrollBar {",
+        "QCheckBox {",
         "QListWidget {",
     ):
         assert selector not in stylesheet

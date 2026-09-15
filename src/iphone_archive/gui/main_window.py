@@ -9,9 +9,12 @@ exists and hidden where it does not. Short reads run quietly and report a single
 summary line, because a modal dialog that appears and vanishes tells the user
 less than the status bar does.
 
-Destructive verbs - reclaim, delete, purge, restore, commit marks - are not
-routed here. They need the typed confirmation of step 9 and deliberately still
-say so rather than silently doing nothing.
+Destructive verbs go through one more gate. Nothing that deletes anything is
+submitted from a button press: the press builds a ``ConfirmSpec`` describing
+exactly what would happen, the confirmation dialog demands the typed word for
+anything permanent, and only its approval reaches the worker. Reclamation adds a
+stage before that - it always runs a non-destructive dry run first, and only its
+report can open the dialog that leads to a real phone-side deletion.
 """
 
 from __future__ import annotations
@@ -26,12 +29,22 @@ from PySide6.QtWidgets import QFileDialog, QMainWindow, QStatusBar, QWidget
 
 from .. import __version__
 from ..browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
+from ..core.reclaim import ReclaimResult
 from ..settings import settings_load
 from .commands import COMMANDS_BY_KEY
+from .confirm import (
+    ConfirmSpec,
+    confirm_marks_spec,
+    confirm_purge_spec,
+    confirm_reclaim_spec,
+    confirm_recycle_spec,
+    confirm_show,
+)
 from .dialogs import MoveToAlbumDialog, ReportDialog, dialogs_dedup_lines
 from .models import ArchiveModels, AssetSelection
 from .operations import OperationDialog, operations_summary, operations_title
 from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
+from .reclaim import ReclaimDialog, reclaim_selected_bytes
 from .shell import ArchiveShell
 from .viewer import VIEWER_PREVIEW_SIZE, ViewerDialog
 from .worker import WorkerController, WorkerFailure, WorkerResult
@@ -45,23 +58,23 @@ WINDOW_MINIMUM_SIZE = (900, 560)
 # Commands that take long enough, or touch the phone slowly enough, to deserve
 # the progress dialog. The only device presence probe enumerates the whole
 # library, so "Check phone" belongs here too.
-DIALOG_COMMANDS = frozenset({"import", "verify", "scan", "device"})
+# "reclaim" runs its dry run here; only that preview can lead to a deletion.
+DIALOG_COMMANDS = frozenset({"import", "verify", "scan", "device", "reclaim"})
 # Short reads that report one line. A modal dialog for a counter refresh would
 # flash open and shut without telling the user anything.
 QUIET_COMMANDS = frozenset({"dedup", "stats", "clear-thumbnails", "close"})
 # Verbs whose safety gating is step 9 (destructive) or step 10 (settings). They
 # say so rather than appearing to work.
 DEFERRED_COMMANDS = {
-    "reclaim": "Freeing phone space needs its confirmation dialog (step 9).",
     "settings": "Settings get their own dialog (step 10).",
 }
 OPERATION_BUSY = "Another operation is already running. Wait for it, or cancel it first."
-DEFERRED_SELECTION_ACTIONS = {
-    "mark": "Marking for deletion arrives with the marks queue (step 9).",
-    "delete": "Moving to the recycle bin needs its confirmation dialog (step 9).",
-    "restore": "Restoring from the recycle bin arrives in step 9.",
-    "purge": "Permanent deletion needs its typed confirmation (step 9).",
-}
+DEFERRED_SELECTION_ACTIONS: dict[str, str] = {}
+NO_SELECTION = "Select at least one photo or video first."
+# Unmarking has no bulk service call, and the worker's request queue is bounded,
+# so a large selection is refused with a usable alternative rather than being
+# turned into hundreds of queued requests that would overflow it.
+MAX_BULK_REQUESTS = 16
 
 
 class MainWindow(QMainWindow):
@@ -109,6 +122,7 @@ class MainWindow(QMainWindow):
         self.shell.shell_status_changed.connect(self.main_window_show_state)
         self.shell.shell_command.connect(self.main_window_command)
         self.shell.shell_selection_action.connect(self.main_window_selection_action)
+        self.shell.shell_review_action.connect(self.main_window_review_action)
         self.shell.shell_open_asset.connect(self.main_window_open_viewer)
         self.worker.result_ready.connect(self.main_window_quiet_reply)
         self.worker.failed.connect(self.main_window_quiet_reply)
@@ -265,7 +279,121 @@ class MainWindow(QMainWindow):
         if key == "move":
             self.main_window_move_selection(selection)
             return
+        if key == "mark":
+            self.main_window_mark_selection(selection)
+            return
+        if key in {"delete", "restore", "purge"}:
+            self.main_window_confirm_selection(key, selection)
+            return
         self.main_window_show_status(f"{key} is not a batch action.")
+
+    def main_window_mark_selection(self, selection: object) -> None:
+        """Stage deletion marks for the selected assets.
+
+        selection: the captured ``AssetSelection``.
+        Returns None. Marking deletes nothing, so it needs no confirmation, but
+        it is whole-asset: there is no bulk copy-scoped mark API, so an album
+        view says plainly that every copy is being staged rather than implying
+        the mark is scoped to the album on screen.
+        """
+        if not isinstance(selection, AssetSelection) or not selection.asset_ids:
+            self.main_window_show_status(NO_SELECTION)
+            return
+        try:
+            parameters = self.models.assets.asset_model_selection_parameters(selection)
+        except ValueError as error:
+            self.main_window_refuse_selection("Marking", error)
+            return
+        request_id = self.main_window_start_quiet(
+            "app_service_mark_many", {"asset_ids": parameters["asset_ids"]}
+        )
+        if request_id is not None and selection.scope.kind == "album":
+            self.main_window_show_status(
+                f"Marking {len(selection.asset_ids)} assets, including their copies "
+                "in other albums. Nothing has been deleted."
+            )
+
+    def main_window_confirm_selection(self, key: str, selection: object) -> None:
+        """Describe a destructive selection action and ask for confirmation.
+
+        key: ``delete``, ``restore`` or ``purge``.
+        selection: the captured ``AssetSelection``.
+        Returns None. Restoring is not destructive and runs directly; the other
+        two reach the worker only through the confirmation dialog.
+        """
+        if not isinstance(selection, AssetSelection) or not selection.asset_ids:
+            self.main_window_show_status(NO_SELECTION)
+            return
+        if self.main_window_busy():
+            self.main_window_show_status(OPERATION_BUSY)
+            return
+        count = len(selection.asset_ids)
+        if key == "restore":
+            self.main_window_selection_confirmed(
+                selection,
+                ConfirmSpec("Restore", "Restore", False, operation="app_service_restore"),
+            )
+            return
+        if key == "delete":
+            spec = confirm_recycle_spec(count, {})
+        else:
+            # A recycle-bin purge must not reach the asset's active copies; the
+            # user is looking at the deleted ones and asked about those.
+            recycled_only = selection.scope.kind == "recycled"
+            spec = confirm_purge_spec(
+                count, self.main_window_selection_bytes(selection), {}, recycled_only
+            )
+        confirm_show(spec, self, partial(self.main_window_selection_confirmed, selection))
+
+    def main_window_selection_bytes(self, selection: AssetSelection) -> int:
+        """Total the archive bytes a selection represents, when that is meaningful.
+
+        selection: the captured ``AssetSelection``.
+        Returns the byte total, or 0 when it cannot be stated honestly. An album
+        view deletes only that album's copies, so quoting the whole asset's size
+        would overstate what is about to be freed.
+        """
+        if selection.scope.kind == "album":
+            return 0
+        model = self.models.assets
+        wanted = set(selection.asset_ids)
+        total = 0
+        for row in model.rows:
+            identifier = getattr(row, "asset_id", None)
+            size = getattr(row, "size", 0)
+            if identifier in wanted and isinstance(size, int):
+                total += size
+        return total
+
+    def main_window_selection_confirmed(self, selection: AssetSelection, spec: object) -> None:
+        """Submit a confirmed selection action against a re-validated selection.
+
+        selection: the captured ``AssetSelection``.
+        spec: the approved ``ConfirmSpec``.
+        Returns None. The selection is re-checked here, at confirmation time,
+        because the dialog is non-blocking: the archive, the view or the model
+        generation may all have changed while it was open.
+        """
+        if not isinstance(spec, ConfirmSpec):
+            return
+        try:
+            parameters = self.models.assets.asset_model_selection_parameters(selection)
+        except ValueError as error:
+            self.main_window_refuse_selection(operations_title(spec.operation), error)
+            return
+        parameters.update(spec.parameters)
+        self.main_window_start(spec.operation, parameters)
+
+    def main_window_refuse_selection(self, action: str, error: Exception) -> None:
+        """Report that a selection action never started, and hold the message.
+
+        action: the human-readable action name.
+        error: why the selection was refused.
+        Returns None.
+        """
+        message = f"{action} was not started: {error}"
+        self.main_window_show_status(message)
+        self.status_override = message
 
     def main_window_move_selection(self, selection: object) -> None:
         """Ask for a destination album and move the selected copies into it.
@@ -310,6 +438,151 @@ class MainWindow(QMainWindow):
         if selection.scope.kind == "album":
             parameters["source_album_id"] = selection.scope.album_id
         self.main_window_start("app_service_move_selection", parameters)
+
+    @Slot(str, str)
+    def main_window_review_action(self, view: str, key: str) -> None:
+        """Run an action from one of the report pages.
+
+        view: the review view the action came from.
+        key: the action key.
+        Returns None. These pages list decisions rather than photos, so their
+        actions are asset-scoped and their destructive verbs go through exactly
+        the same confirmation dialog the gallery uses.
+        """
+        page = self.shell.reviews.get(view)
+        if page is None:
+            return
+        if key == "select-all":
+            page.review_set_all(True)
+            return
+        if key == "keep":
+            page.review_set_all(False)
+            self.main_window_show_status("Nothing was changed. They stay in the archive.")
+            return
+        if key == "rescan":
+            self.shell.shell_refresh_review(view)
+            return
+        checked = page.review_checked_ids()
+        if view == "marked":
+            self.main_window_marks_action(key, checked)
+            return
+        self.main_window_phone_review_action(key, checked)
+
+    def main_window_phone_review_action(self, key: str, asset_ids: list[int]) -> None:
+        """Confirm a decision about assets that are gone from the phone.
+
+        key: ``recycle`` or ``purge``.
+        asset_ids: the assets the user checked.
+        Returns None. This report is asset-scoped: the phone knows nothing about
+        which archive copies exist, so the action covers every copy and the
+        dialog says so.
+        """
+        if not asset_ids:
+            self.main_window_show_status("Tick the items you want to act on first.")
+            return
+        if self.main_window_busy():
+            self.main_window_show_status(OPERATION_BUSY)
+            return
+        parameters: dict[str, object] = {"asset_ids": list(asset_ids)}
+        if key == "recycle":
+            spec = confirm_recycle_spec(len(asset_ids), parameters)
+        elif key == "purge":
+            spec = confirm_purge_spec(len(asset_ids), 0, parameters, False)
+        else:
+            self.main_window_show_status(f"{key} is not an action here.")
+            return
+        confirm_show(spec, self, self.main_window_confirmed)
+
+    def main_window_marks_action(self, key: str, mark_ids: list[int]) -> None:
+        """Run an action from the marks queue.
+
+        key: the action key.
+        mark_ids: the marks the user checked, for the per-mark actions.
+        Returns None. Committing applies the whole queue, which is what the CLI
+        does, so those buttons ignore the checked rows and say so in the dialog.
+        """
+        staged = len(self.shell.reviews["marked"].review_list.rows)
+        if key == "unmark":
+            self.main_window_unmark(mark_ids)
+            return
+        if key == "clear":
+            # Clearing marks deletes nothing at all, so it needs no confirmation.
+            self.main_window_start_quiet("app_service_clear_marks", {})
+            return
+        if key in {"commit-recycle", "commit-purge"}:
+            if not staged:
+                self.main_window_show_status("Nothing is marked.")
+                return
+            if self.main_window_busy():
+                self.main_window_show_status(OPERATION_BUSY)
+                return
+            spec = confirm_marks_spec(staged, key == "commit-purge")
+            confirm_show(spec, self, self.main_window_confirmed)
+            return
+        self.main_window_show_status(f"{key} is not an action here.")
+
+    def main_window_unmark(self, mark_ids: list[int]) -> None:
+        """Remove the checked marks one by one.
+
+        mark_ids: the marks to remove.
+        Returns None. There is no bulk unmark call and the worker's queue is
+        bounded, so a very large selection is refused with the alternative that
+        does the same job in one request.
+        """
+        if not mark_ids:
+            self.main_window_show_status("Tick the marks you want to remove first.")
+            return
+        if len(mark_ids) > MAX_BULK_REQUESTS:
+            self.main_window_show_status(
+                f"Removing more than {MAX_BULK_REQUESTS} marks at once is not supported. "
+                'Use "Clear all marks" instead.'
+            )
+            return
+        for mark_id in mark_ids:
+            if self.main_window_submit("app_service_unmark", {"mark_id": mark_id}) is None:
+                return
+        self.main_window_show_status(f"Removed {len(mark_ids)} marks. Nothing has been deleted.")
+
+    def main_window_confirmed(self, spec: object) -> None:
+        """Submit an approved action that needs no selection re-validation.
+
+        spec: the approved ``ConfirmSpec``.
+        Returns None. The ids it carries come from a report the service itself
+        produced, and the service re-checks them again before deleting anything.
+        """
+        if not isinstance(spec, ConfirmSpec):
+            return
+        self.main_window_start(spec.operation, dict(spec.parameters))
+
+    def main_window_open_reclaim(self, value: object) -> None:
+        """Show what a reclamation dry run found, and route its request onward.
+
+        value: the worker's returned ``ReclaimResult``.
+        Returns None. A preview with nothing in it opens no dialog: there is
+        nothing to decide, and the summary line already says so.
+        """
+        if not isinstance(value, ReclaimResult) or not value.dry_run:
+            return
+        if not value.candidates:
+            return
+        dialog = ReclaimDialog(value, self)
+        dialog.reclaim_requested.connect(partial(self.main_window_reclaim_requested, value))
+        dialog.show()
+
+    def main_window_reclaim_requested(self, preview: object, asset_ids: object) -> None:
+        """Confirm the phone-side deletion the reclaim dialog asked for.
+
+        preview: the dry run the selection was made from.
+        asset_ids: the candidate asset ids the user chose.
+        Returns None. This is the last step before real phone files are deleted,
+        so it still requires the typed word.
+        """
+        if not isinstance(asset_ids, list) or not asset_ids:
+            return
+        spec = confirm_reclaim_spec(
+            len(asset_ids), reclaim_selected_bytes(preview, asset_ids), asset_ids
+        )
+        confirm_show(spec, self, self.main_window_confirmed)
 
     @Slot(object)
     def main_window_worker_failed(self, failure: WorkerFailure) -> None:
@@ -544,6 +817,8 @@ class MainWindow(QMainWindow):
         """
         if operation == "app_service_dedup_report":
             ReportDialog("Storage and duplicate report", dialogs_dedup_lines(value), self).show()
+        elif operation == "app_service_reclaim":
+            self.main_window_open_reclaim(value)
 
 
 def main_window_preview_size() -> int:

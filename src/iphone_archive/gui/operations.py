@@ -37,6 +37,8 @@ from PySide6.QtWidgets import (
 from ..config import ArchivePaths
 from ..core.dedup import DedupResult
 from ..core.importer import ImportResult
+from ..core.reclaim import ReclaimResult
+from ..core.recycle import RecycleResult
 from ..core.verifier import VerifyResult
 from ..service.app_service import AppService, DeviceInfo
 from ..service.progress import ProgressEvent
@@ -85,6 +87,12 @@ OPERATION_TITLES = {
     "app_service_scan_phone": "Scanning the iPhone",
     "app_service_device_info": "Checking the iPhone",
     "app_service_move_selection": "Moving to album",
+    "app_service_move_to_deleted": "Moving to the Deleted folder",
+    "app_service_restore": "Restoring from the recycle bin",
+    "app_service_purge": "Deleting permanently",
+    "app_service_reclaim": "Freeing space on the iPhone",
+    "app_service_commit_marks": "Applying the marked deletions",
+    "app_service_deleted_on_phone": "Checking what is gone from the phone",
 }
 
 
@@ -253,6 +261,71 @@ def operations_open_summary(value: object) -> str:
     return f"Opened {value.root}."
 
 
+def operations_recycle_summary(value: object) -> str:
+    """Summarise a recycle-bin move, restore, purge or mark commit.
+
+    value: the worker's returned ``RecycleResult``.
+    Returns the summary line naming only the counts that are non-zero, so a
+    restore does not report "0 deleted" and a purge does not read like a move.
+    """
+    if not isinstance(value, RecycleResult):
+        return "Finished."
+    parts = []
+    for count, text in (
+        (value.moved_count, "moved to the Deleted folder"),
+        (value.restored_count, "restored"),
+        (value.purged_count, "permanently deleted"),
+    ):
+        if count:
+            parts.append(f"{count} {text}")
+    if not parts:
+        parts.append("nothing changed")
+    text = f"{'; '.join(parts).capitalize()}."
+    if value.skipped_count:
+        text = f"{text} {value.skipped_count} skipped."
+    if value.errors:
+        text = f"{text} {len(value.errors)} errors."
+    return text
+
+
+def operations_reclaim_summary(value: object) -> str:
+    """Summarise a reclamation preview or a real phone-side deletion.
+
+    value: the worker's returned ``ReclaimResult``.
+    Returns the summary line. A dry run is described as a preview, because a
+    line reading "3918 items" after a preview would imply a deletion that did
+    not happen.
+    """
+    if not isinstance(value, ReclaimResult):
+        return "Reclaim finished."
+    if value.dry_run:
+        text = (
+            f"{len(value.candidates)} items, {gallery_format_size(value.reclaimable_bytes)}, "
+            "can be safely deleted from the phone. Nothing has been deleted."
+        )
+    else:
+        text = f"Deleted {value.deleted_count} items from the iPhone. The archive is unchanged."
+    if value.skipped_count:
+        text = f"{text} {value.skipped_count} skipped."
+    if value.cancelled:
+        text = f"{text} Cancelled before finishing."
+    if value.errors:
+        text = f"{text} {len(value.errors)} errors."
+    return text
+
+
+def operations_marks_summary(value: object) -> str:
+    """Summarise the staged marks listing.
+
+    value: the worker's returned list of marks.
+    Returns the summary line.
+    """
+    count = len(value) if isinstance(value, list) else 0
+    if not count:
+        return "Nothing is marked."
+    return f"{count} marked for deletion. Nothing has been deleted."
+
+
 SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_import": operations_import_summary,
     "app_service_verify": operations_verify_summary,
@@ -262,6 +335,19 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_stats": operations_stats_summary,
     "app_service_clear_thumbnails": operations_thumbnails_summary,
     "app_service_scan_phone": lambda value: "Phone scan complete.",
+    "app_service_move_to_deleted": operations_recycle_summary,
+    "app_service_restore": operations_recycle_summary,
+    "app_service_purge": operations_recycle_summary,
+    "app_service_commit_marks": operations_recycle_summary,
+    "app_service_reclaim": operations_reclaim_summary,
+    "app_service_list_marks": operations_marks_summary,
+    "app_service_mark_many": lambda value: (
+        f"Marked {len(value) if isinstance(value, list) else 0} items. Nothing has been deleted."
+    ),
+    "app_service_unmark": lambda value: "Mark removed. Nothing has been deleted.",
+    "app_service_clear_marks": lambda value: (
+        f"Cleared {value if isinstance(value, int) else 0} marks. Nothing has been deleted."
+    ),
     "open_archive": operations_open_summary,
     "create_archive": operations_open_summary,
     "close_archive": lambda value: "Archive closed.",
@@ -301,6 +387,8 @@ def operations_is_problem(operation: str, value: object) -> bool:
         return not value.passed
     if isinstance(value, SelectionResult):
         return bool(value.errors)
+    if isinstance(value, (RecycleResult, ReclaimResult)):
+        return bool(value.errors)
     return False
 
 
@@ -311,7 +399,7 @@ def operations_detail_lines(operation: str, value: object) -> list[str]:
     value: the detached result the worker returned.
     Returns the error texts, so a summary count is never the only evidence.
     """
-    if isinstance(value, (ImportResult, SelectionResult)):
+    if isinstance(value, (ImportResult, SelectionResult, RecycleResult, ReclaimResult)):
         return [str(error) for error in value.errors]
     if isinstance(value, VerifyResult):
         return [f"{issue.path}: {issue.status}" for issue in value.issues]

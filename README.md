@@ -10,8 +10,10 @@ without the app. The archive — not the phone — is the source of truth.
 > validation. The GUI sketch was approved on 2026-09-11; `ibackup-gui` opens a
 > themed window with navigation, a command bar, live counts, a thumbnail grid
 > with multi-select and a full-size viewer, and it can now open an archive and
-> run every non-destructive operation. Deleting, purging, restoring, marking and
-> reclaiming phone space are still CLI-only pending their confirmation dialogs.
+> run every archive operation, including recycling, restoring, purging, marking
+> and previewing phone-space reclamation behind a typed-`DELETE` confirmation.
+> Settings still have no dialog. Reclamation cannot yet free space on a real
+> phone: device-side deletion remains disabled pending hardware validation.
 > Mica is an opt-in Windows probe; normal launches use solid backgrounds. No
 > downloadable Windows release is available. See
 > [`docs/progress.md`](docs/progress.md) for validation evidence and remaining
