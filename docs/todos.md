@@ -154,8 +154,13 @@ never starts before the layer beneath it is proven. Descriptions live in
   boundary without forcing threads. Thumbnail staging files are now uniquely
   named so parallel and cross-process writers cannot corrupt a cache entry.
   _Depends on: gui-models, thumbnails._
-- [ ] **gui-shell** — navigation pane with live counts, page stack, command bar,
-  status bar, phone connected/disconnected state.
+- [x] **gui-shell** — implemented offline in `gui/shell.py`, `gui/navigation.py`,
+  `gui/commands.py` and `gui/icons.py`: navigation pane with live counts and
+  album rows pumped from the paged album model, page stack bound to the asset
+  model's scope, command bar replacing the menu bar with every verb mapped to a
+  service operation, and a status line covering phone and archive state. Counts
+  refresh after mutations rather than going stale, and worker errors are no
+  longer overwritten by the next routine status update.
   _Depends on: gui-theme, gui-models._
 - [ ] **gui-gallery** — icon-mode grid, rubber-band and Ctrl/Shift selection,
   selection bar, viewer dialog, context menu.

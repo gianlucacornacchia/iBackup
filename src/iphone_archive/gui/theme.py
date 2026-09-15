@@ -141,8 +141,17 @@ def theme_stylesheet(dark: bool, *, mica: bool = False) -> str:
     disabled = theme_css(theme_color("TextFillColorDisabled", dark))
     return f"""
     QMainWindow#ArchiveWindow {{ background: {base}; }}
-    QStackedWidget#ContentLayer {{ background: {layer}; }}
-    QWidget#PlaceholderPage {{ background: transparent; }}
+    QStackedWidget#ContentLayer {{ background: transparent; }}
+    QWidget#ShellPage {{ background: transparent; }}
+    QFrame#NavPane {{ background: transparent; border-right: 1px solid {divider}; }}
+    QListWidget#NavList {{ background: transparent; outline: none; }}
+    QPushButton#Command {{
+        background: transparent; border: 1px solid transparent;
+        border-radius: {CONTROL_RADIUS}px; padding: 4px 10px; text-align: left;
+    }}
+    QPushButton#Command:hover {{ background: {layer}; border-color: {stroke}; }}
+    QPushButton#Command:disabled {{ color: {disabled}; }}
+    QPushButton#Command::menu-indicator {{ width: 0px; }}
     QWidget#Card {{
         background: {card}; border: 1px solid {stroke}; border-radius: {CONTROL_RADIUS}px;
     }}

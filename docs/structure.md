@@ -46,6 +46,10 @@ All paths below are relative to `src/iphone_archive/`.
 | `gui/win32_effects.py` | Lazy native preference queries, build-guarded DWM attributes, checked HRESULTs and observable solid fallback; experimental frame extension for the Mica probe. |
 | `gui/worker.py` | GUI-affine `WorkerController`, dedicated FIFO `ServiceThread`, worker-only session, bounded/coalesced progress mailbox and detached `WorkerResult`/`WorkerFailure` transport. |
 | `gui/models.py` | `ArchiveModels`, lazy `AssetModel`/`AlbumModel`, cached roles, generation-bound exact-copy selections and mutation barriers; no direct SQLite/device access. |
+| `gui/icons.py` | Line-art glyphs drawn with QPainter in the caller's colour, so icons follow light/dark/high-contrast themes with no bundled asset set. |
+| `gui/navigation.py` | `NavigationPane`: library/album rows, live counts, accent selection pill delegate, icon-rail collapse and programmatic selection that never fakes a user navigation. |
+| `gui/commands.py` | `CommandSpec` table binding every command-bar verb to a service operation, plus availability/tooltip rules for missing archive or phone. |
+| `gui/shell.py` | `ArchiveShell`: navigation, page stack, command bar and status composition. Holds no archive data; counts and albums come from the worker and follow the models' mutation barriers. |
 | `gui/previews.py` | `PreviewLoader`: dedicated render pool off the service worker, bounded LRU pixmap cache, per-key coalescing, cancel-on-scroll, remembered failures and bounded shutdown. Pool threads receive immutable paths/hashes only. |
 
 DTOs live with their owning modules above. There is no `service/results.py`,

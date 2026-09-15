@@ -71,7 +71,8 @@ def test_main_window_opens_with_title_and_placeholder(qtbot):
     qtbot.addWidget(window)
 
     assert window.windowTitle() == WINDOW_TITLE
-    assert window.pages.count() == 1
+    assert window.shell.stack.count() >= 1
+    assert window.shell.stack.currentWidget().body_label.text() == "No archive open."
     assert window.minimumSize().width() == WINDOW_MINIMUM_SIZE[0]
     assert window.minimumSize().height() == WINDOW_MINIMUM_SIZE[1]
 
