@@ -14,7 +14,6 @@ import io
 import logging
 import shutil
 import sqlite3
-from collections import Counter
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -228,14 +227,33 @@ class AfcDevice:
         client = self.afc_device_require_client()
         items = [item for root in MEDIA_ROOTS for item in self.afc_device_walk(client, root)]
         albums, capture_times = self.afc_device_photo_metadata()
-        counts = Counter(item.original_name for item in items)
+
+        # Build a filename-only fallback map: only keep entries whose bare
+        # filename is unique in Photos.sqlite so we never send a photo to the
+        # wrong album via an ambiguous name match.
+        filename_album_count: dict[str, int] = {}
+        filename_album_map: dict[str, list[str]] = {}
+        for path_key, album_names in albums.items():
+            filename = path_key.rsplit("/", 1)[-1]
+            filename_album_count[filename] = filename_album_count.get(filename, 0) + 1
+            filename_album_map[filename] = album_names  # last one wins; only used if unique
+        unique_by_filename = {
+            name: v
+            for name, v in filename_album_map.items()
+            if filename_album_count[name] == 1
+        }
+
         self.album_cache = {}
         for item in items:
-            if counts[item.original_name] == 1:
-                item.album_names = albums.get(item.original_name, [])
-                item.captured_at = capture_times.get(item.original_name)
-                if item.album_names:
-                    self.album_cache[item.phone_path] = list(item.album_names)
+            # Prefer the full-path key (unambiguous); fall back to the unique
+            # filename key for photos whose ZDIRECTORY in Photos.sqlite does not
+            # match their current on-disk location (iCloud migration re-numbers
+            # the DCIM roll folder, leaving an outdated ZDIRECTORY entry).
+            album_names = albums.get(item.phone_path) or unique_by_filename.get(item.original_name, [])
+            item.album_names = album_names
+            item.captured_at = capture_times.get(item.original_name)
+            if item.album_names:
+                self.album_cache[item.phone_path] = list(item.album_names)
             yield item
 
     def afc_device_walk(self, client: Any, directory: str) -> Iterable[PhoneItem]:
