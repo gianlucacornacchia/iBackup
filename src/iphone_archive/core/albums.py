@@ -111,13 +111,29 @@ def albums_membership_query(connection: sqlite3.Connection) -> str | None:
     kind_filter = ""
     if "ZKIND" in albums_table_columns(connection, "ZGENERICALBUM"):
         kind_filter = f"AND album.ZKIND = {USER_ALBUM_KIND}"
+
+    # ZDIRECTORY (e.g. "DCIM/100APPLE") is present in modern schemas and gives
+    # the relative parent directory of the asset on the device.  Combining it
+    # with ZFILENAME produces a path that matches the AFC enumeration path
+    # (/DCIM/100APPLE/IMG_xxx.HEIC), making the membership lookup unambiguous
+    # even when the same filename appears in multiple directories (e.g. because
+    # shared-album copies under PhotoData/PhotoCloudSharingData/ reuse the
+    # original filename).  Fall back to ZFILENAME-only for older schemas.
+    asset_cols = albums_table_columns(connection, asset_table)
+    if "ZDIRECTORY" in asset_cols:
+        path_expr = f"'/' || asset.ZDIRECTORY || '/' || asset.ZFILENAME"
+        path_null = f"asset.ZDIRECTORY IS NOT NULL AND asset.ZFILENAME IS NOT NULL"
+    else:
+        path_expr = "asset.ZFILENAME"
+        path_null = "asset.ZFILENAME IS NOT NULL"
+
     return f"""
-        SELECT album.ZTITLE AS album_name, asset.ZFILENAME AS file_name
+        SELECT album.ZTITLE AS album_name, {path_expr} AS asset_path
         FROM ZGENERICALBUM AS album
         JOIN "{table}" AS link ON link."{album_column}" = album.Z_PK
         JOIN "{asset_table}" AS asset ON asset.Z_PK = link."{asset_column}"
         WHERE album.ZTITLE IS NOT NULL AND TRIM(album.ZTITLE) <> ''
-          AND asset.ZFILENAME IS NOT NULL
+          AND {path_null}
           {kind_filter}
     """
 
@@ -126,8 +142,10 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
     """Extract album membership from a phone ``Photos.sqlite`` file.
 
     database_path: path to a copy of the phone's photo database.
-    Returns a mapping of file name to album names; empty when the database is
-    missing or unreadable, so callers fall back to ``_Unsorted``.
+    Returns a mapping of AFC asset path (e.g. ``/DCIM/100APPLE/IMG_0001.HEIC``)
+    to album names; empty when the database is missing or unreadable, so callers
+    fall back to ``_Unsorted``.  On older schemas without ZDIRECTORY the key is
+    the bare filename, matching the pre-existing fallback behaviour.
     """
     membership: dict[str, list[str]] = {}
     if not database_path.is_file():
@@ -150,9 +168,9 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
             logger.warning("album membership query failed: %s", error)
             return membership
         for row in rows:
-            file_name = str(row["file_name"])
+            asset_path = str(row["asset_path"])
             album_name = str(row["album_name"])
-            names = membership.setdefault(file_name, [])
+            names = membership.setdefault(asset_path, [])
             if album_name not in names:
                 names.append(album_name)
     finally:

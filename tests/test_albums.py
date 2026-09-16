@@ -83,6 +83,39 @@ def make_ios26_photos_db(path, rows, join_ordinal=33):
     connection.close()
 
 
+def make_photos_db_with_directory(path, rows, join_ordinal=33):
+    """Build a Photos.sqlite that includes ZDIRECTORY (modern iOS schema).
+
+    path: destination file.
+    rows: tuples of (album_pk, title, kind, asset_pk, directory, file_name).
+    """
+    connection = sqlite3.connect(path)
+    join_table = f"Z_{join_ordinal}ASSETS"
+    album_column = f"Z_{join_ordinal}ALBUMS"
+    connection.executescript(
+        f"""
+        CREATE TABLE ZGENERICALBUM (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZKIND INTEGER);
+        CREATE TABLE ZASSET (Z_PK INTEGER PRIMARY KEY, ZDIRECTORY TEXT, ZFILENAME TEXT);
+        CREATE TABLE "{join_table}" ({album_column} INTEGER, Z_3ASSETS INTEGER);
+        """
+    )
+    for album_pk, title, kind, asset_pk, directory, file_name in rows:
+        connection.execute(
+            "INSERT OR IGNORE INTO ZGENERICALBUM(Z_PK, ZTITLE, ZKIND) VALUES (?, ?, ?)",
+            (album_pk, title, kind),
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO ZASSET(Z_PK, ZDIRECTORY, ZFILENAME) VALUES (?, ?, ?)",
+            (asset_pk, directory, file_name),
+        )
+        connection.execute(
+            f'INSERT INTO "{join_table}"({album_column}, Z_3ASSETS) VALUES (?, ?)',
+            (album_pk, asset_pk),
+        )
+    connection.commit()
+    connection.close()
+
+
 def test_parses_album_membership(tmp_path):
     """A well-formed photo database yields file-to-album mapping."""
     database_path = tmp_path / "Photos.sqlite"
@@ -149,6 +182,60 @@ def test_non_user_albums_are_ignored(tmp_path):
     membership = albums.albums_parse_photos_database(database_path)
 
     assert membership == {"IMG_0001.HEIC": ["Holiday"]}
+
+
+def test_zdirectory_keying_disambiguates_duplicate_filenames(tmp_path):
+    """When ZDIRECTORY is present the key includes the full path.
+
+    Regression: shared-album copies in PhotoData/PhotoCloudSharingData/ reuse
+    the original filename (e.g. IMG_0001.HEIC appears in both DCIM/100APPLE and
+    several PhotoCloudSharingData subdirectories).  The old filename-only key
+    caused one of the duplicates to win the membership lookup, misassigning some
+    photos to wrong albums.
+    """
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db_with_directory(
+        database_path,
+        [
+            # Real DCIM photo belonging to "Trip"
+            (1, "Trip", 2, 10, "DCIM/100APPLE", "IMG_0001.HEIC"),
+            # Cloud-shared copy in a different directory – same filename, different album
+            (2, "Shared", 2, 11, "PhotoData/PhotoCloudSharingData/abc/100CLOUD", "IMG_0001.HEIC"),
+        ],
+    )
+
+    membership = albums.albums_parse_photos_database(database_path)
+
+    # Both paths should be keyed separately by full path
+    assert membership["/DCIM/100APPLE/IMG_0001.HEIC"] == ["Trip"]
+    assert membership["/PhotoData/PhotoCloudSharingData/abc/100CLOUD/IMG_0001.HEIC"] == ["Shared"]
+    # The bare filename must NOT appear as a key (would be ambiguous)
+    assert "IMG_0001.HEIC" not in membership
+
+
+def test_zdirectory_keying_device_enumerate_uses_phone_path(tmp_path):
+    """device_enumerate assigns album_names via phone_path, not filename.
+
+    Regression: the old code suppressed album assignment entirely for any item
+    whose original_name appeared more than once across the enumerated tree
+    (counts[item.original_name] != 1), sending legitimate DCIM photos to
+    _Unsorted whenever a shared-album copy reused the same filename.
+    """
+    from iphone_archive.device.fake_device import FakeDevice
+
+    # Two files with the same filename in different directories
+    device = FakeDevice(
+        {"/DCIM/100APPLE/IMG_0001.HEIC": b"real", "/DCIM/110APPLE/IMG_0001.HEIC": b"old"},
+        album_map={
+            "/DCIM/100APPLE/IMG_0001.HEIC": ["Trip"],
+            "/DCIM/110APPLE/IMG_0001.HEIC": ["Archive"],
+        },
+    )
+    items = list(device.device_enumerate())
+    by_path = {item.phone_path: item for item in items}
+    # Each file gets its own correct album assignment
+    assert by_path["/DCIM/100APPLE/IMG_0001.HEIC"].album_names == ["Trip"]
+    assert by_path["/DCIM/110APPLE/IMG_0001.HEIC"].album_names == ["Archive"]
 
 
 def test_schema_without_album_tables_returns_empty(tmp_path):

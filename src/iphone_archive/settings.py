@@ -120,9 +120,21 @@ def settings_save(settings: Settings) -> Path:
     settings_validate(settings)
     target = settings_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.with_name(target.name + ".tmp")
-    staging.write_text(json.dumps(asdict(settings), indent=2, sort_keys=True), encoding="utf-8")
-    staging.replace(target)
+    # Use a unique staging name so concurrent callers never share a partial
+    # file.  On Windows, os.replace() raises PermissionError when the target
+    # is open by another caller; if the target already exists at that point,
+    # the write that won is valid and we can treat it as success.
+    unique = f"{os.getpid()}.{os.urandom(8).hex()}"
+    staging = target.with_name(f"{target.name}.{unique}.tmp")
+    try:
+        staging.write_text(json.dumps(asdict(settings), indent=2, sort_keys=True), encoding="utf-8")
+        try:
+            staging.replace(target)
+        except PermissionError:
+            if not target.exists():
+                raise
+    finally:
+        staging.unlink(missing_ok=True)
     return target
 
 

@@ -274,7 +274,15 @@ def thumbnails_save_atomic(preview: PillowImage, target_path: Path) -> None:
     staging_path = target_path.with_name(f"{target_path.name}.{os.getpid()}.{uuid4().hex}.part")
     try:
         preview.save(staging_path, format="JPEG", quality=THUMBNAIL_QUALITY)
-        staging_path.replace(target_path)
+        try:
+            staging_path.replace(target_path)
+        except PermissionError:
+            # Windows does not allow replacing a file that is open by another
+            # thread or process.  If the target already exists a concurrent
+            # writer finished first and the cache entry is valid; otherwise
+            # re-raise so the caller records the failure.
+            if not target_path.exists():
+                raise
     finally:
         staging_path.unlink(missing_ok=True)
 
