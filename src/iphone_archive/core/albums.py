@@ -121,8 +121,8 @@ def albums_membership_query(connection: sqlite3.Connection) -> str | None:
     # original filename).  Fall back to ZFILENAME-only for older schemas.
     asset_cols = albums_table_columns(connection, asset_table)
     if "ZDIRECTORY" in asset_cols:
-        path_expr = f"'/' || asset.ZDIRECTORY || '/' || asset.ZFILENAME"
-        path_null = f"asset.ZDIRECTORY IS NOT NULL AND asset.ZFILENAME IS NOT NULL"
+        path_expr = "'/' || asset.ZDIRECTORY || '/' || asset.ZFILENAME"
+        path_null = "asset.ZDIRECTORY IS NOT NULL AND asset.ZFILENAME IS NOT NULL"
     else:
         path_expr = "asset.ZFILENAME"
         path_null = "asset.ZFILENAME IS NOT NULL"

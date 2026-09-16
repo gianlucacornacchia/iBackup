@@ -265,6 +265,20 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-09-16 — **Integrated `gcor/nugfix` into `main`.** Album membership now
+  uses `ZDIRECTORY` paths where available. Integration regressions cover the
+  real AFC enumeration method: exact paths win, filename fallback requires
+  uniqueness in both the membership map and device inventory, and repeated
+  filenames do not inherit ambiguous capture times. Settings retain unique
+  staging files but propagate failed publication rather than pretending an
+  existing file contains the requested preferences.
+  Read-only USB validation found 1,317 media items, 753 with memberships across
+  15 albums and no repeated filenames; the device was closed without import or
+  deletion. This checks metadata availability, not manual album correctness.
+  The affected suite passed (99 tests); full Windows validation: 724 passed,
+  8 skipped, 2 previously recorded GUI-settings path-separator assertion
+  failures, 89.98% coverage. Ruff lint/format and strict core/catalog mypy passed.
+
 - 2026-09-16 — **Step 12 `gui-packaging` implemented, built and smoke-tested on
   Windows 11** (Python 3.11, PyInstaller 6.22). `packaging/` holds the spec,
   the entry-point shim, the icon generator and its committed `icon.ico`, the

@@ -244,6 +244,61 @@ def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeyp
     device.device_close()
 
 
+@pytest.mark.parametrize(
+    ("paths", "albums", "expected"),
+    [
+        (
+            ["/DCIM/100APPLE/A.JPG", "/DCIM/101APPLE/A.JPG"],
+            {"/DCIM/100APPLE/A.JPG": ["Trip"], "/DCIM/101APPLE/A.JPG": ["Archive"]},
+            [["Trip"], ["Archive"]],
+        ),
+        (
+            ["/DCIM/100APPLE/A.JPG", "/DCIM/101APPLE/A.JPG"],
+            {"/DCIM/100APPLE/A.JPG": ["Trip"]},
+            [["Trip"], []],
+        ),
+        (
+            ["/DCIM/100APPLE/A.JPG", "/DCIM/101APPLE/A.JPG"],
+            {"A.JPG": ["Trip"]},
+            [[], []],
+        ),
+        (
+            ["/DCIM/101APPLE/A.JPG"],
+            {"/DCIM/100APPLE/A.JPG": ["Trip"]},
+            [["Trip"]],
+        ),
+        (
+            ["/DCIM/102APPLE/A.JPG"],
+            {"/DCIM/100APPLE/A.JPG": ["Trip"], "/DCIM/101APPLE/A.JPG": ["Archive"]},
+            [[]],
+        ),
+    ],
+)
+def test_afc_album_fallback_requires_unique_device_and_metadata_names(
+    monkeypatch, paths, albums, expected
+):
+    from iphone_archive.device.interface import PhoneItem
+
+    items = [
+        PhoneItem(phone_path=path, original_name="A.JPG", size=1, media_type="image")
+        for path in paths
+    ]
+    device = AfcDevice()
+    monkeypatch.setattr(device, "afc_device_require_client", lambda: object())
+    monkeypatch.setattr(device, "afc_device_walk", lambda client, root: iter(items))
+    monkeypatch.setattr(
+        device, "afc_device_photo_metadata", lambda: (albums, {"A.JPG": "capture-time"})
+    )
+    result = list(device.device_enumerate())
+    assert [item.album_names for item in result] == expected
+    assert [item.captured_at for item in result] == [
+        "capture-time" if len(paths) == 1 else None
+    ] * len(paths)
+    assert device.album_cache == {
+        path: names for path, names in zip(paths, expected, strict=True) if names
+    }
+
+
 def test_afc_delete_is_gated_without_touching_device():
     """Even regular media cannot be deleted through unvalidated raw AFC operations."""
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -50,6 +51,25 @@ def test_save_then_load_round_trip():
 def test_settings_file_location_is_overridable(isolated_settings):
     """The config directory honours IBACKUP_CONFIG_DIR, keeping tests isolated."""
     assert settings_path().parent == isolated_settings
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_failed_publication_is_reported_and_staging_cleaned(monkeypatch, existing):
+    if existing:
+        settings_save(Settings(theme="light"))
+    target = settings_path()
+
+    def deny_replace(self, destination):
+        raise PermissionError("settings file locked")
+
+    monkeypatch.setattr(Path, "replace", deny_replace)
+    with pytest.raises(PermissionError, match="settings file locked"):
+        settings_save(Settings(theme="dark"))
+    assert not list(target.parent.glob("*.tmp"))
+    if existing:
+        assert settings_load().theme == "light"
+    else:
+        assert not target.exists()
 
 
 def test_corrupt_file_falls_back_to_defaults():
