@@ -220,15 +220,20 @@ exist. Later operation views must preserve the following:
 - The GUI package is `main_window.py`, `application.py`, `theme.py`,
   `win32_effects.py`, `worker.py`, `models.py`, `previews.py`, `navigation.py`,
   `commands.py`, `icons.py`, `shell.py`, `gallery.py`, `viewer.py`,
-  `operations.py`, `dialogs.py`, `confirm.py`, `review.py`, `reclaim.py` and
-  `settings_dialog.py`, delivered by steps 1-10 of `plan.md` §2b. The earlier
+  `operations.py`, `dialogs.py`, `confirm.py`, `review.py`, `reclaim.py`,
+  `settings_dialog.py` and `parity.py`, delivered by steps 1-11 of
+  `plan.md` §2b. `parity.py` holds no widgets: it declares which surface reaches
+  each service operation, so `tests/test_gui_parity.py` can fail when a
+  capability exists only in the CLI. The earlier
   planned names (`navigation_pane.py`, `command_bar.py`, `picture_grid_view.py`,
   `thumbnail_loader.py`, `operations_controller.py`) map onto those files.
 - DWM failures log the attribute/result and select a solid background.
   Normal launches remain opaque; `--mica-probe` opts into experimental
   translucent painting on Windows 11 22H2+. No visual probe result exists.
 - Full parity is an acceptance requirement, not guaranteed by a facade alone:
-  see the complete [CLI↔GUI map](ui-sketch/README.md#8-cli--gui-parity-map).
+  see the complete [CLI↔GUI map](ui-sketch/README.md#8-cli--gui-parity-map). It
+  is enforced by `tests/test_gui_parity.py` against `gui/parity.py`, so the map
+  cannot quietly fall behind the code.
 
 ## 5. Dependencies and packaging
 

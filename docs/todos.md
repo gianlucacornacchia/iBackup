@@ -196,9 +196,17 @@ never starts before the layer beneath it is proven. Descriptions live in
   `default_deleted_action` finally have consumers - startup reopens the last
   archive only when it is still an archive, and the §3 review only *suggests*
   the preferred button. _Depends on: gui-shell, service-layer._
-- [ ] **gui-parity-tests** — a test that fails if any CLI command or service
+- [x] **gui-parity-tests** — a test that fails if any CLI command or service
   method has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
-  _Depends on: gui-ops-destructive, gui-settings._
+  `gui/parity.py` declares the surface behind every operation and
+  `tests/test_gui_parity.py` checks it against the real Typer app, the real
+  `AppService` and the real GUI source: an operation with no surface, a surface
+  naming an operation that no longer exists, a declared surface that never
+  submits its operation and an undeclared submission all fail. Only two
+  capabilities are covered indirectly and each records why. Writing the test
+  closed the last gap it found - album-scoped and copy-scoped marks now exist in
+  the GUI, with the narrower scope as the default. _Depends on:
+  gui-ops-destructive, gui-settings._
 - [ ] **gui-packaging** — PyInstaller executable, icon, version resource and a
   smoke test of the built artifact. _Depends on: gui-parity-tests._
 

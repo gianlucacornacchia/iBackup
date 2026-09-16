@@ -18,6 +18,7 @@ from PySide6.QtCore import (
     QEvent,
     QModelIndex,
     QPersistentModelIndex,
+    QPoint,
     QRect,
     QSize,
     Qt,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QStyle,
     QStyledItemDelegate,
@@ -47,6 +49,10 @@ NAV_COUNT_ROLE = Qt.ItemDataRole.UserRole + 3
 NAV_GLYPH_ROLE = Qt.ItemDataRole.UserRole + 4
 NAV_HEADER_ROLE = Qt.ItemDataRole.UserRole + 5
 ALBUM_KEY_PREFIX = "album:"
+# Album-wide verbs offered on a right-click. Marking is the only one here: it
+# stages a decision and deletes nothing, so it needs no typed confirmation,
+# and it is the album equivalent of the CLI's `marks add <id> --album`.
+ALBUM_ACTIONS = (("mark", "Mark album for delete"),)
 ModelIndex = QModelIndex | QPersistentModelIndex
 
 
@@ -186,6 +192,7 @@ class NavigationPane(QFrame):
 
     navigation_selected = Signal(str)
     navigation_settings = Signal()
+    navigation_album_action = Signal(int, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Build an empty pane whose counts are unknown until the shell pushes them."""
@@ -215,6 +222,8 @@ class NavigationPane(QFrame):
         self.list_widget.setUniformItemSizes(False)
         self.list_widget.setItemDelegate(NavigationRowDelegate(self))
         self.list_widget.currentItemChanged.connect(self.navigation_current_changed)
+        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_widget.customContextMenuRequested.connect(self.navigation_context_menu)
         layout.addWidget(self.list_widget, 1)
 
         self.settings_button = QPushButton("  Settings", self)
@@ -343,6 +352,31 @@ class NavigationPane(QFrame):
             return
         self.current_key = key
         self.navigation_selected.emit(key)
+
+    def navigation_context_menu(self, position: QPoint) -> None:
+        """Offer the album-wide verbs for the row under the cursor.
+
+        position: the click position in the list widget's viewport.
+        Returns None. Only album rows have album-wide verbs; the library views
+        are not catalog objects, so a right-click on them offers nothing.
+        """
+        item = self.list_widget.itemAt(position)
+        if item is None:
+            return
+        key = item.data(NAV_KEY_ROLE)
+        album_id = navigation_album_id(key) if isinstance(key, str) else None
+        if album_id is None:
+            return
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        for action_key, label in ALBUM_ACTIONS:
+            action = menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, chosen=action_key: self.navigation_album_action.emit(
+                    album_id, chosen
+                )
+            )
+        menu.popup(self.list_widget.viewport().mapToGlobal(position))
 
     def navigation_toggle(self) -> None:
         """Collapse the pane to an icon rail, or expand it again."""

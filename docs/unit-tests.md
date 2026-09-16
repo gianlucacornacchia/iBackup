@@ -68,6 +68,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_gui_gallery.py` | Tile layout/eliding/size formatting, delegate painting from cache and scheduled renders, anchor-based viewport scanning cost, cancel-on-scroll safety when no tile is locatable, rubber-band/Ctrl/Shift selection, scope-gated selection bar and context menu, selection captured as exact copies on the GUI thread, stale-selection refusal after a reset, paging while scrolling, page errors surfaced in the status bar, gallery re-hosting across pages, and viewer open/navigate/page/close-on-reset with deletion on close. |
 | `test_gui_destructive.py` | The confirmation gate: a permanent action refusing a click without the typed word and re-checking the word when the button is pressed, a reversible action confirmed without it, Cancel holding default focus, cancelling deleting nothing, a purge really removing the bytes, a stale selection refused after the prompt opened, a recycle-bin purge restricted to recycled copies, restore running ungated, marking staging without deleting and stating album scope, a queue-wide mark commit, clearing marks asking nothing, an oversized unmark refused rather than flooding the bounded queue, the deleted-on-phone listing and its gated buttons, ticks dropped on refresh, bounded listings, reclaim running a dry run that deletes nothing, the reclaim dialog as the only route to a phone deletion and still passing the typed confirmation, an empty dry run opening no dialog, previews never reported as completed deletions, and summaries reporting only what happened. |
 | `test_gui_operations.py` | Duration/estimate/eliding helpers, the cancellable set checked against the real service signatures in both directions, every result summary including a cancelled import reported as a partial success, problem detection and error-line listing, bounded duplicate reports, the move prompt's empty-name refusal and album-scope wording, archive open/create from a chosen folder, the progress dialog's own-request filtering, Hide keeping work running, a running dialog refusing to be destroyed, a clean hidden run closing itself and an erroring one coming back, cancellation reaching the request and being harmless after completion, quiet reads, a real move landing files in the album, album-scoped moves, stale-selection refusal, refused submissions and failures staying on screen, window close closing a running dialog, replaced dialogs/viewers not orphaning their successors, and preview clearing quiescing the loaders. |
+| `test_gui_parity.py` | CLI↔GUI parity enforced from the real Typer app, the real `AppService` and the real GUI source: every service operation having a surface, the declaration naming only operations that still exist, every declared surface really submitting its operation, no undeclared submission, every CLI command mapped and no CLI command doing work the GUI cannot, no verb left deferred, plus offscreen journeys that import, verify, mark an album, mark one copy or every copy, dismiss the scope prompt without staging anything, and commit and restore a recycle round trip asserted against the files on disk. |
 | `test_win32_effects.py` | Mocked platform/build guards, native preference queries, pointer-sized HWND/32-bit arguments, HRESULT/load failures and opt-in Mica fallback. Not a live Windows probe. |
 
 `test_reclaim.py`, `test_recycle.py` and `test_selection.py` were added in core
@@ -152,8 +153,12 @@ a `finally` block: a failing assertion that leaves a `QThread` running aborts
 the whole process, which hides the assertion message. Tests must also wait for
 the refresh a mutation triggers, not just for the mutation itself, or they pass
 against broken status handling. Still validate the view/model integration,
-bounded thumbnail queues, full parity map and native accessibility/theme
-behavior. Perform the
+bounded thumbnail queues and native accessibility/theme behavior. The parity map
+is no longer validated by reading it: `tests/test_gui_parity.py` checks the
+declaration in `gui/parity.py` against the real Typer app, the real `AppService`
+and the real GUI source, and fails when a capability exists only in the CLI, when
+a declared surface never submits its operation, or when the GUI submits an
+operation the map does not list. Perform the
 Mica probe on Windows 11 22H2+ using `ibackup-gui --mica-probe` and retain its
 result/logs. Confirm both themes, wallpaper tint, native title bar, resize/snap/
 maximize, high contrast, transparency disabled and battery saver. Normal

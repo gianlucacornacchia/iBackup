@@ -31,6 +31,12 @@ from .theme import CONTROL_HEIGHT, GROUP_GAP, PAGE_MARGIN, theme_font
 LOGGER = logging.getLogger(__name__)
 
 MOVE_DIALOG_SIZE = (440, 190)
+MARK_SCOPE_DIALOG_SIZE = (460, 190)
+# The service's mark target types, named here so the dialog, the window and the
+# parity map all spell the copy-scoped and asset-scoped marks the same way.
+MARK_SCOPE_COPY = "file"
+MARK_SCOPE_ASSET = "asset"
+MARK_SCOPE_ALBUM = "album"
 REPORT_DIALOG_SIZE = (640, 460)
 # A report is a summary, not an export: the biggest groups are what matters and
 # the full listing belongs to the CLI's `dedup` command.
@@ -104,6 +110,81 @@ class ReportDialog(QDialog):
         close_button.clicked.connect(self.accept)
         row.addWidget(close_button)
         layout.addLayout(row)
+
+
+class MarkScopeDialog(QDialog):
+    """Ask whether a mark covers one album's copy or every copy of the asset."""
+
+    # The chosen scope travels with the signal for the same reason the move
+    # dialog carries its album name: the dialog deletes itself on close.
+    scope_chosen = Signal(str)
+
+    def __init__(self, album_name: str, parent: QWidget | None = None) -> None:
+        """Offer the copy-scoped and asset-scoped marks the CLI also offers.
+
+        album_name: the album being browsed, named so the narrow choice is
+            unambiguous about which copy it covers.
+        parent: the owning window.
+        """
+        super().__init__(parent)
+        self.setObjectName("MarkScopeDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setWindowTitle("iPhone Archive")
+        self.resize(*MARK_SCOPE_DIALOG_SIZE)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        layout.setSpacing(GROUP_GAP)
+        heading = QLabel("Mark for delete", self)
+        heading.setFont(theme_font("subtitle"))
+        layout.addWidget(heading)
+        caption = QLabel(
+            "This photo or video is stored in more than one place. Marking stages "
+            "a decision only; nothing is deleted until you commit the marks.",
+            self,
+        )
+        caption.setFont(theme_font("caption"))
+        caption.setProperty("role", "secondary")
+        caption.setWordWrap(True)
+        layout.addWidget(caption)
+        layout.addStretch(1)
+        layout.addLayout(self.mark_scope_build_buttons(album_name))
+
+    def mark_scope_build_buttons(self, album_name: str) -> QHBoxLayout:
+        """Build the cancel/copy/asset row.
+
+        album_name: the album being browsed.
+        Returns the populated layout. The narrower scope is the default button
+        because it is the one that leaves the rest of the archive untouched.
+        """
+        row = QHBoxLayout()
+        row.setSpacing(GROUP_GAP)
+        row.addStretch(1)
+        cancel_button = QPushButton("Cancel", self)
+        cancel_button.setMinimumHeight(CONTROL_HEIGHT)
+        cancel_button.clicked.connect(self.reject)
+        self.asset_button = QPushButton("Every copy", self)
+        self.asset_button.setMinimumHeight(CONTROL_HEIGHT)
+        self.asset_button.setToolTip("Mark the asset itself, including copies in other albums.")
+        self.asset_button.clicked.connect(lambda: self.mark_scope_choose(MARK_SCOPE_ASSET))
+        self.copy_button = QPushButton(f'Only in "{album_name}"', self)
+        self.copy_button.setObjectName("Accent")
+        self.copy_button.setMinimumHeight(CONTROL_HEIGHT)
+        self.copy_button.setDefault(True)
+        self.copy_button.setToolTip("Mark only the copy stored in the album you are browsing.")
+        self.copy_button.clicked.connect(lambda: self.mark_scope_choose(MARK_SCOPE_COPY))
+        row.addWidget(cancel_button)
+        row.addWidget(self.asset_button)
+        row.addWidget(self.copy_button)
+        return row
+
+    def mark_scope_choose(self, scope: str) -> None:
+        """Report the chosen scope and close.
+
+        scope: ``file`` for the browsed copy, ``asset`` for every copy.
+        Returns None.
+        """
+        self.scope_chosen.emit(scope)
+        self.accept()
 
 
 class MoveToAlbumDialog(QDialog):

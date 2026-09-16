@@ -13,6 +13,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QRect, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QPainter, QPixmap  # noqa: E402
+from PySide6.QtWidgets import QMenu  # noqa: E402
 
 from iphone_archive.device.fake_device import FakeDevice  # noqa: E402
 from iphone_archive.gui.commands import (  # noqa: E402
@@ -24,6 +25,7 @@ from iphone_archive.gui.commands import (  # noqa: E402
 from iphone_archive.gui.icons import GLYPH_NAMES, icons_draw, icons_get, icons_pixmap  # noqa: E402
 from iphone_archive.gui.models import ArchiveModels, AssetScope  # noqa: E402
 from iphone_archive.gui.navigation import (  # noqa: E402
+    ALBUM_ACTIONS,
     LIBRARY_VIEWS,
     NAV_COUNT_ROLE,
     NAV_KEY_ROLE,
@@ -171,6 +173,30 @@ def test_navigation_keeps_the_selected_row_across_refreshes(qtbot):
     assert emitted == []
     pane.navigation_set_albums([])
     assert pane.current_key == LIBRARY_VIEWS[0].key
+
+
+def test_only_album_rows_offer_album_wide_verbs(qtbot):
+    """A library view is a filter, not a catalog object; it cannot be marked."""
+    pane = NavigationPane()
+    qtbot.addWidget(pane)
+    pane.navigation_set_albums([(3, "Trip", 4)])
+    requested = []
+    pane.navigation_album_action.connect(lambda album_id, key: requested.append((album_id, key)))
+
+    rows = {}
+    for row in range(pane.list_widget.count()):
+        item = pane.list_widget.item(row)
+        rows[item.data(NAV_KEY_ROLE)] = pane.list_widget.visualItemRect(item).center()
+    pane.navigation_context_menu(rows[LIBRARY_VIEWS[0].key])
+    assert requested == []
+
+    pane.navigation_context_menu(rows["album:3"])
+    menus = [child for child in pane.children() if isinstance(child, QMenu)]
+    assert len(menus) == 1
+    menus[0].actions()[0].trigger()
+
+    assert requested == [(3, ALBUM_ACTIONS[0][0])]
+    menus[0].close()
 
 
 def test_navigation_collapses_to_a_rail(qtbot):

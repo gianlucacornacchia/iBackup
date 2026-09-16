@@ -446,6 +446,7 @@ def test_marking_from_an_album_says_it_covers_every_copy(window, qtbot):
     helper_import(main, qtbot)
     qtbot.waitUntil(lambda: bool(main.shell.navigation.albums), timeout=15000)
     album_id = main.shell.navigation.albums[0][0]
+    from iphone_archive.gui.dialogs import MARK_SCOPE_ASSET, MarkScopeDialog
     from iphone_archive.gui.navigation import navigation_album_key
 
     main.shell.shell_show_view(navigation_album_key(album_id))
@@ -454,6 +455,11 @@ def test_marking_from_an_album_says_it_covers_every_copy(window, qtbot):
 
     statuses = helper_statuses(main)
     main.shell.shell_gallery_action("mark")
+    # One copy in an album is the case the service can mark either way, so the
+    # user is asked; taking the wide scope must still say how wide it is.
+    prompts = [child for child in main.children() if isinstance(child, MarkScopeDialog)]
+    assert len(prompts) == 1
+    prompts[0].mark_scope_choose(MARK_SCOPE_ASSET)
 
     assert any("copies in other albums" in message for message in statuses)
 

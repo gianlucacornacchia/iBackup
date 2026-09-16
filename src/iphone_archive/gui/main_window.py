@@ -42,7 +42,14 @@ from .confirm import (
     confirm_recycle_spec,
     confirm_show,
 )
-from .dialogs import MoveToAlbumDialog, ReportDialog, dialogs_dedup_lines
+from .dialogs import (
+    MARK_SCOPE_ALBUM,
+    MARK_SCOPE_COPY,
+    MarkScopeDialog,
+    MoveToAlbumDialog,
+    ReportDialog,
+    dialogs_dedup_lines,
+)
 from .models import ArchiveModels, AssetSelection
 from .operations import OperationDialog, operations_summary, operations_title
 from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
@@ -134,6 +141,7 @@ class MainWindow(QMainWindow):
         self.shell.shell_command.connect(self.main_window_command)
         self.shell.shell_selection_action.connect(self.main_window_selection_action)
         self.shell.shell_review_action.connect(self.main_window_review_action)
+        self.shell.shell_album_action.connect(self.main_window_album_action)
         self.shell.shell_open_asset.connect(self.main_window_open_viewer)
         self.shell.shell_set_deleted_default(self.preferences.default_deleted_action)
         self.worker.result_ready.connect(self.main_window_quiet_reply)
@@ -310,10 +318,11 @@ class MainWindow(QMainWindow):
         """Stage deletion marks for the selected assets.
 
         selection: the captured ``AssetSelection``.
-        Returns None. Marking deletes nothing, so it needs no confirmation, but
-        it is whole-asset: there is no bulk copy-scoped mark API, so an album
-        view says plainly that every copy is being staged rather than implying
-        the mark is scoped to the album on screen.
+        Returns None. Marking deletes nothing, so it needs no confirmation. A
+        single copy inside an album is the one case the service can mark either
+        way, so it is the one case the user is asked about; a multi-selection
+        has no bulk copy-scoped mark API and says plainly that every copy of
+        those assets is being staged.
         """
         if not isinstance(selection, AssetSelection) or not selection.asset_ids:
             self.main_window_show_status(NO_SELECTION)
@@ -323,6 +332,15 @@ class MainWindow(QMainWindow):
         except ValueError as error:
             self.main_window_refuse_selection("Marking", error)
             return
+        file_ids = parameters["file_ids"]
+        if (
+            selection.scope.kind == "album"
+            and len(selection.asset_ids) == 1
+            and isinstance(file_ids, list)
+            and len(file_ids) == 1
+        ):
+            self.main_window_ask_mark_scope(selection)
+            return
         request_id = self.main_window_start_quiet(
             "app_service_mark_many", {"asset_ids": parameters["asset_ids"]}
         )
@@ -330,6 +348,82 @@ class MainWindow(QMainWindow):
             self.main_window_show_status(
                 f"Marking {len(selection.asset_ids)} assets, including their copies "
                 "in other albums. Nothing has been deleted."
+            )
+
+    def main_window_ask_mark_scope(self, selection: AssetSelection) -> None:
+        """Ask whether one album's copy or the whole asset is being marked.
+
+        selection: the captured single-copy ``AssetSelection``.
+        Returns None. The prompt is non-blocking, so the answer re-validates the
+        selection instead of trusting the parameters read when it was shown.
+        """
+        if self.main_window_busy():
+            self.main_window_show_status(OPERATION_BUSY)
+            return
+        name = self.main_window_album_name(selection.scope.album_id)
+        dialog = MarkScopeDialog(name, self)
+        dialog.scope_chosen.connect(partial(self.main_window_mark_scope_chosen, selection))
+        dialog.show()
+
+    def main_window_album_name(self, album_id: int | None) -> str:
+        """Name an album for a prompt.
+
+        album_id: the album's catalog id, when one is being browsed.
+        Returns the album's display name, or a neutral fallback when the album
+        list has not been loaded or the album has since disappeared.
+        """
+        for identifier, name, _ in self.shell.navigation.albums:
+            if identifier == album_id:
+                return name
+        return "this album"
+
+    def main_window_mark_scope_chosen(self, selection: AssetSelection, scope: object) -> None:
+        """Stage the mark the user chose the scope for.
+
+        selection: the captured single-copy ``AssetSelection``.
+        scope: ``file`` for the browsed copy, anything else for the asset.
+        Returns None.
+        """
+        try:
+            parameters = self.models.assets.asset_model_selection_parameters(selection)
+        except ValueError as error:
+            self.main_window_refuse_selection("Marking", error)
+            return
+        file_ids = parameters["file_ids"]
+        if scope == MARK_SCOPE_COPY and isinstance(file_ids, list) and len(file_ids) == 1:
+            self.main_window_start_quiet(
+                "app_service_mark", {"target_type": MARK_SCOPE_COPY, "target_id": file_ids[0]}
+            )
+            return
+        request_id = self.main_window_start_quiet(
+            "app_service_mark_many", {"asset_ids": parameters["asset_ids"]}
+        )
+        if request_id is not None:
+            self.main_window_show_status(
+                "Marking this asset, including its copies in other albums. "
+                "Nothing has been deleted."
+            )
+
+    @Slot(int, str)
+    def main_window_album_action(self, album_id: int, key: str) -> None:
+        """Run an album-wide verb chosen from the navigation pane.
+
+        album_id: the album the user right-clicked.
+        key: the action key.
+        Returns None. An album mark stages one decision covering every copy in
+        that album and deletes nothing, so it runs without a confirmation, the
+        same way the gallery's mark does.
+        """
+        if key != "mark":
+            self.main_window_show_status(f"{key} is not an album action.")
+            return
+        request_id = self.main_window_start_quiet(
+            "app_service_mark", {"target_type": MARK_SCOPE_ALBUM, "target_id": album_id}
+        )
+        if request_id is not None:
+            self.main_window_show_status(
+                f'Marking the album "{self.main_window_album_name(album_id)}". '
+                "Nothing has been deleted."
             )
 
     def main_window_confirm_selection(self, key: str, selection: object) -> None:

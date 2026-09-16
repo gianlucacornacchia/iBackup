@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-16 (Phase 2 step 10 `gui-settings` completed offline)._
+_Last updated: 2026-09-17 (Phase 2 step 11 `gui-parity-tests` completed offline)._
 
 ## Current status
 
@@ -15,7 +15,7 @@ _Last updated: 2026-09-16 (Phase 2 step 10 `gui-settings` completed offline)._
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 11 (`gui-parity-tests`). Steps 1-10 are
+- **Next action on resume:** step 12 (`gui-packaging`). Steps 1-11 are
   implemented offline. The GUI can now open or create an archive, import,
   verify, scan the phone, check the phone, report duplicates, refresh counts,
   clear the preview cache and move a selection into an album - all off the GUI
@@ -27,8 +27,13 @@ _Last updated: 2026-09-16 (Phase 2 step 10 `gui-settings` completed offline)._
   word `DELETE` to be typed, mirroring the CLI's `--confirm`. Step 10 added the
   §7b settings dialog, which also closed the aggregate `settings-store` item:
   every stored preference is now editable and every one of them has a consumer.
-  **No command or navigation verb is deferred any more.** Live Windows
-  theme/Mica qualification remains pending.
+  **No command or navigation verb is deferred any more.** Step 11 proved the
+  parity claim instead of asserting it: `gui/parity.py` declares where each
+  service operation is reachable and `tests/test_gui_parity.py` checks that
+  declaration against the real CLI, the real service and the real GUI source.
+  Writing it found and closed the last real gap - album-scoped and copy-scoped
+  marks, which the CLI had and the GUI did not. Live Windows theme/Mica
+  qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
   window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
   read path **has** now been exercised against a real iPhone 12 (see the
@@ -54,7 +59,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 8 | `gui-ops-safe` — import, verify, scan, dedup, move | **done offline** |
 | 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | **done offline** |
 | 10 | `gui-settings` — six panels; also closes `settings-store` | **done offline** |
-| 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | pending |
+| 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | **done offline** |
 | 12 | `gui-packaging` — PyInstaller `.exe` | pending |
 
 Step 3 centralizes the threading backbone: the window owns a lazy
@@ -80,6 +85,25 @@ painting on Windows; accepted DWM requests are **not** visual proof. Validate
 the probe on Windows 11 22H2+ before enabling transparent client painting by
 default. Windows 10, unsupported attributes, disabled transparency,
 high-contrast mode and native-call failures use solid/native fallback.
+
+### Step 11 validation checkpoint
+
+2026-09-17, Linux host, existing Python 3.12 virtual environment:
+
+| Command / evidence | Result |
+|---|---|
+| `pytest -q --cov --cov-fail-under=85` | 713 tests, 1 skipped; 90% coverage. |
+| `ruff check .` / `ruff format --check .` | Passed; 118 files. |
+| `mypy src` / `mypy --platform win32 src` | Passed, 56 source files. |
+| `mypy --strict src/iphone_archive/core src/iphone_archive/catalog` | Passed, 17 source files. |
+| Parity test proven to fail | Three separate reverts: deleting a declared surface, making a surface stop submitting its operation, and adding a new CLI command with no GUI equivalent. Each failed a different parity test with a message naming the gap. |
+
+The end-to-end flows ran offscreen against a fake device inside `tmp_path`: an
+empty folder was turned into an archive, imported, verified, marked, committed
+to the recycle bin and restored using only GUI surfaces, with the assertions
+made against the files on disk. The mark-scope prompt was exercised in all
+three of its outcomes - copy, asset and dismissed - and dismissing it staged
+nothing. No real device, no Windows build and no Windows CI run were involved.
 
 ### Step 10 validation checkpoint
 
@@ -226,6 +250,31 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows packaging (`.exe`).
 
 ## Change log
+
+- 2026-09-17 — **Step 11 `gui-parity-tests` implemented offline.** New
+  `gui/parity.py` declares the GUI surface behind every service operation, and
+  `tests/test_gui_parity.py` enforces it against the real Typer app, the real
+  `AppService` and the real GUI source, alongside end-to-end offscreen journeys.
+  Decisions worth remembering:
+  - **A parity map that nobody checks is a comment.** The test does not only ask
+    whether an operation is listed; it reads the GUI source and fails when a
+    declared surface never submits the operation it claims, and when the GUI
+    submits an operation the map never mentions. Membership in a refresh list or
+    a title table deliberately does not count as a surface.
+  - **The test found a gap, which is the point.** `marks add --album` and
+    `--file` had no GUI equivalent, so an album can now be marked from its
+    right-click menu, and marking a single copy inside an album asks whether the
+    copy or the whole asset is meant. The narrower scope is the default button.
+  - **Two capabilities are covered indirectly, and both say why.** Bulk
+    preference saving writes every edited field in one `app_service_update_settings`
+    call rather than one round trip per field, and previews are rendered by the
+    GUI's own pool so scrolling never queues behind an archive operation. An
+    unexplained entry in that table is exactly the gap this test exists to
+    catch, so each one carries its reason next to it.
+  - **The journeys assert against the disk.** The end-to-end flows check the
+    archive's files after import, commit and restore rather than the widgets,
+    because a GUI that looks right while writing nothing is the failure mode
+    that matters here.
 
 - 2026-09-16 — **Step 10 `gui-settings` implemented offline, closing
   `settings-store`.** New `gui/settings_dialog.py` is the sketch's §7b editor;
