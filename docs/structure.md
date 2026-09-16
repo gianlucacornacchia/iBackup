@@ -256,7 +256,8 @@ reopens the last archive at startup only when that folder is still an archive.
 PySide6 and pytest-qt support the GUI shell/theme/worker/models layer (`darkdetect` remains
 reserved; Qt/Win32 currently supply native appearance). Actual version and
 optional-extra declarations live in `pyproject.toml`.
-PyInstaller Windows packaging is a scheduled milestone; no spec or released
-binary is supplied in this remediation.
+PyInstaller Windows packaging lives in `packaging/` (spec, entry-point shim,
+self-drawn icon, version resource and an artifact smoke test); a signed,
+released binary is still a separate milestone.
 Qt/icon notices and replacement/relinking obligations must be checked before
 distribution; see [ADR-0011](adr/0011-licensing-and-gui-contract-addendum.md).

@@ -529,16 +529,27 @@ See `structure.md` for the full module map. Source lives under
 
 ## 7. Building the Windows executable
 
-**Scheduled release work, not an available installer/download.** There is no
-PyInstaller spec in this remediation. The packaging milestone must first add a
-CLI-only recipe, then document its actual build command and run it on Windows.
-Do not invoke a nonexistent `packaging/ibackup.spec`.
+The GUI build exists: `packaging/ibackup.spec` freezes `ibackup-gui` into a
+one-directory Windows app. Full workflow, file-by-file notes and the rules that
+must not be broken silently (one-directory layout for Qt LGPL, self-drawn icon,
+version kept in step with `pyproject.toml`) are in `packaging/README.md`.
 
-A Linux build is not a Windows executable. Record clean-machine launch/help/
-offline-import smoke tests, artifact version and dependency/license notices
-before advertising a release. GUI bundling waits for implementation/qualification;
-review Qt LGPL replacement/relinking obligations and icon notices (ADR-0011).
-MSIX/signing are release decisions, not currently provided deliverables.
+```powershell
+.\.venv\Scripts\pyinstaller packaging\ibackup.spec --noconfirm
+.\.venv\Scripts\python packaging\smoke_test.py dist\ibackup-gui\ibackup-gui.exe
+```
+
+**A build counts only once the smoke test passes**, because PyInstaller reports
+success for executables that die instantly on a missing DLL or hidden import.
+Both steps run in the `package` CI job on `windows-latest`;
+`tests/test_packaging.py` guards the build inputs and the smoke test's own
+logic without paying for a build.
+
+A Linux build is not a Windows executable. The artifact is currently unsigned
+and there is no CLI executable, installer or bundled notice set yet; a
+clean-machine (no-Python) launch test, dependency/license notices, Qt LGPL
+replacement/relinking obligations and icon notices (ADR-0011) and MSIX/signing
+remain release-milestone work before advertising a download.
 
 ## 8. Conventions
 

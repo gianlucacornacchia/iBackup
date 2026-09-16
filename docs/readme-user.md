@@ -57,8 +57,9 @@ Currently available: install from a checkout in an activated virtual environment
 pip install .
 ```
 
-Windows packaging is a scheduled release milestone, not an available download.
-No PyInstaller spec is included in this remediation.
+Windows packaging now exists as a build recipe (`packaging/ibackup.spec` builds
+`ibackup-gui.exe`), but a signed, downloadable release is still a scheduled
+milestone - there is no installer to download yet.
 
 ### Desktop interface preview
 

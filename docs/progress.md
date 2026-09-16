@@ -5,7 +5,8 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-17 (Phase 2 step 11 `gui-parity-tests` completed offline)._
+_Last updated: 2026-09-16 (Phase 2 step 12 `gui-packaging` completed; built and
+smoke-tested on Windows)._
 
 ## Current status
 
@@ -15,8 +16,11 @@ _Last updated: 2026-09-17 (Phase 2 step 11 `gui-parity-tests` completed offline)
   clickable mock were approved and `gui-theme` / `gui-frontend` were unblocked.
   `gui-frontend` has been broken into the twelve steps listed in §"Phase 2 GUI
   steps" below and in `plan.md` §2b.
-- **Next action on resume:** step 12 (`gui-packaging`). Steps 1-11 are
-  implemented offline. The GUI can now open or create an archive, import,
+- **Next action on resume:** Phase 2 step work is finished; the remaining gates
+  are live Windows theme/Mica qualification, real-iPhone destructive
+  validation and the release milestones (`windows-cli-release`,
+  `windows-gui-release`). Steps 1-12 are implemented. The GUI can open or
+  create an archive, import,
   verify, scan the phone, check the phone, report duplicates, refresh counts,
   clear the preview cache and move a selection into an album - all off the GUI
   thread, behind the sketch's progress dialog where the work is long. Step 9
@@ -32,15 +36,24 @@ _Last updated: 2026-09-17 (Phase 2 step 11 `gui-parity-tests` completed offline)
   service operation is reachable and `tests/test_gui_parity.py` checks that
   declaration against the real CLI, the real service and the real GUI source.
   Writing it found and closed the last real gap - album-scoped and copy-scoped
-  marks, which the CLI had and the GUI did not. Live Windows theme/Mica
-  qualification remains pending.
+  marks, which the CLI had and the GUI did not. Step 12 packaged the app:
+  `packaging/ibackup.spec` freezes `ibackup-gui` into a one-directory Windows
+  build with a self-drawn icon and a version resource, and
+  `packaging/smoke_test.py` launches the built `.exe` offscreen and fails on an
+  early exit or a traceback. **This step was actually run on Windows 11**
+  (PyInstaller 6.22, Python 3.11): `dist\ibackup-gui\ibackup-gui.exe` built and
+  passed the smoke test. Live Windows theme/Mica qualification remains pending.
 - **Not yet validated:** real-iPhone *destructive* behaviour, Mica and native
-  window chrome, the Windows `.exe` packaging and the Windows CI workflow. The
-  read path **has** now been exercised against a real iPhone 12 (see the
+  window chrome, and the Windows CI workflow as a whole. The Windows `.exe`
+  packaging **has** now been built and smoke-tested locally on Windows 11, and
+  the read path has been exercised against a real iPhone 12 (see the
   hardware-validation entries below); everything else is Linux + fake device.
-- **Release:** packaging is step 12 and has not started. `ibackup-gui` now
+- **Release:** step 12 delivers a build recipe, not a release. `ibackup-gui`
   exists as a real entry point that opens an archive, browses it and runs every
-  non-destructive operation.
+  operation, and it can now be frozen into `dist\ibackup-gui\`. Signing, an
+  installer, bundled notices, a clean-machine (no-Python) install test and the
+  still-missing CLI recipe belong to `windows-cli-release` /
+  `windows-gui-release`.
 
 ## Phase 2 GUI steps
 
@@ -60,7 +73,7 @@ Ordered, one commit each, bottom-up with tests. Full descriptions in `plan.md`
 | 9 | `gui-ops-destructive` — typed-DELETE gating, deleted/marks/reclaim | **done offline** |
 | 10 | `gui-settings` — six panels; also closes `settings-store` | **done offline** |
 | 11 | `gui-parity-tests` — fails if any CLI action lacks a GUI surface | **done offline** |
-| 12 | `gui-packaging` — PyInstaller `.exe` | pending |
+| 12 | `gui-packaging` — PyInstaller `.exe` | **done; built + smoke-tested on Windows** |
 
 Step 3 centralizes the threading backbone: the window owns a lazy
 `WorkerController`, whose dedicated thread constructs/opens/uses/closes
@@ -243,13 +256,42 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 - [ ] Windows/iPhone read, album and large-video validation.
 - [ ] Controlled real-phone destructive/recovery qualification.
 - [x] UI sketch and clickable mock approved (2026-09-11).
-- [~] Phase 2 — GUI: scaffold, theme, worker, models, preview loader, shell,
-  gallery, safe and destructive operations and settings implemented offline;
-  parity tests and packaging remain.
+- [x] Phase 2 — GUI: scaffold, theme, worker, models, preview loader, shell,
+  gallery, safe and destructive operations, settings, parity tests and Windows
+  packaging implemented; live Windows theme/Mica qualification still pending.
 - [x] Offline core/CLI checkpoint complete; GUI foundation/model tests now exist.
-- [ ] Windows packaging (`.exe`).
+- [x] Windows packaging (`.exe`) — build recipe plus a passing artifact smoke
+      test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-09-16 — **Step 12 `gui-packaging` implemented, built and smoke-tested on
+  Windows 11** (Python 3.11, PyInstaller 6.22). `packaging/` holds the spec,
+  the entry-point shim, the icon generator and its committed `icon.ico`, the
+  Windows version resource, the artifact smoke test and a README; a `package`
+  CI job repeats the build and the smoke test on `windows-latest`. Decisions
+  worth remembering:
+  - **One directory, not one file.** Qt ships as separate DLLs next to the
+    executable so a user can replace them, which is what keeps the LGPL
+    relink right real (ADR-0011 item 3). `--onefile` would be a licensing
+    decision, not a build-flag preference.
+  - **A build that "succeeded" proves nothing.** PyInstaller happily produces
+    executables that die on the first missing DLL or hidden import, so
+    `packaging/smoke_test.py` launches the real artifact offscreen, requires it
+    to survive a grace period and fails on a traceback in stderr. That is the
+    step's actual acceptance check, and it was run here, not just written.
+  - **`pymobiledevice3` is a hidden import.** It is reached indirectly through
+    `iphone_archive.device`, which static analysis misses.
+  - **The icon is drawn by the app itself.** `make_icon.py` renders the GUI's
+    own "photos" glyph into a multi-resolution `.ico`, so packaging adds no
+    third-party asset or its redistribution terms (ADR-0011 item 4).
+  - **The frozen build is not a second implementation.** `run_gui.py` only
+    calls the same `application_main()` the installed `ibackup-gui` entry point
+    uses, and a test asserts it stays that thin.
+  - **The version resource has no automatic sync**, so `tests/test_packaging.py`
+    fails when it drifts from `project.version`; the same test executes the spec
+    with stubbed builders, so a renamed entry point or a silent switch to a
+    console/onefile build breaks in seconds rather than in a release.
 
 - 2026-09-17 — **Step 11 `gui-parity-tests` implemented offline.** New
   `gui/parity.py` declares the GUI surface behind every service operation, and

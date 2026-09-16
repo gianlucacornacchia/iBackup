@@ -13,7 +13,9 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+# Generated one-off specs are noise; the committed build spec is not.
 *.spec
+!packaging/*.spec
 
 # Archive internals (never version-control a user's archive)
 .ibackup/

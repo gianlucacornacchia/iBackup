@@ -70,6 +70,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_gui_operations.py` | Duration/estimate/eliding helpers, the cancellable set checked against the real service signatures in both directions, every result summary including a cancelled import reported as a partial success, problem detection and error-line listing, bounded duplicate reports, the move prompt's empty-name refusal and album-scope wording, archive open/create from a chosen folder, the progress dialog's own-request filtering, Hide keeping work running, a running dialog refusing to be destroyed, a clean hidden run closing itself and an erroring one coming back, cancellation reaching the request and being harmless after completion, quiet reads, a real move landing files in the album, album-scoped moves, stale-selection refusal, refused submissions and failures staying on screen, window close closing a running dialog, replaced dialogs/viewers not orphaning their successors, and preview clearing quiescing the loaders. |
 | `test_gui_parity.py` | CLI↔GUI parity enforced from the real Typer app, the real `AppService` and the real GUI source: every service operation having a surface, the declaration naming only operations that still exist, every declared surface really submitting its operation, no undeclared submission, every CLI command mapped and no CLI command doing work the GUI cannot, no verb left deferred, plus offscreen journeys that import, verify, mark an album, mark one copy or every copy, dismiss the scope prompt without staging anything, and commit and restore a recycle round trip asserted against the files on disk. |
 | `test_win32_effects.py` | Mocked platform/build guards, native preference queries, pointer-sized HWND/32-bit arguments, HRESULT/load failures and opt-in Mica fallback. Not a live Windows probe. |
+| `test_packaging.py` | The PyInstaller spec executed with stubbed builders (shared entry point, `src` on the path, `pymobiledevice3` hidden import, windowed one-directory build, icon and version resource), the committed multi-resolution `.ico`, the version resource against `project.version`, and the artifact smoke test driven against real child processes: a missing artifact, a surviving process, the enforced offscreen platform, an immediate exit, a traceback from a process that stays alive, and the default artifact path. Does not build the executable - that runs in the `package` CI job. |
 
 `test_reclaim.py`, `test_recycle.py` and `test_selection.py` were added in core
 hardening; related integration cases remain in service/E2E files. Their presence
@@ -166,5 +167,9 @@ launches remain solid until that client-painting path is proven.
 
 Release requires passing Windows CI, a Windows-built CLI executable smoke test
 on a clean machine without Python, dependency/license notices, versioned
-artifacts, and separately validated GUI packaging when it exists. Until then,
-do not advertise a downloadable installer or portable release.
+artifacts, and separately validated GUI packaging. GUI packaging now exists and
+is checked two ways: `tests/test_packaging.py` guards the build inputs on every
+run, and the `package` CI job builds `dist/ibackup-gui/ibackup-gui.exe` and
+launches it with `packaging/smoke_test.py`. Neither covers a clean machine
+without Python, and the artifact is unsigned, so until that work lands do not
+advertise a downloadable installer or portable release.

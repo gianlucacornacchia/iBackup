@@ -207,8 +207,20 @@ never starts before the layer beneath it is proven. Descriptions live in
   closed the last gap it found - album-scoped and copy-scoped marks now exist in
   the GUI, with the narrower scope as the default. _Depends on:
   gui-ops-destructive, gui-settings._
-- [ ] **gui-packaging** — PyInstaller executable, icon, version resource and a
-  smoke test of the built artifact. _Depends on: gui-parity-tests._
+- [x] **gui-packaging** — PyInstaller executable, icon, version resource and a
+  smoke test of the built artifact. `packaging/ibackup.spec` freezes the
+  `ibackup-gui` entry point (via a one-line `run_gui.py` shim, so the frozen
+  app is not a second implementation) into a **one-directory** Windows app -
+  Qt ships as replaceable DLLs, keeping the LGPL relink right intact
+  (ADR-0011). The icon is rendered from the GUI's own drawn glyph by
+  `make_icon.py`, so no third-party icon set is bundled, and
+  `version_info.txt` carries the Windows version resource.
+  `packaging/smoke_test.py` launches the built `.exe` offscreen and fails on an
+  early exit or a traceback; `tests/test_packaging.py` checks the build inputs
+  against the real project metadata and exercises the smoke test against real
+  child processes. Built and smoke-tested on Windows 11 with PyInstaller 6.22;
+  a `package` CI job repeats both. Signing, an installer and a clean-machine
+  install test remain release work. _Depends on: gui-parity-tests._
 
 - [~] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
@@ -217,8 +229,9 @@ never starts before the layer beneath it is proven. Descriptions live in
   QThread with worker-owned SQLite, queued UI signals and Event cancellation;
   serialized mutations and bounded thumbnail queues.
   **No menu bar** — NavigationView + command bar per the sketch.
-  Aggregate tracked by the `gui-*` step list above; steps 1-4 are complete
-  offline. It is not a separate implementation task.
+  Aggregate tracked by the `gui-*` step list above; all twelve steps are
+  complete offline (step 12 additionally built and smoke-tested on Windows).
+  It is not a separate implementation task.
   _Depends on: archive-edit, browse-gallery, gui-theme, phone-diff,
   recycle-bin, service-layer, ui-sketch-approval-gate._
 
@@ -235,8 +248,9 @@ never starts before the layer beneath it is proven. Descriptions live in
 
 ## Scheduled release milestone
 
-- [ ] **windows-cli-release** — first create a CLI-only PyInstaller recipe
-  (none is included in this remediation), then build it on
+- [ ] **windows-cli-release** — the GUI now has a PyInstaller recipe
+  (`packaging/ibackup.spec`), but the CLI does not: create a CLI-only recipe,
+  then build it on
   Windows, smoke-test on a clean machine without Python, validate licenses/
   notices and versioned artifacts. A recipe alone is not a release.
   _Depends on: core-validation, windows-iphone-validation._

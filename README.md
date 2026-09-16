@@ -28,7 +28,9 @@ implemented (Phase 2 steps 1-11). Import, verify, scan, the duplicate report and
 move-to-album run behind a progress dialog that can be cancelled where the
 backend supports it, or hidden. A parity test now fails the build if any CLI
 command or service method has no GUI surface, so the two front ends cannot drift
-apart. Windows packaging remains (step 12).
+apart. Windows packaging (step 12) is in place: `packaging/ibackup.spec` freezes
+the GUI into `dist/ibackup-gui/ibackup-gui.exe`, which CI builds and launches as
+a smoke test. A signed, downloadable release is still a later milestone.
 
 ## Documentation
 
