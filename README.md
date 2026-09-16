@@ -24,10 +24,11 @@ The GUI worker foundation serializes archive work off the UI thread, with
 cooperative cancellation and safe shutdown. Paged asset/album models,
 copy-scoped selection, a background preview pipeline, the application shell, the
 photo gallery, the safe and destructive operations and the settings dialog are
-implemented (Phase 2 steps 1-10). Import, verify, scan, the duplicate report and
+implemented (Phase 2 steps 1-11). Import, verify, scan, the duplicate report and
 move-to-album run behind a progress dialog that can be cancelled where the
-backend supports it, or hidden. Parity tests and Windows packaging remain
-(steps 11-12).
+backend supports it, or hidden. A parity test now fails the build if any CLI
+command or service method has no GUI surface, so the two front ends cannot drift
+apart. Windows packaging remains (step 12).
 
 ## Documentation
 

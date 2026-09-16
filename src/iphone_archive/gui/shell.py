@@ -182,6 +182,7 @@ class ArchiveShell(QWidget):
     shell_selection_action = Signal(str, object)
     shell_open_asset = Signal(int)
     shell_review_action = Signal(str, str)
+    shell_album_action = Signal(int, str)
 
     def __init__(
         self,
@@ -214,6 +215,7 @@ class ArchiveShell(QWidget):
         self.navigation = NavigationPane(self)
         self.navigation.navigation_selected.connect(self.shell_view_selected)
         self.navigation.navigation_settings.connect(lambda: self.shell_command.emit("settings"))
+        self.navigation.navigation_album_action.connect(self.shell_album_action.emit)
         self.command_bar = CommandBar(self)
         self.command_bar.command_triggered.connect(self.shell_command.emit)
         # One model means one gallery; it is re-hosted by the page being shown

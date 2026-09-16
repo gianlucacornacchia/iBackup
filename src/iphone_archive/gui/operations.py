@@ -92,6 +92,8 @@ OPERATION_TITLES = {
     "app_service_purge": "Deleting permanently",
     "app_service_reclaim": "Freeing space on the iPhone",
     "app_service_commit_marks": "Applying the marked deletions",
+    "app_service_mark": "Marking for delete",
+    "app_service_mark_many": "Marking for delete",
     "app_service_deleted_on_phone": "Checking what is gone from the phone",
     "app_service_get_settings": "Reading settings",
     "app_service_update_settings": "Saving settings",
@@ -345,6 +347,7 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_commit_marks": operations_recycle_summary,
     "app_service_reclaim": operations_reclaim_summary,
     "app_service_list_marks": operations_marks_summary,
+    "app_service_mark": lambda value: "Marked for delete. Nothing has been deleted.",
     "app_service_mark_many": lambda value: (
         f"Marked {len(value) if isinstance(value, list) else 0} items. Nothing has been deleted."
     ),

@@ -1,7 +1,7 @@
 # UI Sketch — iPhone Archive (`ibackup`) GUI
 
 **Status: approved 2026-09-11**, together with the clickable mock. Phase 2
-implementation has reached step 10: the shell, theme, gallery, viewer, progress
+implementation has reached step 11: the shell, theme, gallery, viewer, progress
 dialog (§2), deleted-on-phone review (§3), reclaim review (§4), confirmation
 dialog (§5), marks queue (§6) and the settings dialog (§7b) are built. Every
 screen in this sketch now exists as software.
@@ -434,9 +434,11 @@ Design notes:
 
 ## 8. CLI ↔ GUI parity map
 
-Parity map: every GUI surface below is implemented as of step 10. Current
-source CLI actions call the listed service APIs; the step-11 parity test is what
-proves no CLI capability has been left without a GUI surface.
+Parity map: every GUI surface below is implemented, and since step 11 it is
+enforced rather than promised. `tests/test_gui_parity.py` reads the real Typer
+app, the real `AppService` and the real GUI source and fails when a capability
+exists only in the terminal; `src/iphone_archive/gui/parity.py` is the
+declaration it checks, so this table and the code cannot drift apart silently.
 
 | Operation | CLI | GUI | Service method |
 |---|---|---|---|
@@ -457,7 +459,7 @@ proves no CLI capability has been left without a GUI surface.
 | Restore | `deleted-on-phone restore <asset-ids...> [--file ID ...]` | Recycle bin ▸ Restore selected copies | `app_service_restore(file_ids=...)` |
 | Purge | `deleted-on-phone purge <asset-ids...> [--file ID ...] [--recycled-only] --confirm` | §3 asset/copy purge; Recycle bin restricts to deleted copies; §5 dialog | `app_service_purge(file_ids=..., recycled_only=...)` |
 | Reclaim selection | `reclaim [--device UDID] [--asset ID ...] [--confirm]` | §4 device/selected rows + §5 dialog | `app_service_reclaim(asset_ids=...)` |
-| Mark asset/album/copy | `marks add <id> [--album \| --file]` | **Mark for delete**, with explicit current-copy versus whole-asset scope | `app_service_mark` (`asset`/`album`/`file`), `app_service_mark_many` (assets) |
+| Mark asset/album/copy | `marks add <id> [--album \| --file]` | **Mark** on the selection bar and viewer; an album's right-click menu marks the album; one copy inside an album is asked which scope is meant, defaulting to that copy | `app_service_mark` (`asset`/`album`/`file`), `app_service_mark_many` (assets) |
 | List marks | `marks list` | §6 view | `app_service_list_marks` |
 | Unmark | `marks remove` | §6 **Unmark** | `app_service_unmark` |
 | Clear marks | `marks clear` | §6 **Clear all marks** | `app_service_clear_marks` |
@@ -469,6 +471,13 @@ proves no CLI capability has been left without a GUI surface.
 | Reset settings | `config reset` | §7b **Reset settings** | `app_service_reset_settings` |
 | Settings location | `config path` | §7b **Show settings file** | `app_service_settings_path` |
 | Forget recent archive | `config forget <path>` | §7b **Forget** | `app_service_forget_archive` |
+
+Two capabilities are reached indirectly rather than by their own button, and
+`gui/parity.py` records the reason beside each: `config set` is served by the
+settings dialog's **Save**, which writes every edited field in one
+`app_service_update_settings` call instead of one round trip per field, and
+`thumbnail` is served by the grid and viewer rendering previews through the
+GUI's own pool, so scrolling never queues behind an archive operation.
 
 US-D4 HTML gallery is explicitly deferred; there is no current `gallery`
 command to map. **Show in Explorer**, viewer navigation and search are

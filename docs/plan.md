@@ -181,6 +181,24 @@ step never starts before the layer beneath it is proven.
 
 11. `gui-parity-tests` — a test that fails if any CLI command or service method
     has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
+    Implemented offline: `gui/parity.py` declares, for every service operation,
+    the surface a user reaches it through, and `tests/test_gui_parity.py` checks
+    that declaration against the real Typer app, the real `AppService` and the
+    real GUI source. It fails when an operation has no surface, when the map
+    names an operation that no longer exists, when the GUI submits an operation
+    the map never mentions, and - the part that stops the map becoming a comment
+    that rots - when a declared surface never actually submits its operation.
+    Writing it found a real gap rather than confirming a happy story: `marks add
+    --album` and `--file` had no GUI equivalent, so marking is now scoped like
+    the CLI. An album can be marked from its right-click menu, and marking a
+    single copy inside an album - the one case the service can mark either way -
+    asks which scope is meant, defaulting to the narrower one. Only two
+    capabilities are covered indirectly, each with its reason recorded next to
+    it: bulk preference saving writes every edited field in one call instead of
+    one per field, and previews are rendered by the GUI's own pool so scrolling
+    never queues behind an archive operation. The end-to-end flows drive a real
+    window offscreen from an empty folder through import, verify, mark, commit
+    and restore, checking the files on disk rather than the widgets.
 12. `gui-packaging` — PyInstaller executable, icon, version resource and a
     smoke test of the built artifact.
 

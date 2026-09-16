@@ -477,6 +477,32 @@ over `settings.py` rather than a second store.
 pytest tests/test_gui_settings.py tests/test_settings.py
 ```
 
+### Adding a service operation or a CLI command
+
+The CLI and the GUI are adapters over one service, and the GUI is the front end
+most users will ever see. `tests/test_gui_parity.py` fails when that stops being
+true, so a new capability is not finished until it is reachable on screen.
+
+- **Give it a surface, then declare it in `gui/parity.py`.** Every service
+  operation names the place a user reaches it, and every CLI command names the
+  GUI location that does the same job. A new command with no entry fails the
+  parity test by name.
+- **A declaration is checked, not trusted.** The test reads the GUI source and
+  fails when a declared surface never submits its operation, so listing a name
+  in a refresh set or a title table does not make it reachable - only submitting
+  it does.
+- **Use `INDIRECT_SURFACES` only with a reason.** It is for capabilities the GUI
+  genuinely covers by another route, such as the bulk settings save; it is not a
+  place to silence the test. An entry without a reason is the gap the test
+  exists to find.
+- **Prove the journey, not the widget.** The end-to-end flows drive a real
+  window offscreen and assert against the archive's files, because a GUI that
+  looks right while writing nothing is the failure that matters.
+
+```powershell
+pytest tests/test_gui_parity.py
+```
+
 ### Running the Windows Mica probe
 
 Normal launches retain opaque client painting. On Windows 11 22H2+ only:
