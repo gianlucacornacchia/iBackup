@@ -496,6 +496,35 @@ class AppService:
         return thumbnails.thumbnails_clear_cache(paths)
 
 
+# Operations that read or write per-user preferences only. They never touch an
+# archive, so a frontend may run them before one is open - which is exactly when
+# a settings editor is most useful.
+ARCHIVE_FREE_OPERATIONS = frozenset(
+    {
+        "app_service_get_settings",
+        "app_service_update_settings",
+        "app_service_set_setting",
+        "app_service_reset_settings",
+        "app_service_settings_path",
+        "app_service_forget_archive",
+    }
+)
+# Deliberately a path that cannot be an archive: if an operation is ever added
+# to ARCHIVE_FREE_OPERATIONS by mistake, it fails with ArchiveNotFoundError
+# instead of quietly operating on the working directory.
+PREFERENCES_ONLY_ROOT = Path("<preferences-only>")
+
+
+def app_service_preferences() -> AppService:
+    """Build a service for preference operations that need no archive.
+
+    Returns an ``AppService`` whose archive root is a sentinel that is not an
+    archive, so only the operations in ``ARCHIVE_FREE_OPERATIONS`` can succeed
+    on it. Construction opens no database, takes no lock and creates no files.
+    """
+    return AppService(PREFERENCES_ONLY_ROOT)
+
+
 def app_service_fake_source(items: dict[str, bytes]) -> MediaSource:
     """Build an in-memory media source, used for demos and tests.
 

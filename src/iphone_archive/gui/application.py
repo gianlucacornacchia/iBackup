@@ -134,6 +134,9 @@ def application_main(argv: list[str] | None = None) -> int:
     )
     window.show()
     theme_controller.theme_refresh()
+    # Only after the window is on screen: reopening is a normal operation with a
+    # status line, not a hidden startup step that can fail invisibly.
+    window.main_window_restore_session()
     LOGGER.debug("desktop interface started")
     try:
         return int(application.exec())

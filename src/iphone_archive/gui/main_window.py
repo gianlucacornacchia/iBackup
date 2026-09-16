@@ -29,8 +29,10 @@ from PySide6.QtWidgets import QFileDialog, QMainWindow, QStatusBar, QWidget
 
 from .. import __version__
 from ..browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
+from ..config import config_is_archive, config_resolve_paths
 from ..core.reclaim import ReclaimResult
-from ..settings import settings_load
+from ..logging_setup import logging_setup_configure
+from ..settings import Settings, settings_load
 from .commands import COMMANDS_BY_KEY
 from .confirm import (
     ConfirmSpec,
@@ -45,7 +47,9 @@ from .models import ArchiveModels, AssetSelection
 from .operations import OperationDialog, operations_summary, operations_title
 from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
 from .reclaim import ReclaimDialog, reclaim_selected_bytes
+from .settings_dialog import SettingsDialog
 from .shell import ArchiveShell
+from .theme import ThemeController
 from .viewer import VIEWER_PREVIEW_SIZE, ViewerDialog
 from .worker import WorkerController, WorkerFailure, WorkerResult
 
@@ -63,11 +67,11 @@ DIALOG_COMMANDS = frozenset({"import", "verify", "scan", "device", "reclaim"})
 # Short reads that report one line. A modal dialog for a counter refresh would
 # flash open and shut without telling the user anything.
 QUIET_COMMANDS = frozenset({"dedup", "stats", "clear-thumbnails", "close"})
-# Verbs whose safety gating is step 9 (destructive) or step 10 (settings). They
-# say so rather than appearing to work.
-DEFERRED_COMMANDS = {
-    "settings": "Settings get their own dialog (step 10).",
-}
+# Verbs whose safety gating belongs to a later step. Every verb the command bar
+# and the navigation pane offer is now implemented, so this is empty; the
+# mechanism stays because a new verb must announce itself rather than appearing
+# to work while doing nothing.
+DEFERRED_COMMANDS: dict[str, str] = {}
 OPERATION_BUSY = "Another operation is already running. Wait for it, or cancel it first."
 DEFERRED_SELECTION_ACTIONS: dict[str, str] = {}
 NO_SELECTION = "Select at least one photo or video first."
@@ -97,7 +101,8 @@ class MainWindow(QMainWindow):
         self.worker.stopped.connect(self.main_window_worker_stopped)
         self.worker.failed.connect(self.main_window_worker_failed)
         self.models = ArchiveModels(self.worker, self)
-        self.previews = PreviewLoader(self, size=main_window_preview_size())
+        self.preferences = main_window_preferences()
+        self.previews = PreviewLoader(self, size=main_window_preview_size(self.preferences))
         self.worker.result_ready.connect(self.main_window_sync_previews)
         self.worker.failed.connect(self.main_window_sync_previews)
         self.worker.cancelled.connect(self.main_window_sync_previews)
@@ -117,6 +122,12 @@ class MainWindow(QMainWindow):
         # Short reads report one line; the entry is removed by the reply, and
         # every accepted request has exactly one terminal outcome.
         self.quiet_requests: dict[int, str] = {}
+        # Preference reads and writes are routed separately: they are the only
+        # operations that work with no archive open, and their replies drive the
+        # settings dialog rather than the status bar alone.
+        self.settings_requests: dict[int, str] = {}
+        self.settings_dialog: SettingsDialog | None = None
+        self.settings_file: Path | None = None
 
         self.shell = ArchiveShell(self.worker, self.models, self.previews, self)
         self.shell.shell_status_changed.connect(self.main_window_show_state)
@@ -124,9 +135,13 @@ class MainWindow(QMainWindow):
         self.shell.shell_selection_action.connect(self.main_window_selection_action)
         self.shell.shell_review_action.connect(self.main_window_review_action)
         self.shell.shell_open_asset.connect(self.main_window_open_viewer)
+        self.shell.shell_set_deleted_default(self.preferences.default_deleted_action)
         self.worker.result_ready.connect(self.main_window_quiet_reply)
         self.worker.failed.connect(self.main_window_quiet_reply)
         self.worker.cancelled.connect(self.main_window_quiet_reply)
+        self.worker.result_ready.connect(self.main_window_settings_reply)
+        self.worker.failed.connect(self.main_window_settings_reply)
+        self.worker.cancelled.connect(self.main_window_settings_reply)
         # Connected after the shell so its housekeeping reads can be recognised.
         self.worker.result_ready.connect(self.main_window_clear_error)
         self.setCentralWidget(self.shell)
@@ -164,6 +179,10 @@ class MainWindow(QMainWindow):
         """Keep the window/event loop alive until worker-owned resources have been released."""
         self.previews.previews_cancel_all()
         self.viewer_previews.previews_cancel_all()
+        if self.settings_dialog is not None:
+            dialog = self.settings_dialog
+            self.settings_dialog = None
+            dialog.close()
         if self.viewer is not None:
             self.viewer.close()
             self.viewer = None
@@ -632,6 +651,9 @@ class MainWindow(QMainWindow):
             self.main_window_show_status(deferred)
             return
         command = COMMANDS_BY_KEY.get(key)
+        if key == "settings":
+            self.main_window_open_settings()
+            return
         if command is None:
             self.main_window_show_status(f"{key} is not a command.")
             return
@@ -666,21 +688,176 @@ class MainWindow(QMainWindow):
         """Open or create an archive from a folder the user picks.
 
         create: True to initialise a new archive in the chosen folder.
-        Returns None. Nothing is opened automatically at startup, so this is the
-        only way an archive session begins.
+        Returns None. Apart from the reopen-on-startup preference, which only
+        ever reopens an archive that already exists, this is how a session
+        begins.
         """
         title = "Choose a folder for the new archive" if create else "Choose an archive folder"
         directory = self.main_window_choose_directory(title)
         if not directory:
             return
+        self.main_window_open_path(Path(directory), create=create)
+
+    def main_window_open_path(self, archive_root: Path, *, create: bool = False) -> int | None:
+        """Open or create one archive folder.
+
+        archive_root: the folder to open.
+        create: True to initialise a new archive there.
+        Returns the accepted request ID, or None when the worker refused it.
+        """
         operation = "create_archive" if create else "open_archive"
         try:
-            request_id = self.worker.worker_open(Path(directory), create=create)
+            request_id = self.worker.worker_open(Path(archive_root), create=create)
         except (RuntimeError, ValueError, TypeError) as error:
             self.main_window_refuse(operation, error)
-            return
+            return None
         self.quiet_requests[request_id] = operation
-        self.main_window_show_status(f"{'Creating' if create else 'Opening'} {directory}...")
+        self.main_window_show_status(f"{'Creating' if create else 'Opening'} {archive_root}...")
+        return request_id
+
+    def main_window_restore_session(self) -> int | None:
+        """Reopen the last archive when the stored preference asks for it.
+
+        Returns the accepted request ID, or None when nothing was reopened. Only
+        a folder that is still an archive is reopened: the preference remembers
+        a location, and a removed drive or a deleted folder must not turn
+        startup into an error, let alone create an archive nobody asked for.
+        """
+        if not self.preferences.reopen_last_archive:
+            return None
+        candidate = self.preferences.default_archive or next(
+            iter(self.preferences.recent_archives), None
+        )
+        if not candidate:
+            return None
+        root = Path(candidate)
+        if not config_is_archive(root):
+            LOGGER.info("not reopening %s: it is no longer an archive", root)
+            return None
+        return self.main_window_open_path(root)
+
+    def main_window_open_settings(self) -> None:
+        """Show the preferences editor, filled with what is really stored.
+
+        Returns None. The dialog is opened by the reply, not by the press, so it
+        can never show a hand-made default that differs from the settings file.
+        Preferences need no archive, so this works before one is open.
+        """
+        if self.settings_dialog is not None:
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            return
+        if self.main_window_settings_submit("app_service_settings_path", {}) is None:
+            return
+        if self.main_window_settings_submit("app_service_get_settings", {}) is None:
+            return
+        self.main_window_show_status("Reading settings...")
+
+    def main_window_settings_submit(
+        self, operation: str, parameters: dict[str, object]
+    ) -> int | None:
+        """Submit a preference operation and remember it for its reply.
+
+        operation: the service operation to run.
+        parameters: the operation's data-only arguments.
+        Returns the accepted request ID, or None when the worker refused it.
+        """
+        request_id = self.main_window_submit(operation, parameters)
+        if request_id is not None:
+            self.settings_requests[request_id] = operation
+        return request_id
+
+    def main_window_settings_action(self, operation: str, parameters: object) -> None:
+        """Route what the settings dialog asked for to the worker.
+
+        operation: the service operation the dialog named.
+        parameters: its data-only arguments.
+        Returns None. The preview cache keeps its own path because the loaders
+        that read those files are not the worker's to synchronise.
+        """
+        if not isinstance(parameters, dict):
+            return
+        if operation == "app_service_clear_thumbnails":
+            self.main_window_clear_previews(operation)
+            return
+        self.main_window_settings_submit(operation, dict(parameters))
+
+    @Slot(object)
+    def main_window_settings_reply(self, reply: WorkerResult | WorkerFailure) -> None:
+        """Apply the outcome of a preference operation.
+
+        reply: a worker result, cancellation or failure.
+        Returns None. Failures are already held on screen by the worker-failure
+        slot; here they only stop the dialog from acting on a write that never
+        happened.
+        """
+        operation = self.settings_requests.pop(reply.request_id, None)
+        if operation is None or isinstance(reply, WorkerFailure) or reply.cancelled:
+            return
+        value = reply.value
+        if operation == "app_service_settings_path":
+            self.settings_file = value if isinstance(value, Path) else None
+            return
+        if operation == "app_service_get_settings":
+            self.main_window_show_settings(value)
+            return
+        self.main_window_show_status(operations_summary(operation, value))
+        if operation in {"app_service_update_settings", "app_service_reset_settings"}:
+            self.main_window_apply_preferences(value)
+        if self.settings_dialog is not None and isinstance(value, Settings):
+            self.settings_dialog.settings_dialog_show(value, self.settings_file)
+
+    def main_window_show_settings(self, value: object) -> None:
+        """Open the settings dialog around the preferences the worker read.
+
+        value: the worker's returned ``Settings``.
+        Returns None.
+        """
+        if not isinstance(value, Settings) or self.settings_dialog is not None:
+            return
+        self.preferences = value
+        archive_root = self.worker.archive_root
+        dialog = SettingsDialog(
+            value,
+            self.settings_file,
+            archive_open=archive_root is not None,
+            logs_dir=config_resolve_paths(archive_root).logs_dir
+            if archive_root is not None
+            else None,
+            parent=self,
+        )
+        dialog.settings_requested.connect(self.main_window_settings_action)
+        dialog.destroyed.connect(self.main_window_settings_closed)
+        self.settings_dialog = dialog
+        dialog.show()
+
+    def main_window_settings_closed(self, obj: object = None) -> None:
+        """Forget the settings dialog once Qt has destroyed it.
+
+        obj: the dying QObject, which must not be touched.
+        Returns None.
+        """
+        self.settings_dialog = None
+
+    def main_window_apply_preferences(self, value: object) -> None:
+        """Apply stored preferences to the running window.
+
+        value: the ``Settings`` the service just saved.
+        Returns None. A preference that only reached the file would leave the
+        window disagreeing with its own settings dialog until the next launch.
+        """
+        if not isinstance(value, Settings):
+            return
+        self.preferences = value
+        self.previews.previews_set_size(main_window_preview_size(value))
+        self.shell.shell_set_deleted_default(value.default_deleted_action)
+        controller = self.findChild(ThemeController)
+        if controller is not None:
+            controller.theme_set_preference(value.theme)
+        try:
+            logging_setup_configure(level=value.log_level)
+        except ValueError as error:
+            LOGGER.warning("keeping the current log level: %s", error)
 
     def main_window_choose_directory(self, title: str) -> str:
         """Ask the user for a folder.
@@ -821,18 +998,29 @@ class MainWindow(QMainWindow):
             self.main_window_open_reclaim(value)
 
 
-def main_window_preview_size() -> int:
-    """Read the persisted thumbnail size, falling back to the default.
+def main_window_preferences() -> Settings:
+    """Read the stored preferences, falling back to the defaults.
 
-    Returns a usable bounding-box size. A hand-edited settings file must never
-    stop the window from opening, and ``settings_load`` validates as it reads,
-    so the read itself is guarded rather than only its result.
+    Returns the stored ``Settings``. A hand-edited settings file must never stop
+    the window from opening, so an invalid one is reported and replaced by the
+    defaults here rather than raising into the constructor.
     """
     try:
-        size = settings_load().thumbnail_size
+        return settings_load()
     except Exception as error:
-        LOGGER.warning("using the default thumbnail size: %s", error)
-        return DEFAULT_THUMBNAIL_SIZE
+        LOGGER.warning("using default preferences: %s", error)
+        return Settings()
+
+
+def main_window_preview_size(settings: Settings | None = None) -> int:
+    """Resolve the thumbnail size the preview loader should use.
+
+    settings: already-loaded preferences, or None to read them now.
+    Returns a usable bounding-box size. ``settings_load`` validates as it reads,
+    so the read itself is guarded rather than only its result.
+    """
+    preferences = main_window_preferences() if settings is None else settings
+    size = preferences.thumbnail_size
     if not isinstance(size, int) or isinstance(size, bool):
         return DEFAULT_THUMBNAIL_SIZE
     return size if MIN_PREVIEW_SIZE <= size <= MAX_PREVIEW_SIZE else DEFAULT_THUMBNAIL_SIZE

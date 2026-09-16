@@ -93,6 +93,10 @@ OPERATION_TITLES = {
     "app_service_reclaim": "Freeing space on the iPhone",
     "app_service_commit_marks": "Applying the marked deletions",
     "app_service_deleted_on_phone": "Checking what is gone from the phone",
+    "app_service_get_settings": "Reading settings",
+    "app_service_update_settings": "Saving settings",
+    "app_service_reset_settings": "Resetting settings",
+    "app_service_forget_archive": "Forgetting an archive",
 }
 
 
@@ -351,6 +355,13 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "open_archive": operations_open_summary,
     "create_archive": operations_open_summary,
     "close_archive": lambda value: "Archive closed.",
+    "app_service_update_settings": lambda value: "Settings saved.",
+    "app_service_reset_settings": lambda value: (
+        "Settings restored to their defaults. Your archive is unchanged."
+    ),
+    "app_service_forget_archive": lambda value: (
+        "Removed from the recent list. Its files are untouched."
+    ),
 }
 
 

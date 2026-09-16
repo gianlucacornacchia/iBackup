@@ -217,11 +217,13 @@ exist. Later operation views must preserve the following:
   a stale ordinary proxy index can crash Qt. Recheck snapshots immediately before
   submission. Empty selections pass explicit empty lists, never an all-assets
   fallback.
-- `main_window.py`, `application.py`, `theme.py`, `win32_effects.py`,
-  `worker.py` and `models.py` exist as of steps 1-4. `navigation_pane.py`, `command_bar.py`,
-  `picture_grid_view.py`, `thumbnail_loader.py`, `operations_controller.py`,
-  and the review/settings views are **planned names** delivered by
-  the remaining Phase 2 steps in `plan.md` §2b.
+- The GUI package is `main_window.py`, `application.py`, `theme.py`,
+  `win32_effects.py`, `worker.py`, `models.py`, `previews.py`, `navigation.py`,
+  `commands.py`, `icons.py`, `shell.py`, `gallery.py`, `viewer.py`,
+  `operations.py`, `dialogs.py`, `confirm.py`, `review.py`, `reclaim.py` and
+  `settings_dialog.py`, delivered by steps 1-10 of `plan.md` §2b. The earlier
+  planned names (`navigation_pane.py`, `command_bar.py`, `picture_grid_view.py`,
+  `thumbnail_loader.py`, `operations_controller.py`) map onto those files.
 - DWM failures log the attribute/result and select a solid background.
   Normal launches remain opaque; `--mica-probe` opts into experimental
   translucent painting on Windows 11 22H2+. No visual probe result exists.
@@ -236,8 +238,13 @@ The service applies `album_link_mode`, `thumbnail_size` and
 `app_service_set_setting`, `app_service_reset_settings`,
 `app_service_settings_path` and `app_service_forget_archive`.
 Malformed settings JSON warns and falls back to defaults; invalid recognized
-values raise on validation. The GUI consumes `theme` at startup and follows
-native appearance changes live; other GUI-only preferences await later steps.
+values raise on validation. The six settings operations are archive-free: the
+GUI worker runs them against a preferences-only service whose root is a sentinel
+that cannot be an archive, so they work before one is open and fail closed if
+an archive-touching operation is ever added to that set. The GUI edits every
+preference in its §7b dialog and applies theme, preview size, log level and the
+deleted-on-phone default as soon as they are saved; `reopen_last_archive`
+reopens the last archive at startup only when that folder is still an archive.
 `app_service_reset_settings` / `config reset` can recover invalid configuration.
 
 `pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.

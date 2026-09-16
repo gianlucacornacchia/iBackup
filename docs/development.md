@@ -449,6 +449,34 @@ Targeted validation, using the existing venv and dependencies:
 pytest tests/test_gui_operations.py tests/test_gui_destructive.py tests/test_gui_shell.py tests/test_gui_gallery.py tests/test_gui_worker.py
 ```
 
+### Adding or editing a user preference
+
+Preferences are *defaults*, never archive semantics, and the GUI is an editor
+over `settings.py` rather than a second store.
+
+- **Add the field to `Settings` and validate it in `settings_validate` first.**
+  The dialog validates before emitting, but the service validates again because
+  it is not the only caller; a value that only the dialog rejects is unguarded.
+- **Offer it from the stored choices.** Build the combo box from the tuple in
+  `settings.py` (as `THEME_LABELS` does) so a value the store accepts cannot be
+  missing from the only widget that offers it.
+- **Never read a safety option back from its widget.** `confirm_word_required`
+  is written as `True`; the checkbox exists to make the guarantee visible, not
+  to control it. A preference may add friction and never remove it.
+- **Keep it archive-free.** A settings operation that must work before an
+  archive is open belongs in `ARCHIVE_FREE_OPERATIONS`; the worker runs those
+  against `app_service_preferences()`, whose sentinel root cannot be an archive,
+  so anything that does touch one fails closed instead of using the working
+  directory.
+- **Give it a consumer, and apply it live.** A preference nothing reads is dead
+  weight; one applied only at the next launch leaves the window disagreeing with
+  its own settings dialog. `main_window_apply_preferences` is where that
+  happens.
+
+```powershell
+pytest tests/test_gui_settings.py tests/test_settings.py
+```
+
 ### Running the Windows Mica probe
 
 Normal launches retain opaque client painting. On Windows 11 22H2+ only:

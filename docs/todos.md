@@ -93,9 +93,9 @@ hardening and Windows validation gates that follow.
   Event cancellation, typed DELETE for permanent operations, selected reclaim,
   cache clear, marks clear, operation logs/log level.
   _Depends on: service-layer, cli-wiring._
-- [x] **settings-store** — store/CLI and current service consumers implemented.
-  `reopen_last_archive` and `default_deleted_action` are future GUI preferences,
-  not active CLI behavior. _Depends on: service-layer._
+- [x] **settings-store** — store/CLI and service consumers implemented; closed
+  by `gui-settings`, which added the GUI editor and gave `reopen_last_archive`
+  and `default_deleted_action` real consumers. _Depends on: service-layer._
 - [x] **core-validation** — final targeted/full configured quality gates and
   report in `progress.md`, without duplicating brittle counts across docs.
   _Depends on: device-identity-safety, archive-recovery-safety, service-safety-parity._
@@ -184,9 +184,18 @@ never starts before the layer beneath it is proven. Descriptions live in
   the word keeps its meaning. A recycle-bin purge sets `recycled_only=True`, and
   a refreshed report drops its ticks. _Depends on: gui-ops-safe, recycle-bin,
   phone-diff, marks._
-- [ ] **gui-settings** — the six settings panels bound to the service; also
-  closes the aggregate `settings-store` item (persisted settings already exist).
-  _Depends on: gui-shell, service-layer._
+- [x] **gui-settings** — the six settings panels bound to the service; also
+  closes the aggregate `settings-store` item. The dialog never touches the
+  settings file: it edits a detached copy and hands it back to the window, which
+  is the only object that talks to the worker. Settings operations run with no
+  archive open, against a preferences-only service bound to a sentinel root that
+  cannot be an archive, so an operation added to that set by mistake fails
+  closed. Safety options may only add friction: the typed word and the
+  dry-run-first rule are shown ticked and disabled, and the saved value is
+  forced on regardless of widget state. `reopen_last_archive` and
+  `default_deleted_action` finally have consumers - startup reopens the last
+  archive only when it is still an archive, and the §3 review only *suggests*
+  the preferred button. _Depends on: gui-shell, service-layer._
 - [ ] **gui-parity-tests** — a test that fails if any CLI command or service
   method has no GUI surface, plus end-to-end `pytest-qt` flows run offscreen.
   _Depends on: gui-ops-destructive, gui-settings._
