@@ -24,7 +24,7 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
 from ..config import ArchivePaths
 from ..device.interface import MediaSource
-from ..service.app_service import AppService
+from ..service.app_service import ARCHIVE_FREE_OPERATIONS, AppService, app_service_preferences
 from ..service.progress import ProgressEvent, ProgressHandle
 
 LOGGER = logging.getLogger(__name__)
@@ -168,6 +168,19 @@ class WorkerSession:
         self.service_factory = service_factory
         self.source_factory = source_factory
         self.service: AppService | None = None
+        # Preferences live outside every archive, so they are served by their own
+        # service when none is open. It is created on this thread, on demand.
+        self.preferences: AppService | None = None
+
+    def worker_preferences(self) -> AppService:
+        """Return the preferences-only service, creating it on the worker thread.
+
+        Returns an ``AppService`` bound to a sentinel root that is not an
+        archive, so an operation that needs one fails instead of inventing one.
+        """
+        if self.preferences is None:
+            self.preferences = app_service_preferences()
+        return self.preferences
 
     def worker_close(self) -> None:
         """Close the current archive on its owning thread, including error paths."""
@@ -205,8 +218,12 @@ class WorkerSession:
             self.service = service
             return paths
         if self.service is None:
-            raise RuntimeError("Open an archive before requesting service operations")
-        method: Callable[..., object] = getattr(self.service, request.operation)
+            if request.operation not in ARCHIVE_FREE_OPERATIONS:
+                raise RuntimeError("Open an archive before requesting service operations")
+            target = self.worker_preferences()
+        else:
+            target = self.service
+        method: Callable[..., object] = getattr(target, request.operation)
         parameters = dict(request.parameters)
         signature = inspect.signature(method)
         if "progress" in signature.parameters:

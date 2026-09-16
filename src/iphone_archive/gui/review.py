@@ -291,6 +291,18 @@ class ReviewPage(QWidget):
         self.caption_label.setText(caption)
         self.review_list.review_set_rows(rows)
 
+    def review_set_default_action(self, key: str) -> None:
+        """Suggest one action by making it the page's default button.
+
+        key: the action key to suggest, ignored when this page has no such
+            button.
+        Returns None. Suggesting is all a preference may do here: the button
+        still has to be pressed, and a permanent action still has to be
+        confirmed with the typed word afterwards.
+        """
+        for name, button in self.buttons.items():
+            button.setDefault(name == key)
+
     def review_checked_ids(self) -> list[int]:
         """Return the identifiers of the checked rows."""
         return self.review_list.review_checked_ids()

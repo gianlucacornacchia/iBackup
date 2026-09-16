@@ -159,6 +159,23 @@ step never starts before the layer beneath it is proven.
    copies, marking is whole-asset and says so in an album view, and unmark is
    bounded because the worker queue is.
 10. `gui-settings` — the six settings panels; also closes `settings-store`.
+    Implemented offline: `gui/settings_dialog.py` is the sketch's §7b editor -
+    Archive, Import, Thumbnails, Safety, Advanced and Maintenance - over
+    `app_service_get_settings` / `app_service_update_settings`. It reads and
+    writes nothing itself: the window asks the worker, the dialog is opened by
+    the reply, and every button names a service operation. Preferences need no
+    archive, so the worker runs the six archive-free settings operations against
+    a service whose root is a sentinel that **cannot** be an archive; anything
+    else still refuses until one is open. The two safety guarantees - the typed
+    word for permanent deletion and the always-dry-run-first phone clean-up -
+    are shown ticked and disabled, and `confirm_word_required` is forced on when
+    the panels are read back, so no widget state can weaken a confirmation. A
+    save is validated in the dialog and again by the service, and what it stores
+    is applied live: preview size, theme, log level and the deleted-on-phone
+    default. This closes `settings-store` by giving its last two stored
+    preferences real consumers - the window reopens the last archive at startup
+    only when that folder is still an archive, and the §3 review offers the
+    preferred action as its default button, never presses it.
 
 **Phase D — proof**
 

@@ -346,16 +346,18 @@ def test_shutdown_returns_the_shell_to_the_closed_presentation(shell, qtbot):
 
 def test_main_window_hosts_the_shell_and_reports_commands(qtbot):
     """The window shows the shell, and no command may silently do nothing."""
+    from iphone_archive.gui import main_window as main_window_module
     from iphone_archive.gui.main_window import MainWindow
 
     window = MainWindow()
     qtbot.addWidget(window)
     assert window.centralWidget() is window.shell
     assert window.menuBar().isVisible() is False
-    # A verb that is gated behind a later step must say so rather than appear
-    # to work; this one needs no worker, so the window starts no archive session.
-    window.shell.command_bar.command_triggered.emit("settings")
-    assert "step 10" in window.statusBar().currentMessage()
+    # Every command the bar and the pane offer is now implemented, so nothing is
+    # deferred; an unknown key must still say so rather than do nothing quietly.
+    assert main_window_module.DEFERRED_COMMANDS == {}
+    window.shell.command_bar.command_triggered.emit("not-a-command")
+    assert "is not a command" in window.statusBar().currentMessage()
     window.shell.shell_status_changed.emit("hello")
     assert window.statusBar().currentMessage() == "hello"
     assert window.worker.service_thread.isRunning() is False

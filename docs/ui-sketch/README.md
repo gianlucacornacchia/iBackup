@@ -1,10 +1,10 @@
 # UI Sketch — iPhone Archive (`ibackup`) GUI
 
 **Status: approved 2026-09-11**, together with the clickable mock. Phase 2
-implementation has reached step 9: the shell, theme, gallery, viewer, progress
+implementation has reached step 10: the shell, theme, gallery, viewer, progress
 dialog (§2), deleted-on-phone review (§3), reclaim review (§4), confirmation
-dialog (§5) and marks queue (§6) are built. Only §7b (settings) remains a
-requirement rather than implemented software.
+dialog (§5), marks queue (§6) and the settings dialog (§7b) are built. Every
+screen in this sketch now exists as software.
 Core-hardening and live Windows qualification are separate gates.
 
 > **A clickable mock of everything below now exists** in `mockup/`. Run
@@ -370,15 +370,18 @@ button holding default focus.
 
 ---
 
-## 7b. Settings / Preferences  *(backend built; dialog pending approval)*
+## 7b. Settings / Preferences  *(built in step 10)*
 
-The settings **store and CLI now exist** (`settings.py` + `ibackup config
-get|set|list|reset|path|forget`), so this dialog is a thin editor over
-`app_service_get_settings` / `app_service_update_settings`. It is the only part
-of the planned settings UI and waits on this approval. Stored
-`reopen_last_archive` and `default_deleted_action` preferences have no current
-GUI consumer. Import/thumbnail defaults are now applied service-side;
-the CLI's rotating archive log uses the configured log level.
+The settings **store and CLI** (`settings.py` + `ibackup config
+get|set|list|reset|path|forget`) came first, so `gui/settings_dialog.py` is a
+thin editor over `app_service_get_settings` / `app_service_update_settings`;
+it never reads or writes the settings file itself. `reopen_last_archive` and
+`default_deleted_action` now have GUI consumers: the window reopens the last
+archive at startup **only when that folder is still an archive**, and the
+deleted-on-phone review offers the preferred action as its default button.
+Import/thumbnail defaults are applied service-side; the CLI's rotating archive
+log uses the configured log level, and the GUI re-applies theme, preview size
+and log level the moment they are saved.
 
 ```
 +-------------------------------------------------------------+
@@ -401,15 +404,21 @@ Panels:
 - **Archive** — default archive root, reopen-on-startup, recent archives list.
 - **Import** — album link mode (`copy` / `hardlink` with automatic exFAT
   fallback), and whether to scan the phone automatically after each import.
-- **Thumbnails** — preview size (128 / 256 / 512 px), on-disk cache size with a
-  **Clear cache** button (`app_service_clear_thumbnails`).
-- **Safety** — require typing `DELETE` for permanent deletion (default on),
-  default the deleted-on-phone action to *Move to Deleted folder*, keep reclaim
-  in dry-run until explicitly confirmed. These only ever *add* friction; they
-  cannot disable a confirmation entirely.
-- **Advanced** — log level and a **Open logs folder** shortcut.
-- **Maintenance** — reset settings, show settings path and forget a recent
-  archive without deleting its files; each has a CLI counterpart below.
+- **Thumbnails** — preview size (128 / 256 / 512 px) and a **Clear cache**
+  button (`app_service_clear_thumbnails`) that needs an open archive, because
+  the cache lives inside one. No cache size is displayed: measuring it would
+  mean walking the cache folder on the GUI thread for a number nobody acts on.
+- **Safety** — require typing `DELETE` for permanent deletion and preview phone
+  clean-up before deleting anything: both are shown ticked and **disabled**,
+  because they are guarantees of the application rather than switches. The
+  deleted-on-phone default only decides which button the review page suggests.
+  These options only ever *add* friction; they cannot disable a confirmation.
+- **Advanced** — appearance (`system`/`light`/`dark`, applied immediately),
+  log level and an **Open logs folder** shortcut that needs an open archive.
+- **Maintenance** — reset settings (armed by a first press, applied by a
+  second) and show the settings file. Forgetting a recent archive without
+  deleting its files sits with the recent list in **Archive**, as drawn above;
+  each has a CLI counterpart below.
 
 Design notes:
 
@@ -425,9 +434,9 @@ Design notes:
 
 ## 8. CLI ↔ GUI parity map
 
-Target parity map: GUI operation surfaces below are **planned**, not yet implemented.
-Current source CLI actions call the listed service APIs; tests must confirm
-selection, defaults and confirmation behavior match.
+Parity map: every GUI surface below is implemented as of step 10. Current
+source CLI actions call the listed service APIs; the step-11 parity test is what
+proves no CLI capability has been left without a GUI surface.
 
 | Operation | CLI | GUI | Service method |
 |---|---|---|---|
@@ -456,14 +465,15 @@ selection, defaults and confirmation behavior match.
 | Move selection | `move <album> <asset-ids...> [--from-album ALBUM_ID] [--file ID ...]` | **Move to album...**, preserving album/copy scope | `app_service_move_selection(file_ids=...)` |
 | Thumbnail | `thumbnail` | Grid tiles (implicit) | `app_service_thumbnail` |
 | Clear preview cache | `clear-thumbnails` | §7b **Clear cache** | `app_service_clear_thumbnails` |
-| Settings | `config list` / `get` / `set` | §7b dialog *(pending)* | `app_service_get_settings` / `app_service_set_setting` (bulk save: `app_service_update_settings`) |
+| Settings | `config list` / `get` / `set` | §7b dialog | `app_service_get_settings` / `app_service_set_setting` (bulk save: `app_service_update_settings`) |
 | Reset settings | `config reset` | §7b **Reset settings** | `app_service_reset_settings` |
 | Settings location | `config path` | §7b **Show settings file** | `app_service_settings_path` |
 | Forget recent archive | `config forget <path>` | §7b **Forget** | `app_service_forget_archive` |
 
 US-D4 HTML gallery is explicitly deferred; there is no current `gallery`
-command to map. **Show in Explorer**, viewer navigation, search and theme
-controls are planned presentation features, not claimed CLI archive operations.
+command to map. **Show in Explorer**, viewer navigation and search are
+presentation features, not claimed CLI archive operations; the theme control is
+a stored preference (`config get|set theme`) edited in §7b.
 Album-grid deletion should use the aligned `AssetView.file_ids` for the shown
 copies, not silently promote a selection to all copies of an asset. Asset-wide
 delete/move must be clearly labeled; `--from-album` is the CLI source-album

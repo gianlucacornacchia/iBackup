@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..settings import DELETED_ACTION_PURGE
 from .commands import CommandBar, PhoneState
 from .gallery import AssetGallery
 from .models import MODEL_MUTATIONS, ArchiveModels, AssetScope, AssetSelection
@@ -460,6 +461,19 @@ class ArchiveShell(QWidget):
             review.review_set_rows(review_mark_rows(value), review_mark_caption(value))
         else:
             review.review_set_rows(review_phone_rows(value), review_phone_caption(value))
+
+    def shell_set_deleted_default(self, action: str) -> None:
+        """Suggest the deleted-on-phone action the user prefers.
+
+        action: the stored ``default_deleted_action`` value.
+        Returns None. The preference only decides which button the review page
+        offers as its default; it never presses one, and the permanent choice
+        still needs the typed confirmation word.
+        """
+        review = self.reviews.get("deleted-phone")
+        if review is None:
+            return
+        review.review_set_default_action("purge" if action == DELETED_ACTION_PURGE else "recycle")
 
     def shell_track(self, request_id: int, kind: str) -> None:
         """Remember one of the shell's own reads.

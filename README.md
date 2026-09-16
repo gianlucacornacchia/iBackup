@@ -12,7 +12,8 @@ without the app. The archive — not the phone — is the source of truth.
 > with multi-select and a full-size viewer, and it can now open an archive and
 > run every archive operation, including recycling, restoring, purging, marking
 > and previewing phone-space reclamation behind a typed-`DELETE` confirmation.
-> Settings still have no dialog. Reclamation cannot yet free space on a real
+> Every stored preference is editable in the settings dialog, which can never
+> weaken a confirmation. Reclamation cannot yet free space on a real
 > phone: device-side deletion remains disabled pending hardware validation.
 > Mica is an opt-in Windows probe; normal launches use solid backgrounds. No
 > downloadable Windows release is available. See
@@ -22,10 +23,11 @@ without the app. The archive — not the phone — is the source of truth.
 The GUI worker foundation serializes archive work off the UI thread, with
 cooperative cancellation and safe shutdown. Paged asset/album models,
 copy-scoped selection, a background preview pipeline, the application shell, the
-photo gallery and the safe operations are implemented (Phase 2 steps 1-8).
-Import, verify, scan, the duplicate report and move-to-album run behind a
-progress dialog that can be cancelled where the backend supports it, or hidden.
-The destructive operations remain later steps.
+photo gallery, the safe and destructive operations and the settings dialog are
+implemented (Phase 2 steps 1-10). Import, verify, scan, the duplicate report and
+move-to-album run behind a progress dialog that can be cancelled where the
+backend supports it, or hidden. Parity tests and Windows packaging remain
+(steps 11-12).
 
 ## Documentation
 

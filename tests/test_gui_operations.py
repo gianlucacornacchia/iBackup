@@ -327,8 +327,10 @@ def test_a_command_that_needs_a_later_step_says_so(window):
     """Silently doing nothing, or silently deleting, are both unacceptable."""
     main, wait, root = window(count=1)
 
-    main.main_window_command("settings")
-    assert "step 10" in main.statusBar().currentMessage()
+    # No verb is deferred any more; an unknown key must still be reported, and
+    # the settings dialog is covered by `test_gui_settings.py`.
+    main.main_window_command("not-a-command")
+    assert "is not a command" in main.statusBar().currentMessage()
 
     # The destructive verbs now exist, but they still refuse an empty selection
     # rather than acting on nothing or on everything.
