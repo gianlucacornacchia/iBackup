@@ -199,8 +199,11 @@ def test_afc_incomplete_inventory_raises(operation):
     device.device_close()
 
 
-def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeypatch):
-    """The real parser receives an accessible snapshot and its metadata reaches items."""
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_afc_legacy_photos_metadata_requires_unique_database_filename(
+    tmp_path, monkeypatch, ambiguous
+):
+    """Legacy matching checks unassigned database assets as well as album members."""
     import io
     import sqlite3
 
@@ -216,6 +219,8 @@ def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeyp
         INSERT INTO ZASSET VALUES (10, 'A.JPG', 0, NULL);
         INSERT INTO Z_28ASSETS VALUES (1, 10);
     """)
+    if ambiguous:
+        connection.execute("INSERT INTO ZASSET VALUES (11, 'A.JPG', 86400, NULL)")
     connection.commit()
     connection.close()
     payload = database_path.read_bytes()
@@ -237,9 +242,9 @@ def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeyp
     device.afc_client = Client()
     device.device_open = device_open
     item = list(device.device_enumerate())[0]
-    assert item.album_names == ["Trip"]
-    assert item.captured_at == "2001-01-01T00:00:00+00:00"
-    assert device.device_album_map() == {"/DCIM/A.JPG": ["Trip"]}
+    assert item.album_names == ([] if ambiguous else ["Trip"])
+    assert item.captured_at == (None if ambiguous else "2001-01-01T00:00:00+00:00")
+    assert device.device_album_map() == ({} if ambiguous else {"/DCIM/A.JPG": ["Trip"]})
     assert not list((tmp_path / ".ibackup-device-cache").iterdir())
     device.device_close()
 
@@ -265,6 +270,11 @@ def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeyp
         (
             ["/DCIM/101APPLE/A.JPG"],
             {"/DCIM/100APPLE/A.JPG": ["Trip"]},
+            [[]],
+        ),
+        (
+            ["/DCIM/101APPLE/A.JPG"],
+            {"A.JPG": ["Trip"]},
             [["Trip"]],
         ),
         (
@@ -274,9 +284,7 @@ def test_afc_photos_database_populates_albums_and_capture_time(tmp_path, monkeyp
         ),
     ],
 )
-def test_afc_album_fallback_requires_unique_device_and_metadata_names(
-    monkeypatch, paths, albums, expected
-):
+def test_afc_album_fallback_is_only_for_legacy_bare_keys(monkeypatch, paths, albums, expected):
     from iphone_archive.device.interface import PhoneItem
 
     items = [
@@ -297,6 +305,78 @@ def test_afc_album_fallback_requires_unique_device_and_metadata_names(
     assert device.album_cache == {
         path: names for path, names in zip(paths, expected, strict=True) if names
     }
+
+
+def test_offloaded_member_cannot_label_unassigned_local_photo(tmp_path, monkeypatch, caplog):
+    """Exercise actual SQLite parsing, AFC enumeration and archive placement."""
+    import io
+    import sqlite3
+
+    from iphone_archive.service.app_service import AppService
+
+    database_path = tmp_path / "Photos.sqlite"
+    connection = sqlite3.connect(database_path)
+    connection.executescript("""
+        CREATE TABLE ZGENERICALBUM (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZKIND INTEGER);
+        CREATE TABLE ZASSET (
+            Z_PK INTEGER PRIMARY KEY, ZDIRECTORY TEXT, ZFILENAME TEXT, ZDATECREATED REAL
+        );
+        CREATE TABLE Z_33ASSETS (Z_33ALBUMS INTEGER, Z_3ASSETS INTEGER);
+        INSERT INTO ZGENERICALBUM VALUES (1, 'Offloaded trip', 2), (2, 'Local trip', 2);
+        INSERT INTO ZASSET VALUES
+            (1, 'DCIM/100APPLE', 'A.JPG', 0),
+            (2, 'DCIM/101APPLE', 'A.JPG', 86400),
+            (3, 'DCIM/101APPLE', 'B.JPG', 172800),
+            (4, 'DCIM/100APPLE', 'B.JPG', 0);
+        INSERT INTO Z_33ASSETS VALUES (1, 1), (2, 3);
+    """)
+    connection.commit()
+    connection.close()
+    payload = database_path.read_bytes()
+    monkeypatch.chdir(tmp_path)
+    media = {"/DCIM/101APPLE/A.JPG": b"unassigned", "/DCIM/101APPLE/B.JPG": b"assigned"}
+
+    class Client:
+        def listdir(self, path):
+            return ["101APPLE"] if path == "/DCIM" else ["A.JPG", "B.JPG"]
+
+        def stat(self, path):
+            if path == "/DCIM/101APPLE":
+                return {"st_ifmt": "S_IFDIR"}
+            return {"st_ifmt": "S_IFREG", "st_size": len(media[path])}
+
+    def device_open(path):
+        if path == "/PhotoData/Photos.sqlite":
+            return io.BytesIO(payload)
+        if path.endswith("-wal"):
+            raise DeviceError("no WAL")
+        return io.BytesIO(media[path])
+
+    device = AfcDevice()
+    device.afc_client = Client()
+    monkeypatch.setattr(device, "device_open", device_open)
+    service = AppService(tmp_path / "archive")
+    try:
+        items = list(device.device_enumerate())
+        assert [item.album_names for item in items] == [[], ["Local trip"]]
+        assert [item.captured_at for item in items] == [
+            "2001-01-02T00:00:00+00:00",
+            "2001-01-03T00:00:00+00:00",
+        ]
+        assert "1 album media paths across 1 albums" in caplog.text
+        assert "No filename-based substitutions" in caplog.text
+        paths = service.app_service_initialize()
+        result = service.app_service_import(device)
+        assert (result.added_count, result.error_count) == (2, 0)
+        assert {p.name for p in paths.photos_dir.iterdir()} == {"_Unsorted", "Local trip"}
+        assert [p.read_bytes() for p in (paths.photos_dir / "Local trip").iterdir()] == [
+            b"assigned"
+        ]
+        assert service.app_service_verify().passed
+    finally:
+        service.app_service_close()
+        device.device_close()
+    assert not list((tmp_path / ".ibackup-device-cache").iterdir())
 
 
 def test_afc_delete_is_gated_without_touching_device():

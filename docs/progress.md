@@ -5,11 +5,18 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-16 (Phase 2 step 12 `gui-packaging` completed; built and
-smoke-tested on Windows)._
+_Last updated: 2026-09-16 (real-phone album misassignment diagnosed and exact-path
+matching validated)._
 
 ## Current status
 
+- **Album correction:** earlier filename fallback assigned offloaded photos'
+  albums to unrelated local files. The current adapter uses exact paths for
+  modern Photos databases; older filename-only schemas require uniqueness
+  across the whole database and USB inventory. Existing wrong archive copies
+  are **not** automatically removed. Preserve existing archives and validate
+  corrected imports in a separate new archive. Albums with no USB-accessible
+  originals require those originals to be made locally available first.
 - **Phase:** Phase 2 — building the GUI. Phase 1 (core engine + full CLI) and
   the core-hardening checkpoint are complete offline.
 - **State:** the UI-sketch gate **passed on 2026-09-11**; the sketch and its
@@ -264,6 +271,63 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-09-16 — **Corrected real-phone album misassignment; supersedes the earlier
+  metadata confidence claims below.** The filename fallback was unsafe even
+  when unique among album members: another, unassigned asset elsewhere in
+  Photos could have the same filename. On this phone it falsely assigned
+  albums to 635 local files. The merge-time test expecting a cross-directory
+  match encoded that bug; it now expects no membership. Modern album and
+  capture-date lookup use only exact directory/filename keys. Legacy filename
+  lookup rejects ambiguity across *all* database assets, not just album
+  members, as well as across the USB inventory. Missing album media paths
+  produce a warning rather than filename substitutions.
+  Independent SQL against the live iOS 26.4 database matched all 1,318
+  enumerated items' memberships and capture dates with zero mismatches;
+  119 items had actual exact-path album membership. A fresh, isolated
+  three-file import (1,164,739 bytes) covered two correctly assigned photos
+  and a formerly misassigned photo now stored under `_Unsorted`. All three
+  copies' folder/catalog membership matched independent SQL, their hashes
+  matched fresh USB reads, verification passed, and reimport skipped all three.
+  Temporary media and database snapshots were removed; the phone and existing
+  archives/preferences were untouched.
+  The reported missing albums **do exist** in Photos, but none of their
+  recorded originals was in the DCIM inventory:
+  `Sardegna - 2021` (251 members), `Lago di Fiastra - Lame rosse - Tempio del
+  Valadier` (62), and the three `Folgarida 2021` albums (85, 44 and 53).
+  Direct stat of a member from each returned AFC file-not-found. This is
+  consistent with offloaded originals; the iCloud setting itself was not
+  inspected, and USB does not automatically download missing originals.
+  Regression coverage now exercises real SQLite parsing through the AFC
+  adapter and importer, not merely `FakeDevice` album maps. Targeted suite:
+  98 passed; full suite before the final additional legacy-date case:
+  732 passed, 8 skipped, the same two pre-existing Windows GUI-settings
+  path-separator failures. Ruff lint/format and strict core/catalog mypy passed.
+  The Windows executable was rebuilt with this correction and passed the
+  artifact startup smoke test; an already-running GUI must be restarted.
+
+- 2026-09-16 — **Real-phone read/import validation of `7c7b477` passed.**
+  Windows build 26200, NTFS; iPhone 12 (`iPhone13,2`), iOS 26.4 (`23E246`);
+  Python 3.11.9, pymobiledevice3 11.10.4, PySide6 6.11.2, Pillow 12.3.0,
+  PyAV 18.1.0. Apple driver version was not established by the driver query.
+  USB enumeration returned 1,320 media files (5,580,684,594 bytes), including
+  753 files with memberships across 15 albums. A bounded sample of eight real
+  files (HEIC, JPG, PNG, MOV and MP4; 240,836,651 bytes total, largest video
+  236,902,297 bytes) was imported through `AppService` into an isolated
+  temporary archive using copy mode. One sampled item had multiple albums;
+  four had no album assignment.
+  All eight catalog hashes and all nine stored copies matched independent,
+  fresh phone reads in both SHA-256 and byte count. Archive verification
+  checked nine copies with zero mismatches/missing files. A second import
+  skipped all eight items with zero media reads and verification still passed.
+  Re-enumeration matched the initial paths, sizes, modification times and album
+  memberships. All streams/sessions closed, and a new USB session reconnected
+  to the same device. Temporary media, catalog and isolated preferences were
+  removed after the successful 152-second run; no existing archive/preferences
+  were changed and no phone mutation was attempted.
+  This does **not** qualify multi-GB streaming/peak memory, Live Photo pairing,
+  manual album correctness, physical cable interruption, locked/untrusted
+  states, exFAT/hardlinks, the frozen GUI, or any destructive operation.
 
 - 2026-09-16 — **Integrated `gcor/nugfix` into `main`.** Album membership now
   uses `ZDIRECTORY` paths where available. Integration regressions cover the

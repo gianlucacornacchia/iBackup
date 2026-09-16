@@ -43,11 +43,11 @@ scenario is covered or that the latest edited suite has passed.
 | `test_archive_layout.py` | Placement, hardlink/copy behavior and safe paths. |
 | `test_catalog.py` | Schema and repository behavior; upgrade coverage must track migrations. |
 | `test_sidecar.py` | Metadata serialization/round trip. |
-| `test_device.py` | Fake-device protocol plus mocked AFC behavior, not hardware evidence. |
+| `test_device.py` | Fake-device protocol plus mocked AFC behavior; real parser-to-AFC-to-import regression for an offloaded album member sharing a filename with a different local photo, exact-path capture dates, legacy ambiguity refusal, missing-original warnings and correct archive placement. Hardware evidence is recorded separately in `progress.md`. |
 | `test_importer.py` | Import/skip/dedup, album placement, process-exit recovery after placement/extra copy/sidecar, and refusal of ambiguous recovery files. |
 | `test_dedup.py` | Read-only duplicate/storage reports. |
 | `test_verifier.py` | Intact, missing and corrupted cataloged copies; no `--full` mode. |
-| `test_albums.py` | Archive album summaries, not real `Photos.sqlite` compatibility. |
+| `test_albums.py` | Archive album summaries, discovered join-table ordinals, exact directory/filename membership keys, missing-directory refusal and legacy filename uniqueness across all assets (including those without albums). Synthetic schemas do not qualify every iOS version. |
 | `test_phone_diff.py` | Inventory/absence reconciliation. |
 | `test_reclaim.py` | Device/content eligibility, selected reclaim, fresh checks and fail-closed deletion regressions. |
 | `test_gallery.py` | Asset/album read models, partial recycling and location-filtered paths/counts, not HTML output. |

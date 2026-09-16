@@ -349,6 +349,10 @@ It is not implemented and remains blocked on explicit sketch approval.
 No. Device access is over USB. However, cloud-only originals that are not
 available through AFC are not guaranteed to be imported; an accessible DCIM
 inventory is not proof that the complete Apple Photos/iCloud library is local.
+Album metadata can remain on the phone even when the originals have been
+offloaded. To import those originals, select **Download and Keep Originals**
+in the iPhone's Photos/iCloud settings and allow downloading to finish with
+enough free storage. iBackup does not fetch originals from iCloud itself.
 
 **Will it change or compress my photos?**
 No. Files are copied exactly as they are on the phone.
@@ -379,9 +383,20 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
   Apple Mobile Device USB driver is present.
 - **Media directory access fails:** treat this as an incomplete scan, not an
   empty phone. Resolve access/connectivity errors before trusting absence data.
-- **Albums are missing (photos went to `_Unsorted`):** album information could
-  not be read or its schema was unsupported. This does not prove the entire
-  phone library was accessible; review import errors and verify copied files.
+- **Albums are missing or incomplete:** an album can exist in the phone's
+  database while none of its originals are available through USB. The log
+  reports album paths absent from the USB inventory; download originals to the
+  phone before importing again. An empty/missing archive album does not prove
+  the album was empty on the phone.
+- **Photos went to `_Unsorted`:** no membership could be resolved for that
+  exact media path, or the metadata could not be read. Modern Photos databases
+  are matched by directory **and** filename, never by a reused filename alone.
+- **Wrong albums from earlier builds:** the old filename fallback could attach
+  an offloaded photo's albums to an unrelated local photo. The corrected
+  importer prevents this for new imports, but the archive is append-only:
+  reimporting does **not** remove old wrong album copies. Preserve the existing
+  archive and use a separate, new archive to check corrected placement before
+  making any deliberate archive edits. Restart the GUI after updating.
 - **Permission errors on an external drive:** make sure you can write to the
   drive, and prefer NTFS or exFAT for large drives.
 

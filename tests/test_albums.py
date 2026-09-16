@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -246,6 +247,27 @@ def test_schema_without_album_tables_returns_empty(tmp_path):
     connection.close()
 
     assert albums.albums_parse_photos_database(database_path) == {}
+
+
+def test_legacy_ambiguity_includes_assets_without_albums(tmp_path):
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db(database_path, [(1, "Offloaded trip", 10, "A.JPG")])
+    with closing(sqlite3.connect(database_path)) as connection, connection:
+        connection.execute("INSERT INTO ZASSET VALUES (11, 'A.JPG', NULL)")
+    assert albums.albums_parse_photos_database(database_path) == {}
+
+
+@pytest.mark.parametrize("directory", [None, "", "/", "///"])
+def test_modern_missing_directory_never_becomes_a_filename_key(tmp_path, directory):
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db_with_directory(database_path, [(1, "Trip", 2, 10, directory, "A.JPG")])
+    assert albums.albums_parse_photos_database(database_path) == {}
+
+
+def test_directory_slashes_are_normalized(tmp_path):
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db_with_directory(database_path, [(1, "Trip", 2, 10, "/DCIM/100APPLE/", "A.JPG")])
+    assert albums.albums_parse_photos_database(database_path) == {"/DCIM/100APPLE/A.JPG": ["Trip"]}
 
 
 def test_missing_database_returns_empty(tmp_path):

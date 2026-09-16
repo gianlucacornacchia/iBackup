@@ -23,7 +23,7 @@ from typing import Any, BinaryIO, cast
 from uuid import uuid4
 
 from ..catalog.models import PhoneItem
-from ..core.albums import albums_parse_photos_database
+from ..core.albums import albums_asset_key_sql, albums_parse_photos_database
 from .interface import DeviceError
 
 MEDIA_ROOTS = ("/DCIM",)
@@ -230,35 +230,33 @@ class AfcDevice:
         albums, capture_times = self.afc_device_photo_metadata()
         counts = Counter(item.original_name for item in items)
 
-        # Build a filename-only fallback map: only keep entries whose bare
-        # filename is unique in Photos.sqlite so we never send a photo to the
-        # wrong album via an ambiguous name match.
-        filename_album_count: dict[str, int] = {}
-        filename_album_map: dict[str, list[str]] = {}
-        for path_key, album_names in albums.items():
-            filename = path_key.rsplit("/", 1)[-1]
-            filename_album_count[filename] = filename_album_count.get(filename, 0) + 1
-            filename_album_map[filename] = album_names  # last one wins; only used if unique
-        unique_by_filename = {
-            name: v
-            for name, v in filename_album_map.items()
-            if filename_album_count[name] == 1 and counts[name] == 1
-        }
-
         self.album_cache = {}
         for item in items:
-            # Prefer the full-path key (unambiguous); fall back to the unique
-            # filename key for photos whose ZDIRECTORY in Photos.sqlite does not
-            # match their current on-disk location (iCloud migration re-numbers
-            # the DCIM roll folder, leaving an outdated ZDIRECTORY entry).
-            album_names = albums.get(item.phone_path) or unique_by_filename.get(
-                item.original_name, []
-            )
-            item.album_names = album_names
+            # Bare keys exist only for legacy databases without ZDIRECTORY.
+            # Never strip the directory from a modern metadata key.
+            item.album_names = list(albums.get(item.phone_path, []))
+            item.captured_at = capture_times.get(item.phone_path)
             if counts[item.original_name] == 1:
-                item.captured_at = capture_times.get(item.original_name)
+                if item.phone_path not in albums:
+                    item.album_names = list(albums.get(item.original_name, []))
+                if item.phone_path not in capture_times:
+                    item.captured_at = capture_times.get(item.original_name)
             if item.album_names:
                 self.album_cache[item.phone_path] = list(item.album_names)
+        available = {item.phone_path for item in items}
+        unavailable = {
+            path: names for path, names in albums.items() if "/" in path and path not in available
+        }
+        if unavailable:
+            logger.warning(
+                "%d album media paths across %d albums are not in the USB media inventory. "
+                "These originals may be offloaded or outside the supported media roots; "
+                "their albums may be missing or incomplete. Download originals to the phone "
+                "and import again. No filename-based substitutions were made.",
+                len(unavailable),
+                len({name for names in unavailable.values() for name in names}),
+            )
+        for item in items:
             yield item
 
     def afc_device_walk(self, client: Any, directory: str) -> Iterable[PhoneItem]:
@@ -358,14 +356,16 @@ class AfcDevice:
             try:
                 for table in ("ZASSET", "ZGENERICASSET"):
                     try:
+                        key_sql = albums_asset_key_sql(connection, table)
                         rows = connection.execute(
-                            f"SELECT ZFILENAME, ZDATECREATED FROM {table}"
+                            f"SELECT {key_sql}, asset.ZDATECREATED FROM {table} AS asset"
                         ).fetchall()
                     except sqlite3.Error:
                         continue
-                    for name, seconds in rows:
-                        if name and isinstance(seconds, (int, float)):
-                            capture_times[str(name)] = (
+                    key_counts = Counter(key for key, _ in rows)
+                    for key, seconds in rows:
+                        if key and key_counts[key] == 1 and isinstance(seconds, (int, float)):
+                            capture_times[str(key)] = (
                                 datetime(2001, 1, 1, tzinfo=UTC) + timedelta(seconds=seconds)
                             ).isoformat()
                     break
