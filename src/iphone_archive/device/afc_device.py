@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import io
+import json
 import logging
 import shutil
 import sqlite3
@@ -32,6 +33,12 @@ MEDIA_ROOTS = ("/DCIM",)
 # offloaded the full-resolution original, and uses them for its own previews.
 THUMBNAIL_ROOT = "/PhotoData/Thumbnails/V2"
 PREVIEW_NAME_MARKER = " (offloaded preview)"
+# Resolving a thumbnail costs two AFC round-trips (listdir + stat). Offloaded
+# albums are typically thousands of paths deep and do not change between
+# imports, so a resolved path is cached on disk and re-imports skip the AFC
+# calls entirely for anything already resolved once.
+PREVIEW_CACHE_DIR_NAME = ".ibackup-device-cache"
+PREVIEW_CACHE_FILE_NAME = "offloaded-preview-cache.json"
 IMAGE_EXTENSIONS = {".heic", ".heif", ".jpg", ".jpeg", ".png", ".gif", ".dng", ".tiff"}
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi"}
 READ_CHUNK_SIZE = 1024 * 1024
@@ -119,6 +126,8 @@ class AfcDevice:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.streams: set[AfcReadStream] = set()
         self.album_cache: dict[str, list[str]] = {}
+        self.preview_cache: dict[str, Any] | None = None
+        self.preview_cache_dirty = False
         self.owner_lock = Lock()
         # The lock protects ownership assignment; all other state is worker-confined.
         self.owner_thread_id: int | None = None
@@ -254,14 +263,16 @@ class AfcDevice:
         }
         previews: list[PhoneItem] = []
         if unavailable:
+            udid = self.device_udid() or "unknown"
             for path, names in unavailable.items():
-                preview = self.afc_device_offloaded_preview(client, path)
+                preview = self.afc_device_offloaded_preview(client, path, udid)
                 if preview is None:
                     continue
                 preview.album_names = list(names)
                 preview.captured_at = capture_times.get(path)
                 previews.append(preview)
                 self.album_cache[preview.phone_path] = list(names)
+            self.afc_device_save_preview_cache()
             logger.warning(
                 "%d album media paths across %d albums are not in the USB media inventory. "
                 "These originals may be offloaded or outside the supported media roots. "
@@ -279,17 +290,77 @@ class AfcDevice:
         for preview in previews:
             yield preview
 
-    def afc_device_offloaded_preview(self, client: Any, phone_path: str) -> PhoneItem | None:
+    def afc_device_preview_cache_path(self) -> Path:
+        """Return the on-disk location of the resolved-thumbnail cache."""
+        return Path.cwd() / PREVIEW_CACHE_DIR_NAME / PREVIEW_CACHE_FILE_NAME
+
+    def afc_device_load_preview_cache(self) -> dict[str, Any]:
+        """Load the resolved-thumbnail cache once per device instance.
+
+        Returns the parsed cache (``{udid: {phone_path: entry}}``), or an empty
+        mapping when the file is missing, unreadable or malformed. A bad cache
+        file is never fatal: it just means every path is re-resolved over AFC.
+        """
+        if self.preview_cache is not None:
+            return self.preview_cache
+        cache: Any = {}
+        path = self.afc_device_preview_cache_path()
+        try:
+            if path.exists():
+                cache = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            logger.debug("ignoring unreadable offloaded-preview cache %s: %s", path, error)
+            cache = {}
+        self.preview_cache = cache if isinstance(cache, dict) else {}
+        return self.preview_cache
+
+    def afc_device_save_preview_cache(self) -> None:
+        """Persist the resolved-thumbnail cache when a lookup added a new entry."""
+        if not self.preview_cache_dirty or self.preview_cache is None:
+            return
+        path = self.afc_device_preview_cache_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(self.preview_cache), encoding="utf-8")
+            self.preview_cache_dirty = False
+        except OSError as error:
+            logger.debug("could not persist offloaded-preview cache %s: %s", path, error)
+
+    def afc_device_offloaded_preview(
+        self, client: Any, phone_path: str, udid: str = "unknown"
+    ) -> PhoneItem | None:
         """Return a synthetic low-resolution stand-in for an offloaded original.
 
         client: the live AFC client.
         phone_path: an album-member path recorded in Photos.sqlite but absent from
             the USB media inventory (``device_enumerate``'s ``unavailable`` set).
+        udid: the connected device's identifier, used to scope the on-disk cache
+            so two phones never share resolved paths.
         Returns a ``PhoneItem`` reading the phone's own cached thumbnail (the same
         degraded preview iOS itself shows for an optimized-storage original), or
         None when no such cache entry exists either. Never raises: a lookup
-        failure here must never break enumeration of real, present media.
+        failure here must never break enumeration of real, present media. A
+        path resolved once is remembered on disk, so later imports of the same
+        still-offloaded photo skip the AFC round-trips entirely.
         """
+        cache = self.afc_device_load_preview_cache()
+        device_cache = cache.get(udid)
+        if isinstance(device_cache, dict):
+            cached = device_cache.get(phone_path)
+            if isinstance(cached, dict):
+                try:
+                    return PhoneItem(
+                        phone_path=str(cached["path"]),
+                        size=int(cached["size"]),
+                        original_name=self.afc_device_preview_name(
+                            phone_path, str(cached["suffix"])
+                        ),
+                        media_type="image",
+                        modified_at=cast(str | None, cached.get("modified_at")),
+                        is_offloaded_preview=True,
+                    )
+                except (KeyError, TypeError, ValueError):
+                    logger.debug("ignoring malformed cached preview entry for %s", phone_path)
         thumbnail_dir = f"{THUMBNAIL_ROOT}{phone_path}"
         try:
             entries = [
@@ -301,14 +372,21 @@ class AfcDevice:
                 candidate = f"{thumbnail_dir}/{entry}"
                 info = self.afc_device_stat(client, candidate)
                 if info.get("st_ifmt") == "S_IFREG" and "st_size" in info:
-                    stem = phone_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                     suffix = entry[entry.rfind(".") :] if "." in entry else ".jpg"
+                    modified_at = str(info.get("st_mtime")) if info.get("st_mtime") else None
+                    cache.setdefault(udid, {})[phone_path] = {
+                        "path": candidate,
+                        "size": int(info["st_size"]),
+                        "suffix": suffix,
+                        "modified_at": modified_at,
+                    }
+                    self.preview_cache_dirty = True
                     return PhoneItem(
                         phone_path=candidate,
                         size=int(info["st_size"]),
-                        original_name=f"{stem}{PREVIEW_NAME_MARKER}{suffix}",
+                        original_name=self.afc_device_preview_name(phone_path, suffix),
                         media_type="image",
-                        modified_at=str(info.get("st_mtime")) if info.get("st_mtime") else None,
+                        modified_at=modified_at,
                         is_offloaded_preview=True,
                     )
         except Exception:
@@ -316,6 +394,17 @@ class AfcDevice:
                 "no cached preview available for offloaded path %s", phone_path, exc_info=True
             )
         return None
+
+    @staticmethod
+    def afc_device_preview_name(phone_path: str, suffix: str) -> str:
+        """Build the ``" (offloaded preview)"``-marked display name for a preview.
+
+        phone_path: the original album-member path the preview stands in for.
+        suffix: the cached thumbnail's file extension, including the leading dot.
+        Returns the synthetic original name stored on the ``PhoneItem``.
+        """
+        stem = phone_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        return f"{stem}{PREVIEW_NAME_MARKER}{suffix}"
 
     def afc_device_walk(self, client: Any, directory: str) -> Iterable[PhoneItem]:
         """Recursively yield media items under a device directory.

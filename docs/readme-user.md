@@ -409,6 +409,18 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
   making any deliberate archive edits. Restart the GUI after updating.
 - **Permission errors on an external drive:** make sure you can write to the
   drive, and prefer NTFS or exFAT for large drives.
+- **A second/later import is slow, or I only want new photos:** just click
+  **Import** again - it is already incremental and never re-copies a photo
+  already in the archive, so it only spends time copying what is actually
+  new. There is no separate "new photos only" button to look for. Every import
+  still has to re-walk the phone's `/DCIM` folder and re-read its photo
+  database to know what is new, so some time is always spent before copying
+  starts; that part scales with how many photos and albums are on the phone,
+  not with how many are new. If the phone has offloaded ("Optimize iPhone
+  Storage") albums, resolving their low-resolution previews used to repeat an
+  AFC lookup for every offloaded photo on every import; those lookups are now
+  cached on disk per device, so only the first import after this update pays
+  that cost again.
 
 ### Recovery and safety
 

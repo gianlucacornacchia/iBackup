@@ -5,11 +5,24 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-09 (offloaded-photo low-resolution preview fallback added
-and validated on the real iPhone 12)._
+_Last updated: 2026-10-10 (gallery/button sizing increased; offloaded-preview
+lookups cached on disk so repeat imports skip their AFC round-trips)._
 
 ## Current status
 
+- **Gallery and control sizing:** thumbnail tiles in the main photo grid
+  (`TILE_IMAGE`) grew from 120px to 160px, and every button's minimum/fixed
+  height (`CONTROL_HEIGHT`, used across the whole GUI including the selection
+  bar's "Mark" button and the Marked page's action buttons) grew from 32px to
+  36px, after user feedback that images and buttons were hard to see.
+- **Offloaded-preview lookup cache:** each offloaded-photo preview lookup
+  (`afc_device_offloaded_preview`) costs two AFC round-trips. On a device with
+  thousands of offloaded album paths this made every single import slow, not
+  just the first. Resolved paths are now cached on disk per device UDID
+  (`.ibackup-device-cache/offloaded-preview-cache.json`) so a later import of
+  the same still-offloaded photo skips AFC entirely. Import itself was already
+  incremental (it never re-copies bytes for assets already in the catalog);
+  this removes the regression that made *enumeration* slow on every run too.
 - **Offloaded-photo previews:** albums whose originals are offloaded ("Optimize
   iPhone Storage") are no longer silently incomplete. The AFC adapter mirrors
   each missing DCIM path into `/PhotoData/Thumbnails/V2` (the same cached JPEG
@@ -280,6 +293,32 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-10 — **Increased gallery/control sizing; cached offloaded-preview
+  lookups to fix repeat-import slowness.** User feedback after the first real
+  run: (1) grid thumbnails and buttons were too small to see comfortably, and
+  (2) a second import took a long time and the user wasn't sure how to get
+  only new photos quickly. For (1), bumped `gallery.py`'s `TILE_IMAGE` 120→160
+  (with `CHECK_RADIUS`/`BADGE_HEIGHT` scaled to match) and `theme.py`'s
+  `CONTROL_HEIGHT` 32→36; `CONTROL_HEIGHT` is shared by every button in the
+  app (selection bar, Marked page, dialogs, settings), so the fix is global
+  and consistent rather than page-specific. For (2), confirmed the previous
+  session's offloaded-preview feature was an unintentional performance
+  regression: `afc_device_offloaded_preview` ran an AFC `listdir` + `stat` for
+  *every* unavailable album path on *every* `device_enumerate()` call — up to
+  ~10,500 extra round-trips per import on a device with ~5,263 offloaded
+  paths, even though import itself already skips re-copying bytes for assets
+  already in the catalog. Added a small on-disk cache
+  (`.ibackup-device-cache/offloaded-preview-cache.json`, keyed by device UDID
+  then phone path) so a resolved thumbnail path is remembered and reused
+  without any further AFC calls; a path only needs re-resolving if it was
+  never resolved before. No cache invalidation is needed: once a real
+  original becomes available on the phone again, its path simply leaves the
+  "unavailable" set upstream and the cached preview is never looked up again.
+  Added `test_offloaded_preview_lookup_reuses_cache_without_repeating_afc_calls`,
+  asserting a second lookup makes zero AFC calls, and updated the existing
+  offloaded-preview regression test's assertions for the new persistent cache
+  file. Full suite green (same 2 pre-existing Windows path-separator failures
+  as before), ruff and `mypy --strict` clean.
 - 2026-10-09 — **Added offloaded-photo low-resolution preview fallback; real
   iPhone 12 validation.** Root-caused the `device-info` warning "5263 album
   media paths across 67 albums are not in the USB media inventory": those

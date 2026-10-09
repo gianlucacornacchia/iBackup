@@ -46,7 +46,7 @@ TYPE_RAMP = {
     "subtitle": TypeRole(20, 28, QFont.Weight.DemiBold),
     "title": TypeRole(28, 36, QFont.Weight.DemiBold),
 }
-CONTROL_HEIGHT = 32
+CONTROL_HEIGHT = 36
 ROW_HEIGHT = 40
 PAGE_MARGIN = 16
 GROUP_GAP = 8

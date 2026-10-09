@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from iphone_archive.device.afc_device import AfcDevice, afc_device_classify
@@ -465,7 +467,67 @@ def test_offloaded_photo_falls_back_to_cached_thumbnail_preview(tmp_path, monkey
     finally:
         service.app_service_close()
         device.device_close()
-    assert not list((tmp_path / ".ibackup-device-cache").iterdir())
+    # The resolved thumbnail path is cached on disk so a later import of the
+    # same still-offloaded photo can skip the AFC listdir/stat round-trips.
+    cache_dir = tmp_path / ".ibackup-device-cache"
+    assert [p.name for p in cache_dir.iterdir()] == ["offloaded-preview-cache.json"]
+    cached = json.loads((cache_dir / "offloaded-preview-cache.json").read_text())
+    assert cached["unknown"]["/DCIM/100APPLE/MISSING.JPG"]["path"] == thumb_file
+    assert cached["unknown"]["/DCIM/100APPLE/MISSING.JPG"]["size"] == len(thumb_bytes)
+
+
+def test_offloaded_preview_lookup_reuses_cache_without_repeating_afc_calls(tmp_path, monkeypatch):
+    """A second lookup for an already-resolved offloaded path makes no AFC calls."""
+    monkeypatch.chdir(tmp_path)
+    thumb_dir = "/PhotoData/Thumbnails/V2/DCIM/100APPLE/MISSING.JPG"
+    thumb_file = f"{thumb_dir}/5005.JPG"
+
+    class Client:
+        def __init__(self):
+            self.calls = 0
+
+        def listdir(self, path):
+            self.calls += 1
+            if path == thumb_dir:
+                return ["5005.JPG"]
+            raise OSError(f"unexpected listdir {path}")
+
+        def stat(self, path):
+            self.calls += 1
+            if path == thumb_file:
+                return {"st_ifmt": "S_IFREG", "st_size": 11}
+            raise OSError(f"unexpected stat {path}")
+
+    class ExhaustedClient:
+        def listdir(self, path):
+            raise AssertionError(f"unexpected AFC listdir call for {path}: should be cached")
+
+        def stat(self, path):
+            raise AssertionError(f"unexpected AFC stat call for {path}: should be cached")
+
+    client = Client()
+    device = AfcDevice()
+    device.afc_client = client
+    preview = device.afc_device_offloaded_preview(
+        client, "/DCIM/100APPLE/MISSING.JPG", "phone-udid"
+    )
+    assert preview is not None
+    assert preview.phone_path == thumb_file
+    assert client.calls == 2
+    device.afc_device_save_preview_cache()
+    device.device_close()
+
+    # A fresh AfcDevice instance (as every import run constructs) must still
+    # find the on-disk cache and never touch AFC for the same path again.
+    reloaded = AfcDevice()
+    reloaded.afc_client = ExhaustedClient()
+    second = reloaded.afc_device_offloaded_preview(
+        ExhaustedClient(), "/DCIM/100APPLE/MISSING.JPG", "phone-udid"
+    )
+    assert second is not None
+    assert second.phone_path == thumb_file
+    assert second.size == 11
+    reloaded.device_close()
 
 
 def test_offloaded_preview_lookup_never_raises_when_no_cache_exists():

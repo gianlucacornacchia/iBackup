@@ -58,12 +58,12 @@ from .theme import CONTROL_HEIGHT, CONTROL_RADIUS, GROUP_GAP, theme_font
 LOGGER = logging.getLogger(__name__)
 ModelIndex = QModelIndex | QPersistentModelIndex
 
-TILE_IMAGE = 120
+TILE_IMAGE = 160
 TILE_CAPTION = 22
 TILE_PADDING = 4
 TILE_SPACING = 4
-CHECK_RADIUS = 8
-BADGE_HEIGHT = 16
+CHECK_RADIUS = 10
+BADGE_HEIGHT = 20
 # Renders are cancelled for tiles this far outside the viewport; a margin keeps
 # a small scroll from throwing away work that is about to be needed again.
 PREFETCH_MARGIN = 2 * TILE_IMAGE
@@ -208,7 +208,7 @@ class TileDelegate(QStyledItemDelegate):
         """
         painter.setFont(theme_font("caption"))
         width = painter.fontMetrics().horizontalAdvance(label) + 14
-        badge = QRect(rect.left() + 6, rect.bottom() - 22, width, BADGE_HEIGHT)
+        badge = QRect(rect.left() + 6, rect.bottom() - BADGE_HEIGHT - 6, width, BADGE_HEIGHT)
         painter.setBrush(QColor(0, 0, 0, 140))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(badge, 8, 8)
