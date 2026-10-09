@@ -164,6 +164,7 @@ def operations_import_summary(value: object) -> str:
         f"Added {value.added_count}",
         f"skipped {value.skipped_count}",
         f"duplicates {value.duplicate_count}",
+        f"upgraded {value.upgraded_count}",
         f"errors {value.error_count}",
     ]
     text = ", ".join(parts) + "."

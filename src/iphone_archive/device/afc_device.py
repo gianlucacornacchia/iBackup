@@ -358,6 +358,7 @@ class AfcDevice:
                         media_type="image",
                         modified_at=cast(str | None, cached.get("modified_at")),
                         is_offloaded_preview=True,
+                        offloaded_original_path=phone_path,
                     )
                 except (KeyError, TypeError, ValueError):
                     logger.debug("ignoring malformed cached preview entry for %s", phone_path)
@@ -388,6 +389,7 @@ class AfcDevice:
                         media_type="image",
                         modified_at=modified_at,
                         is_offloaded_preview=True,
+                        offloaded_original_path=phone_path,
                     )
         except Exception:
             logger.debug(

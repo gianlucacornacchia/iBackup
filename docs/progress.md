@@ -5,8 +5,9 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-10 (gallery/button sizing increased; offloaded-preview
-lookups cached on disk so repeat imports skip their AFC round-trips)._
+_Last updated: 2026-10-11 (offloaded-preview assets now upgrade in place once
+the real original is re-downloaded to the phone, instead of archiving a
+duplicate)._
 
 ## Current status
 
@@ -30,11 +31,22 @@ lookups cached on disk so repeat imports skip their AFC round-trips)._
   iPhone Storage") are no longer silently incomplete. The AFC adapter mirrors
   each missing DCIM path into `/PhotoData/Thumbnails/V2` (the same cached JPEG
   iOS itself uses for degraded previews) and imports that file instead, named
-  with an `" (offloaded preview)"` suffix and flagged via the new
+  with an `" (offloaded preview)"` suffix and flagged via the
   `assets.is_offloaded_preview` column (schema v3). Lookup failures never break
-  enumeration of real media. Getting the full-resolution original still
-  requires downloading it to the phone and reimporting (appended, not
-  replacing the preview).
+  enumeration of real media. This app cannot force iCloud to download an
+  original over USB/AFC (that's not something the protocol exposes); getting
+  the full-resolution original still requires either opening the photo in the
+  Photos app on the phone, or disabling "Optimize iPhone Storage", before
+  reimporting.
+- **Offloaded-preview upgrade on reimport (schema v4):** a preview now
+  remembers the real album-member path it stands in for
+  (`assets.offloaded_original_path`). When a later import finds the real
+  original back on the phone at that same path, the existing preview asset is
+  upgraded in place — content/phone identity replaced, old low-resolution file
+  deleted, same asset id kept so album links, marks, and sidecars all carry
+  over — instead of archiving a second, duplicate asset. Reported via a new
+  `ImportResult.upgraded_count` surfaced by both the CLI and GUI import
+  summaries.
 - **Album correction:** earlier filename fallback assigned offloaded photos'
   albums to unrelated local files. The current adapter uses exact paths for
   modern Photos databases; older filename-only schemas require uniqueness
@@ -296,6 +308,39 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-11 — **Offloaded-preview assets now upgrade in place when their real
+  original comes back to the phone, instead of being archived as a duplicate.**
+  User question after the review-page fix: "is there a way to download
+  full-size photos if there's only the thumbnail?" Confirmed there is no
+  AFC/USB-level way for this app to force iCloud to push a full-resolution
+  original to the phone — that is strictly a Photos-app/iCloud operation (open
+  the photo in Photos, or turn off "Optimize iPhone Storage"). But re-reading
+  `importer_process_item` surfaced a real gap on the *app's* side of that
+  workflow: once the user does get the original back onto the phone and
+  reimports, the importer had no way to recognize it as the same photo as the
+  low-resolution preview it had already archived — identity matching only
+  looked at the exact phone path, and a preview's `phone_path` was its
+  thumbnail location under `/PhotoData/Thumbnails/V2`, never the real DCIM
+  path. The real file would therefore import as a brand-new, unrelated second
+  asset, leaving the stale preview behind. Added `PhoneItem`/`assets`
+  (schema v4) `offloaded_original_path`, set by `afc_device_offloaded_preview`
+  to the real album-member path it stands in for. On a later import of a
+  non-preview item, `repository_find_offloaded_preview_by_original_path`
+  checks for a preview recorded against that same path; if found,
+  `importer_upgrade_offloaded_preview` deletes the old low-resolution file,
+  rewrites the asset's content/phone identity in place (same asset id, so
+  existing album links, marks, and sidecars all carry over automatically),
+  and places the new full-resolution copy exactly like a fresh import would.
+  Added `ImportResult.upgraded_count`, surfaced in both the CLI (`ibackup
+  import`) and GUI import-summary text. New regression test
+  `test_offloaded_preview_upgraded_in_place_once_original_reappears` drives a
+  scripted device through preview-then-original import twice and asserts a
+  single catalog row survives with the preview file gone and the real bytes in
+  place. Full suite green (same 2 pre-existing Windows `test_gui_settings.py`
+  path-separator flakes, and a one-off transient `WinError 5` rename flake in
+  `test_cli.py::test_marks_remove` that passed cleanly on its own — both
+  previously documented as pre-existing and unrelated); ruff and `mypy
+  --strict` clean on all changed source files.
 - 2026-10-11 — **Fixed the Marked and Deleted-from-phone pages rendering
   almost blank, then gave them real thumbnails sized and rendered the same
   way as the rest of the app.** User report: both pages showed only the big

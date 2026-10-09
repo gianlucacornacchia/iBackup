@@ -46,6 +46,7 @@ class Asset:
     phone_size: int | None = None
     phone_modified_at: str | None = None
     is_offloaded_preview: bool = False
+    offloaded_original_path: str | None = None
 
 
 @dataclass
@@ -109,3 +110,4 @@ class PhoneItem:
     captured_at: str | None = None
     album_names: list[str] = field(default_factory=list)
     is_offloaded_preview: bool = False
+    offloaded_original_path: str | None = None

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from iphone_archive import config
 from iphone_archive.catalog import database, repository
+from iphone_archive.catalog.models import PhoneItem
 from iphone_archive.core import importer
 from iphone_archive.device.fake_device import FakeDevice
 from iphone_archive.service.progress import ProgressHandle
@@ -700,3 +703,83 @@ def test_publication_io_failure_after_create_recovers_automatically(archive, mon
     assert not [entry for entry in paths.photos_dir.rglob("*") if entry.is_file()]
     assert not list((paths.internal_dir / "import-journals").iterdir())
     assert not list((paths.internal_dir / "import-staging").iterdir())
+
+
+class ScriptedPreviewThenOriginalDevice:
+    """A device that first reports only an offloaded preview, then the real original."""
+
+    def __init__(self) -> None:
+        self.phase = "preview"
+
+    def device_udid(self) -> str:
+        return "FAKE-UDID"
+
+    def device_enumerate(self):
+        if self.phase == "preview":
+            yield PhoneItem(
+                phone_path="/PhotoData/Thumbnails/V2/DCIM/100APPLE/IMG_0001.JPG",
+                size=len(b"low-res-preview"),
+                original_name="IMG_0001 (offloaded preview).JPG",
+                media_type="image",
+                is_offloaded_preview=True,
+                offloaded_original_path="/DCIM/100APPLE/IMG_0001.HEIC",
+                album_names=["Vacation"],
+            )
+        else:
+            yield PhoneItem(
+                phone_path="/DCIM/100APPLE/IMG_0001.HEIC",
+                size=len(b"full-resolution-original"),
+                original_name="IMG_0001.HEIC",
+                media_type="image",
+                album_names=["Vacation"],
+            )
+
+    def device_open(self, phone_path: str):
+        content = b"low-res-preview" if self.phase == "preview" else b"full-resolution-original"
+        return io.BytesIO(content)
+
+    def device_delete(self, phone_path: str) -> None:
+        raise NotImplementedError
+
+    def device_album_map(self) -> dict[str, list[str]]:
+        return {"/DCIM/100APPLE/IMG_0001.HEIC": ["Vacation"]}
+
+
+def test_offloaded_preview_upgraded_in_place_once_original_reappears(archive):
+    """Re-importing after the real original returns to the phone upgrades the preview.
+
+    Rather than archiving a second, duplicate asset, the existing preview row is
+    replaced in place: same asset id (so album links/marks survive), real content,
+    and the old low-resolution file removed from disk.
+    """
+    paths, connection = archive
+    device = ScriptedPreviewThenOriginalDevice()
+
+    first = importer.importer_run(connection, paths, device)
+    assert first.added_count == 1
+    rows = connection.execute("SELECT * FROM assets").fetchall()
+    assert len(rows) == 1
+    assert bool(rows[0]["is_offloaded_preview"]) is True
+    asset_id = rows[0]["id"]
+    preview_files = repository.repository_list_asset_files(connection, asset_id)
+    assert len(preview_files) == 1
+    preview_path = paths.root / preview_files[0].path
+    assert preview_path.read_bytes() == b"low-res-preview"
+
+    device.phase = "original"
+    second = importer.importer_run(connection, paths, device)
+
+    assert second.upgraded_count == 1
+    assert second.added_count == 0
+    assert second.duplicate_count == 0
+    rows_after = connection.execute("SELECT * FROM assets").fetchall()
+    assert len(rows_after) == 1
+    assert rows_after[0]["id"] == asset_id
+    assert bool(rows_after[0]["is_offloaded_preview"]) is False
+    assert rows_after[0]["offloaded_original_path"] is None
+    assert rows_after[0]["original_name"] == "IMG_0001.HEIC"
+    assert not preview_path.exists()
+
+    final_files = repository.repository_list_asset_files(connection, asset_id)
+    assert len(final_files) == 1
+    assert (paths.root / final_files[0].path).read_bytes() == b"full-resolution-original"

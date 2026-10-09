@@ -231,7 +231,8 @@ def cli_import(
     result = service.app_service_import(source, cli_progress(verbose), link_mode)
     typer.echo(
         f"Added {result.added_count}, skipped {result.skipped_count}, "
-        f"duplicates {result.duplicate_count}, errors {result.error_count}"
+        f"duplicates {result.duplicate_count}, upgraded {result.upgraded_count}, "
+        f"errors {result.error_count}"
     )
     if result.error_count:
         for error in result.errors:

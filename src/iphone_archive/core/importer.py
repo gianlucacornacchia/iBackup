@@ -44,6 +44,7 @@ class ImportResult:
     added_count: int = 0
     skipped_count: int = 0
     duplicate_count: int = 0
+    upgraded_count: int = 0
     error_count: int = 0
     cancelled: bool = False
     errors: list[str] = field(default_factory=list)
@@ -274,6 +275,7 @@ def importer_run(
             result.added_count += item_result.added_count
             result.skipped_count += item_result.skipped_count
             result.duplicate_count += item_result.duplicate_count
+            result.upgraded_count += item_result.upgraded_count
             result.added_hashes.extend(item_result.added_hashes)
             result.seen_sources.extend(item_result.seen_sources)
         finally:
@@ -340,6 +342,16 @@ def importer_process_item(
         result.skipped_count += 1
         return
 
+    upgrade_target: Asset | None = None
+    if not item.is_offloaded_preview:
+        # The real original may have been re-downloaded to the phone since a
+        # previous import only found its cached low-resolution preview at this
+        # same album path. Upgrade that preview in place instead of archiving a
+        # duplicate second copy of the same photo.
+        upgrade_target = repository.repository_find_offloaded_preview_by_original_path(
+            connection, item.phone_path
+        )
+
     with source.device_open(item.phone_path) as stream:
         target_dir = importer_target_dir(paths, item)
         placed = archive_layout.archive_layout_store_stream(
@@ -347,6 +359,13 @@ def importer_process_item(
         )
     if placed.size != item.size:
         raise DeviceError(f"source size changed during import: {item.phone_path}")
+
+    if upgrade_target is not None and upgrade_target.asset_id is not None:
+        importer_upgrade_offloaded_preview(
+            connection, paths, source, upgrade_target.asset_id, item, placed, link_mode, result
+        )
+        importer_update_sidecar(connection, paths, upgrade_target.asset_id, journal)
+        return
 
     existing = repository.repository_get_asset_by_hash(connection, placed.sha256)
     if existing is not None and existing.asset_id is not None:
@@ -401,6 +420,7 @@ def importer_process_item(
         phone_size=item.size,
         phone_modified_at=item.modified_at,
         is_offloaded_preview=item.is_offloaded_preview,
+        offloaded_original_path=item.offloaded_original_path,
     )
     asset_id = repository.repository_insert_asset(connection, asset)
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)
@@ -423,6 +443,71 @@ def importer_process_item(
 
     importer_update_sidecar(connection, paths, asset_id, journal)
     result.added_count += 1
+    result.added_hashes.append(placed.sha256)
+    result.seen_sources.append((item.phone_path, asset_id))
+
+
+def importer_upgrade_offloaded_preview(
+    connection: sqlite3.Connection,
+    paths: ArchivePaths,
+    source: MediaSource,
+    asset_id: int,
+    item: PhoneItem,
+    placed: archive_layout.PlacedFile,
+    link_mode: str,
+    result: ImportResult,
+) -> None:
+    """Replace a previously-imported offloaded preview with its real original.
+
+    connection: an open catalog connection.
+    paths: resolved archive paths.
+    source: the media source being imported from.
+    asset_id: the existing preview asset to upgrade in place.
+    item: the real, full-resolution phone item just downloaded.
+    placed: the already-stored full-resolution file.
+    link_mode: ``copy`` or ``hardlink`` for extra album copies.
+    result: the running result summary, updated in place.
+    Returns None. Deletes the old low-resolution preview copy (never valuable
+    on its own) and rewrites the asset's content/phone identity, so the
+    catalog ends up with exactly one entry for the photo instead of a
+    duplicate, and every previously-linked album/mark keeps pointing at the
+    same asset id.
+    """
+    for stored in repository.repository_list_asset_files(connection, asset_id):
+        file_operations_path(paths, stored.path).unlink(missing_ok=True)
+        repository.repository_delete_asset_file(connection, stored.file_id)
+
+    repository.repository_upgrade_offloaded_asset(
+        connection,
+        asset_id,
+        sha256=placed.sha256,
+        size=placed.size,
+        original_name=item.original_name,
+        media_type=item.media_type,
+        phone_path=item.phone_path,
+        phone_size=item.size,
+        phone_modified_at=item.modified_at,
+        verified_at=importer_now(),
+    )
+    repository.repository_record_source(connection, asset_id, source.device_udid(), item)
+
+    primary_album_id = importer_album_id(connection, item, index=0)
+    repository.repository_insert_asset_file(
+        connection,
+        AssetFile(
+            asset_id=asset_id,
+            path=archive_layout.archive_layout_relative_path(paths, placed.path),
+            album_id=primary_album_id,
+            link_mode=placed.link_mode,
+            location=FileLocation.PHOTOS,
+        ),
+    )
+    if primary_album_id is not None:
+        repository.repository_link_asset_album(connection, asset_id, primary_album_id)
+
+    importer_place_extra_albums(connection, paths, asset_id, item, placed.path, link_mode)
+
+    result.upgraded_count += 1
     result.added_hashes.append(placed.sha256)
     result.seen_sources.append((item.phone_path, asset_id))
 

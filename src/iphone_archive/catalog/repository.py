@@ -58,6 +58,7 @@ def repository_row_to_asset(row: sqlite3.Row) -> Asset:
         phone_size=row["phone_size"],
         phone_modified_at=row["phone_modified_at"],
         is_offloaded_preview=bool(row["is_offloaded_preview"]),
+        offloaded_original_path=row["offloaded_original_path"],
     )
 
 
@@ -74,8 +75,8 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             sha256, size, original_name, media_type, captured_at, imported_at,
             verified_at, first_seen_on_phone_at, last_seen_on_phone_at,
             present_on_phone, archive_state, phone_asset_id, phone_path,
-            phone_size, phone_modified_at, is_offloaded_preview
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            phone_size, phone_modified_at, is_offloaded_preview, offloaded_original_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             asset.sha256,
@@ -94,6 +95,7 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             asset.phone_size,
             asset.phone_modified_at,
             int(asset.is_offloaded_preview),
+            asset.offloaded_original_path,
         ),
     )
     return repository_last_row_id(cursor)
@@ -154,6 +156,88 @@ def repository_find_by_phone_identity(
         (device_udid, phone_path, phone_size, phone_modified_at, phone_asset_id),
     ).fetchall()
     return repository_row_to_asset(rows[0]) if len(rows) == 1 else None
+
+
+def repository_find_offloaded_preview_by_original_path(
+    connection: sqlite3.Connection, original_path: str | None
+) -> Asset | None:
+    """Find a previously-imported low-resolution preview for an album path.
+
+    connection: an open catalog connection.
+    original_path: the real (non-thumbnail) album-member path now being
+        imported, to match against a preview's remembered original path.
+    Returns the preview ``Asset`` standing in for that path, or None when the
+    path is unset or no such preview was ever imported. Used to upgrade an
+    offloaded-preview placeholder in place once the real original has been
+    downloaded back to the phone, instead of archiving it as a duplicate.
+    """
+    if not original_path:
+        return None
+    row = connection.execute(
+        "SELECT * FROM assets WHERE is_offloaded_preview = 1 AND offloaded_original_path = ?",
+        (original_path,),
+    ).fetchone()
+    return repository_row_to_asset(row) if row is not None else None
+
+
+def repository_upgrade_offloaded_asset(
+    connection: sqlite3.Connection,
+    asset_id: int,
+    *,
+    sha256: str,
+    size: int,
+    original_name: str,
+    media_type: str,
+    phone_path: str | None,
+    phone_size: int | None,
+    phone_modified_at: str | None,
+    verified_at: str | None,
+) -> None:
+    """Replace a preview asset's identity with its full-resolution original.
+
+    connection: an open catalog connection.
+    asset_id: the existing offloaded-preview asset row to upgrade in place.
+    sha256, size, original_name, media_type: the real file's content identity.
+    phone_path, phone_size, phone_modified_at: the real file's phone identity.
+    verified_at: timestamp recorded as both the new verification and import time.
+    Returns None. Clears ``is_offloaded_preview``/``offloaded_original_path`` so
+    the asset is indistinguishable from one imported full-resolution from the
+    start; callers are responsible for replacing its stored file(s).
+    """
+    connection.execute(
+        """
+        UPDATE assets SET
+            sha256 = ?, size = ?, original_name = ?, media_type = ?,
+            phone_path = ?, phone_size = ?, phone_modified_at = ?,
+            imported_at = ?, verified_at = ?,
+            is_offloaded_preview = 0, offloaded_original_path = NULL
+        WHERE id = ?
+        """,
+        (
+            sha256,
+            size,
+            original_name,
+            media_type,
+            phone_path,
+            phone_size,
+            phone_modified_at,
+            verified_at,
+            verified_at,
+            asset_id,
+        ),
+    )
+
+
+def repository_delete_asset_file(connection: sqlite3.Connection, file_id: int | None) -> None:
+    """Remove a stored-file row (used when replacing a preview copy).
+
+    connection: an open catalog connection.
+    file_id: the ``asset_files`` row to delete, ignored when None.
+    Returns None.
+    """
+    if file_id is None:
+        return
+    connection.execute("DELETE FROM asset_files WHERE id = ?", (file_id,))
 
 
 def repository_record_source(
