@@ -57,6 +57,7 @@ def repository_row_to_asset(row: sqlite3.Row) -> Asset:
         phone_path=row["phone_path"],
         phone_size=row["phone_size"],
         phone_modified_at=row["phone_modified_at"],
+        is_offloaded_preview=bool(row["is_offloaded_preview"]),
     )
 
 
@@ -73,8 +74,8 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             sha256, size, original_name, media_type, captured_at, imported_at,
             verified_at, first_seen_on_phone_at, last_seen_on_phone_at,
             present_on_phone, archive_state, phone_asset_id, phone_path,
-            phone_size, phone_modified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            phone_size, phone_modified_at, is_offloaded_preview
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             asset.sha256,
@@ -92,6 +93,7 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             asset.phone_path,
             asset.phone_size,
             asset.phone_modified_at,
+            int(asset.is_offloaded_preview),
         ),
     )
     return repository_last_row_id(cursor)

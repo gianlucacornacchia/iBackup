@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 # Current catalog schema version. Bump when adding a migration step.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_STATEMENTS = [
     """
@@ -38,7 +38,8 @@ SCHEMA_STATEMENTS = [
         phone_asset_id TEXT,
         phone_path TEXT,
         phone_size INTEGER,
-        phone_modified_at TEXT
+        phone_modified_at TEXT,
+        is_offloaded_preview INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -186,4 +187,15 @@ def database_apply_migrations(connection: sqlite3.Connection, from_version: int)
     """
     # V1 has no device provenance. Preserve its content rows, but never promote
     # legacy path/size pairs to trusted source identities without reading bytes.
+    if from_version < 3:
+        # V2 archives predate offloaded-photo low-resolution previews; every
+        # existing row is a real, full-resolution copy. The column may already
+        # exist if SCHEMA_STATEMENTS created a fresh table before this ran.
+        existing_columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(assets)").fetchall()
+        }
+        if "is_offloaded_preview" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE assets ADD COLUMN is_offloaded_preview INTEGER NOT NULL DEFAULT 0"
+            )
     database_write_version(connection, SCHEMA_VERSION)

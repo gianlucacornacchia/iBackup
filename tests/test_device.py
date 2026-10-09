@@ -379,6 +379,108 @@ def test_offloaded_member_cannot_label_unassigned_local_photo(tmp_path, monkeypa
     assert not list((tmp_path / ".ibackup-device-cache").iterdir())
 
 
+def test_offloaded_photo_falls_back_to_cached_thumbnail_preview(tmp_path, monkeypatch, caplog):
+    """An offloaded album member with no USB original is imported as a low-res preview.
+
+    iOS keeps a cached JPEG thumbnail under ``/PhotoData/Thumbnails`` for every
+    asset, including ones whose full-resolution original has been offloaded by
+    "Optimize iPhone Storage". That cache mirrors the DCIM layout, so this proves
+    the adapter can read it, label it clearly, and still place it in its album.
+    """
+    import io
+    import sqlite3
+
+    from iphone_archive.service.app_service import AppService
+
+    database_path = tmp_path / "Photos.sqlite"
+    connection = sqlite3.connect(database_path)
+    connection.executescript("""
+        CREATE TABLE ZGENERICALBUM (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZKIND INTEGER);
+        CREATE TABLE ZASSET (
+            Z_PK INTEGER PRIMARY KEY, ZDIRECTORY TEXT, ZFILENAME TEXT, ZDATECREATED REAL
+        );
+        CREATE TABLE Z_33ASSETS (Z_33ALBUMS INTEGER, Z_3ASSETS INTEGER);
+        INSERT INTO ZGENERICALBUM VALUES (1, 'Sardegna', 2);
+        INSERT INTO ZASSET VALUES (1, 'DCIM/100APPLE', 'MISSING.JPG', 0);
+        INSERT INTO Z_33ASSETS VALUES (1, 1);
+    """)
+    connection.commit()
+    connection.close()
+    payload = database_path.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    thumb_dir = "/PhotoData/Thumbnails/V2/DCIM/100APPLE/MISSING.JPG"
+    thumb_file = f"{thumb_dir}/5005.JPG"
+    thumb_bytes = b"thumb-bytes"
+
+    class Client:
+        def listdir(self, path):
+            if path == "/DCIM":
+                return ["100APPLE"]
+            if path == "/DCIM/100APPLE":
+                return []
+            if path == thumb_dir:
+                return ["5005.JPG"]
+            raise OSError(f"unexpected listdir {path}")
+
+        def stat(self, path):
+            if path == "/DCIM/100APPLE":
+                return {"st_ifmt": "S_IFDIR"}
+            if path == thumb_file:
+                return {"st_ifmt": "S_IFREG", "st_size": len(thumb_bytes)}
+            raise OSError(f"unexpected stat {path}")
+
+    def device_open(path):
+        if path == "/PhotoData/Photos.sqlite":
+            return io.BytesIO(payload)
+        if path.endswith("-wal"):
+            raise DeviceError("no WAL")
+        if path == thumb_file:
+            return io.BytesIO(thumb_bytes)
+        raise DeviceError(f"unexpected open {path}")
+
+    device = AfcDevice()
+    device.afc_client = Client()
+    monkeypatch.setattr(device, "device_open", device_open)
+    service = AppService(tmp_path / "archive")
+    try:
+        items = list(device.device_enumerate())
+        assert len(items) == 1
+        preview = items[0]
+        assert preview.is_offloaded_preview is True
+        assert preview.phone_path == thumb_file
+        assert preview.size == len(thumb_bytes)
+        assert preview.original_name == "MISSING (offloaded preview).JPG"
+        assert preview.album_names == ["Sardegna"]
+        assert "1 of them have a cached low-resolution preview" in caplog.text
+        assert device.album_cache == {thumb_file: ["Sardegna"]}
+
+        paths = service.app_service_initialize()
+        result = service.app_service_import(device)
+        assert (result.added_count, result.error_count) == (1, 0)
+        album_files = list((paths.photos_dir / "Sardegna").iterdir())
+        assert [p.read_bytes() for p in album_files] == [thumb_bytes]
+        assert album_files[0].name == "MISSING (offloaded preview).jpg"
+        assert service.app_service_verify().passed
+    finally:
+        service.app_service_close()
+        device.device_close()
+    assert not list((tmp_path / ".ibackup-device-cache").iterdir())
+
+
+def test_offloaded_preview_lookup_never_raises_when_no_cache_exists():
+    """A path with neither a USB original nor a cached thumbnail is simply skipped."""
+
+    class Client:
+        def listdir(self, path):
+            raise OSError("no such cached thumbnail")
+
+    device = AfcDevice()
+    client = Client()
+    assert device.afc_device_offloaded_preview(client, "/DCIM/100APPLE/GONE.JPG") is None
+    device.device_close()
+
+
 def test_afc_delete_is_gated_without_touching_device():
     """Even regular media cannot be deleted through unvalidated raw AFC operations."""
 

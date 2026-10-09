@@ -27,6 +27,11 @@ from ..core.albums import albums_asset_key_sql, albums_parse_photos_database
 from .interface import DeviceError
 
 MEDIA_ROOTS = ("/DCIM",)
+# Mirrors the DCIM tree with one cached low-resolution JPEG per asset (image or
+# video poster frame). iOS keeps these locally even when "Optimize Storage" has
+# offloaded the full-resolution original, and uses them for its own previews.
+THUMBNAIL_ROOT = "/PhotoData/Thumbnails/V2"
+PREVIEW_NAME_MARKER = " (offloaded preview)"
 IMAGE_EXTENSIONS = {".heic", ".heif", ".jpg", ".jpeg", ".png", ".gif", ".dng", ".tiff"}
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi"}
 READ_CHUNK_SIZE = 1024 * 1024
@@ -247,17 +252,70 @@ class AfcDevice:
         unavailable = {
             path: names for path, names in albums.items() if "/" in path and path not in available
         }
+        previews: list[PhoneItem] = []
         if unavailable:
+            for path, names in unavailable.items():
+                preview = self.afc_device_offloaded_preview(client, path)
+                if preview is None:
+                    continue
+                preview.album_names = list(names)
+                preview.captured_at = capture_times.get(path)
+                previews.append(preview)
+                self.album_cache[preview.phone_path] = list(names)
             logger.warning(
                 "%d album media paths across %d albums are not in the USB media inventory. "
-                "These originals may be offloaded or outside the supported media roots; "
-                "their albums may be missing or incomplete. Download originals to the phone "
-                "and import again. No filename-based substitutions were made.",
+                "These originals may be offloaded or outside the supported media roots. "
+                "%d of them have a cached low-resolution preview on the phone and will be "
+                "imported as previews; the remaining %d have no preview either. Download "
+                "full originals to the phone and import again for full-resolution copies. "
+                "No filename-based substitutions were made.",
                 len(unavailable),
                 len({name for names in unavailable.values() for name in names}),
+                len(previews),
+                len(unavailable) - len(previews),
             )
         for item in items:
             yield item
+        for preview in previews:
+            yield preview
+
+    def afc_device_offloaded_preview(self, client: Any, phone_path: str) -> PhoneItem | None:
+        """Return a synthetic low-resolution stand-in for an offloaded original.
+
+        client: the live AFC client.
+        phone_path: an album-member path recorded in Photos.sqlite but absent from
+            the USB media inventory (``device_enumerate``'s ``unavailable`` set).
+        Returns a ``PhoneItem`` reading the phone's own cached thumbnail (the same
+        degraded preview iOS itself shows for an optimized-storage original), or
+        None when no such cache entry exists either. Never raises: a lookup
+        failure here must never break enumeration of real, present media.
+        """
+        thumbnail_dir = f"{THUMBNAIL_ROOT}{phone_path}"
+        try:
+            entries = [
+                entry
+                for entry in self.afc_device_call(client.listdir, thumbnail_dir)
+                if entry not in (".", "..")
+            ]
+            for entry in entries:
+                candidate = f"{thumbnail_dir}/{entry}"
+                info = self.afc_device_stat(client, candidate)
+                if info.get("st_ifmt") == "S_IFREG" and "st_size" in info:
+                    stem = phone_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                    suffix = entry[entry.rfind(".") :] if "." in entry else ".jpg"
+                    return PhoneItem(
+                        phone_path=candidate,
+                        size=int(info["st_size"]),
+                        original_name=f"{stem}{PREVIEW_NAME_MARKER}{suffix}",
+                        media_type="image",
+                        modified_at=str(info.get("st_mtime")) if info.get("st_mtime") else None,
+                        is_offloaded_preview=True,
+                    )
+        except Exception:
+            logger.debug(
+                "no cached preview available for offloaded path %s", phone_path, exc_info=True
+            )
+        return None
 
     def afc_device_walk(self, client: Any, directory: str) -> Iterable[PhoneItem]:
         """Recursively yield media items under a device directory.

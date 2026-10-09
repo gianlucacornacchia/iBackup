@@ -400,6 +400,7 @@ def importer_process_item(
         phone_path=item.phone_path,
         phone_size=item.size,
         phone_modified_at=item.modified_at,
+        is_offloaded_preview=item.is_offloaded_preview,
     )
     asset_id = repository.repository_insert_asset(connection, asset)
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)

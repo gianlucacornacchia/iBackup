@@ -5,18 +5,26 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-09-16 (real-phone album misassignment diagnosed and exact-path
-matching validated)._
+_Last updated: 2026-10-09 (offloaded-photo low-resolution preview fallback added
+and validated on the real iPhone 12)._
 
 ## Current status
 
+- **Offloaded-photo previews:** albums whose originals are offloaded ("Optimize
+  iPhone Storage") are no longer silently incomplete. The AFC adapter mirrors
+  each missing DCIM path into `/PhotoData/Thumbnails/V2` (the same cached JPEG
+  iOS itself uses for degraded previews) and imports that file instead, named
+  with an `" (offloaded preview)"` suffix and flagged via the new
+  `assets.is_offloaded_preview` column (schema v3). Lookup failures never break
+  enumeration of real media. Getting the full-resolution original still
+  requires downloading it to the phone and reimporting (appended, not
+  replacing the preview).
 - **Album correction:** earlier filename fallback assigned offloaded photos'
   albums to unrelated local files. The current adapter uses exact paths for
   modern Photos databases; older filename-only schemas require uniqueness
   across the whole database and USB inventory. Existing wrong archive copies
   are **not** automatically removed. Preserve existing archives and validate
-  corrected imports in a separate new archive. Albums with no USB-accessible
-  originals require those originals to be made locally available first.
+  corrected imports in a separate new archive.
 - **Phase:** Phase 2 — building the GUI. Phase 1 (core engine + full CLI) and
   the core-hardening checkpoint are complete offline.
 - **State:** the UI-sketch gate **passed on 2026-09-11**; the sketch and its
@@ -271,6 +279,45 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-09 — **Added offloaded-photo low-resolution preview fallback; real
+  iPhone 12 validation.** Root-caused the `device-info` warning "5263 album
+  media paths across 67 albums are not in the USB media inventory": those
+  originals are offloaded by "Optimize iPhone Storage", so AFC's `/DCIM` walk
+  cannot see them even though Photos.sqlite still lists their album
+  membership. Confirmed by direct AFC inspection that iOS keeps a cached JPEG
+  thumbnail for every asset (including offloaded ones) under
+  `/PhotoData/Thumbnails/V2`, mirroring the DCIM tree path-for-path — the same
+  degraded preview iOS itself shows in Photos. `AfcDevice.device_enumerate`
+  now looks up that mirrored thumbnail for every album path missing from the
+  USB inventory and, when found, synthesizes a `PhoneItem` reading the cached
+  JPEG, named with an `" (offloaded preview)"` suffix so it is never mistaken
+  for the real original; any lookup failure is swallowed and that path is left
+  genuinely missing, exactly as before. Added `assets.is_offloaded_preview`
+  (schema v3, forward-only migration, idempotent against a column that may
+  already exist) and threaded the flag through `PhoneItem` → importer → `Asset`
+  so archives can distinguish previews from full-resolution copies. Updated
+  the enumeration warning to report how many missing paths were recovered as
+  previews versus truly unavailable. New regression coverage: a real
+  SQLite-parsed offloaded album member recovered as a preview and correctly
+  placed/verified through `AppService`, and a lookup-failure path proven never
+  to raise. Full targeted suite plus the whole repo suite passed (only the two
+  pre-existing Windows GUI settings path-separator failures remain, unrelated
+  to this change); Ruff lint/format and strict core/catalog/device mypy
+  passed.
+  **Real iPhone 12 validation (iOS 26.4, same device as the Sept 16 entries):**
+  enumeration found 1360 real USB items and all 5263 previously-missing album
+  paths resolved to a cached thumbnail (0 fully unrecoverable). A scoped
+  import of 12 items (6 real DCIM photos across 3 albums plus 2 unsorted, and
+  6 offloaded previews from the `EyeEm` album) into an isolated temporary
+  archive added all 12 with zero errors, and archive verification passed. The
+  catalog correctly recorded 6 real assets and 6 preview assets with distinct
+  `is_offloaded_preview` flags and the `" (offloaded preview)"` filename
+  marker. The temporary archive and validation script were deleted afterward;
+  no existing archive, settings, or phone content were touched. This does not
+  qualify a full-library import, Live Photo pairing, non-JPEG/video keyframe
+  cache formats, or GUI display of the preview flag (not yet surfaced in the
+  GUI beyond the existing filename/log visibility).
 
 - 2026-09-16 — **Corrected real-phone album misassignment; supersedes the earlier
   metadata confidence claims below.** The filename fallback was unsafe even

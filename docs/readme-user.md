@@ -347,12 +347,19 @@ It is not implemented and remains blocked on explicit sketch approval.
 
 **Do I need iCloud?**
 No. Device access is over USB. However, cloud-only originals that are not
-available through AFC are not guaranteed to be imported; an accessible DCIM
-inventory is not proof that the complete Apple Photos/iCloud library is local.
-Album metadata can remain on the phone even when the originals have been
-offloaded. To import those originals, select **Download and Keep Originals**
-in the iPhone's Photos/iCloud settings and allow downloading to finish with
-enough free storage. iBackup does not fetch originals from iCloud itself.
+available through AFC are not guaranteed to be imported at full resolution; an
+accessible DCIM inventory is not proof that the complete Apple Photos/iCloud
+library is local. Album metadata can remain on the phone even when the
+originals have been offloaded ("Optimize iPhone Storage"). For those photos,
+iBackup imports the same cached, low-resolution JPEG preview that iOS itself
+shows in Photos, clearly named with an " (offloaded preview)" suffix, so the
+album is still complete instead of missing that photo entirely. To get the
+full-resolution original instead, select **Download and Keep Originals** in
+the iPhone's Photos/iCloud settings, let it finish downloading with enough
+free storage, then import again — this adds the full-resolution copy
+alongside the existing preview (the archive is append-only and does not
+delete or replace the preview automatically). iBackup does not fetch
+originals from iCloud itself.
 
 **Will it change or compress my photos?**
 No. Files are copied exactly as they are on the phone.
@@ -384,10 +391,13 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
 - **Media directory access fails:** treat this as an incomplete scan, not an
   empty phone. Resolve access/connectivity errors before trusting absence data.
 - **Albums are missing or incomplete:** an album can exist in the phone's
-  database while none of its originals are available through USB. The log
-  reports album paths absent from the USB inventory; download originals to the
-  phone before importing again. An empty/missing archive album does not prove
-  the album was empty on the phone.
+  database while none of its originals are available through USB. iBackup now
+  falls back to the phone's own cached low-resolution thumbnail for these
+  (named with an " (offloaded preview)" suffix) so the album is still
+  populated; the log reports how many album paths were recovered this way and
+  how many had no cache either. Download originals to the phone and import
+  again for full-resolution copies. An empty/missing archive album does not
+  prove the album was empty on the phone.
 - **Photos went to `_Unsorted`:** no membership could be resolved for that
   exact media path, or the metadata could not be read. Modern Photos databases
   are matched by directory **and** filename, never by a reused filename alone.
