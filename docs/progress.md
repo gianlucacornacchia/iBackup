@@ -11,10 +11,13 @@ lookups cached on disk so repeat imports skip their AFC round-trips)._
 ## Current status
 
 - **Gallery and control sizing:** thumbnail tiles in the main photo grid
-  (`TILE_IMAGE`) grew from 120px to 160px, and every button's minimum/fixed
-  height (`CONTROL_HEIGHT`, used across the whole GUI including the selection
-  bar's "Mark" button and the Marked page's action buttons) grew from 32px to
-  36px, after user feedback that images and buttons were hard to see.
+  (`TILE_IMAGE`) grew from 120px to 160px, every button's minimum/fixed height
+  (`CONTROL_HEIGHT`, used across the whole GUI including the selection bar's
+  "Mark" button and the Marked page's action buttons) grew from 32px to 36px,
+  and the line-art glyph icons (`ICON_SIZE`, used by the navigation pane rows
+  including "Marked" and the toggle/settings buttons) grew from 16px to 20px,
+  after user feedback that images, buttons and the navigation icon shown when
+  opening the Marked page were hard to see.
 - **Offloaded-preview lookup cache:** each offloaded-photo preview lookup
   (`afc_device_offloaded_preview`) costs two AFC round-trips. On a device with
   thousands of offloaded album paths this made every single import slow, not
@@ -301,7 +304,11 @@ Do not infer Windows CI, live-device, or release qualification from this report.
   (with `CHECK_RADIUS`/`BADGE_HEIGHT` scaled to match) and `theme.py`'s
   `CONTROL_HEIGHT` 32→36; `CONTROL_HEIGHT` is shared by every button in the
   app (selection bar, Marked page, dialogs, settings), so the fix is global
-  and consistent rather than page-specific. For (2), confirmed the previous
+  and consistent rather than page-specific. A follow-up clarified the small
+  icon was specifically the navigation pane's line-art glyph shown next to
+  "Marked" (and every other nav row): `icons.py`'s `ICON_SIZE` grew 16→20 and
+  `navigation.py`'s per-row `icon_rect` was resized and recentred to match.
+  For (2), confirmed the previous
   session's offloaded-preview feature was an unintentional performance
   regression: `afc_device_offloaded_preview` ran an AFC `listdir` + `stat` for
   *every* unavailable album path on *every* `device_enumerate()` call — up to

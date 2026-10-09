@@ -15,7 +15,7 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 
-ICON_SIZE = 16
+ICON_SIZE = 20
 STROKE_WIDTH = 1.4
 GLYPH_NAMES = frozenset(
     {

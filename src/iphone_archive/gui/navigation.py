@@ -162,13 +162,13 @@ class NavigationRowDelegate(QStyledItemDelegate):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(rect, CONTROL_RADIUS, CONTROL_RADIUS)
 
-        icon_rect = QRect(rect.left() + 12, rect.center().y() - 8, 16, 16)
+        icon_rect = QRect(rect.left() + 10, rect.center().y() - 10, 20, 20)
         icons_draw(painter, icon_rect, str(index.data(NAV_GLYPH_ROLE)), primary)
 
         if not self.pane.collapsed:
             painter.setFont(theme_font("body_strong" if selected else "body"))
             painter.setPen(primary)
-            label_rect = rect.adjusted(40, 0, -52, 0)
+            label_rect = rect.adjusted(44, 0, -52, 0)
             label = painter.fontMetrics().elidedText(
                 str(index.data(NAV_LABEL_ROLE)), Qt.TextElideMode.ElideRight, label_rect.width()
             )
