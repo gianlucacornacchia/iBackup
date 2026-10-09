@@ -23,7 +23,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PIL import Image  # noqa: E402
-from PySide6.QtCore import QCoreApplication, QEvent, Qt  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEvent  # noqa: E402
 from PySide6.QtWidgets import QDialog  # noqa: E402
 
 from iphone_archive.core.phone_diff import DeletedFromPhoneItem, PhoneDiffResult  # noqa: E402
@@ -773,12 +773,16 @@ def test_an_unknown_spec_is_ignored_rather_than_submitted(window, qtbot):
 
 def test_review_lists_report_their_checked_rows_in_display_order():
     """A deletion must act on what the user ticked, in the order they saw it."""
+    from PySide6.QtCore import QItemSelectionModel
+
     from iphone_archive.gui.review import ReviewList
 
     listing = ReviewList("empty")
     listing.review_set_rows([ReviewRow(5, "A"), ReviewRow(3, "B"), ReviewRow(9, "C")])
-    listing.list_widget.item(0).setCheckState(Qt.CheckState.Checked)
-    listing.list_widget.item(2).setCheckState(Qt.CheckState.Checked)
+    model = listing.list_view.model()
+    selection_model = listing.list_view.selectionModel()
+    selection_model.select(model.index(0, 0), QItemSelectionModel.SelectionFlag.Select)
+    selection_model.select(model.index(2, 0), QItemSelectionModel.SelectionFlag.Select)
 
     assert listing.review_checked_ids() == [5, 9]
     listing.review_set_all(False)

@@ -327,3 +327,32 @@ def test_main_window_owns_a_preview_loader(qtbot, archive, monkeypatch):
     assert window.previews.archive_root == Path(archive)
     window.close()
     assert window.previews.stopped is True
+
+
+def test_review_rows_pick_up_a_thumbnail_once_it_settles(qtbot, loader):
+    """A row with a hash and path gets its icon as soon as the preview renders.
+
+    Reproduces the user-visible gap directly: name, size and date rendered
+    fine, but every row's image stayed blank because `ReviewList` was never
+    handed a `PreviewLoader` or any hash/path to request a preview with.
+    """
+    from iphone_archive.gui.gallery import TileDelegate
+    from iphone_archive.gui.review import ReviewList, ReviewRow
+
+    relative_path = "Photos/Trip/IMG_0001.png"
+    listing = ReviewList("empty", loader)
+    listing.review_set_rows([ReviewRow(1, "IMG_0001", "4096 bytes", HASH_A, relative_path)])
+    delegate = listing.list_view.itemDelegate()
+    assert isinstance(delegate, TileDelegate)
+    index = listing.model.index(0, 0)
+    _, entry = delegate.tile_entry(index)
+    assert entry is None or entry.state is not PreviewState.READY
+
+    entry = helper_wait_ready(qtbot, loader, HASH_A, relative_path)
+    assert entry.state is PreviewState.READY
+
+    def row_is_ready() -> bool:
+        _, settled = delegate.tile_entry(index)
+        return settled is not None and settled.state is PreviewState.READY
+
+    qtbot.waitUntil(row_is_ready, timeout=15000)

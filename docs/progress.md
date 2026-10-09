@@ -296,6 +296,76 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-11 — **Fixed the Marked and Deleted-from-phone pages rendering
+  almost blank, then gave them real thumbnails sized and rendered the same
+  way as the rest of the app.** User report: both pages showed only the big
+  page title and an item-count subtitle, plus a cluster of tiny, unreadable
+  pixels in the top-left corner; "All photos" and "Recycle bin" were fine.
+  Root cause: `ArchiveShell.__init__` constructed `MarksPage(page)` /
+  `DeletedPhonePage(page)`, passing the hosting `ShellPage` as the Qt parent.
+  `ShellPage.shell_page_take_body()` only calls `addWidget()` (which supplies
+  the stretch factor that lets the body fill the page) when
+  `widget.parent() is not self` — but the widget's parent was already `self`
+  from construction, so that check was always false and the review widget
+  was *never actually inserted into the page's layout*. It stayed a child
+  widget floating at Qt's default `100x30` geometry, while the layout handed
+  all the page's remaining space to the title/subtitle labels instead (which
+  is exactly what rendered as the oversized title/subtitle and the tiny
+  corner smudge). A second, compounding issue: when a review list is empty
+  (e.g. no marks yet), `ReviewList` shows only its `empty_label`, a plain
+  `QLabel` without an expanding size policy (unlike `AssetGallery`'s
+  equivalent `message_label`, which explicitly sets
+  `Expanding`/`Expanding`) — so even once properly laid out, an *empty*
+  review page would still collapse. Fixed both: `review.py` now gives
+  `ReviewPage`, `ReviewList` and `empty_label` explicit
+  `Expanding`/`Expanding` size policies, and `shell.py` constructs the review
+  pages with no parent (letting `shell_page_take_body` parent and add them)
+  and hardens that method to check actual layout membership
+  (`body_layout.indexOf(widget)`) rather than Qt parentage, so a
+  pre-parented widget can no longer silently skip being added to the layout.
+  Verified by reproducing the exact broken geometry through a real
+  `ArchiveShell` instance (not just an isolated `ReviewPage`, which had
+  masked the bug).
+
+  Once visible, the user noted the rows showed a checkbox, name, size and
+  date but no image — `ReviewList` never had a `PreviewLoader` or any
+  per-row hash/path to request a thumbnail with, so every row was always
+  text-only. Gave `ReviewRow` optional `sha256`/`relative_path` fields;
+  `review_phone_rows` fills them from `DeletedFromPhoneItem` (already
+  asset-scoped), and a new `marks_preview_source()` in `service/marks.py`
+  resolves a mark's target to one representative stored copy - the asset
+  itself for an asset mark, the owning asset for a file mark, and one photo
+  in the album for an album mark. Two follow-up reports then refined the
+  rendering itself: first that the thumbnails were "very small" at a
+  conservative 48px; then, after enlarging them, that the photos "don't fit
+  the grey box" and that the checkbox sat oddly beside a tiny icon instead of
+  under a photo. Both came from the review pages having grown a second,
+  parallel tile implementation (a hand-rolled `QListWidget` delegate) instead
+  of reusing the gallery's own. `ReviewList` is now a `QListView` in icon mode
+  over a plain `QStandardItemModel`, painted by `gallery.TileDelegate` itself
+  through the same `AssetRole.SHA256`/`PATHS`/`ORIGINAL_NAME` data roles the
+  photo grid uses - so a thumbnail here has the exact same crop, rounding and
+  size as everywhere else, because it is the same code drawing it. "Checked"
+  is now the view's own multi-selection (click, ctrl/shift-click to extend)
+  rather than a separate checkbox, matching how the gallery marks a tile
+  selected with its accent check-circle; `review_checked_ids()`/
+  `review_set_all()` keep their old signatures so `ReviewPage`, `MarksPage`,
+  `DeletedPhonePage` and `ReclaimDialog` needed no further changes beyond one
+  latent bug the constructor-signature change surfaced: `reclaim.py`'s
+  `ReclaimDialog` was calling `ReviewList(text, self)` positionally, so
+  `self` (the dialog) landed in the new `previews` slot and crashed on
+  `previews.preview_ready.connect()` - fixed by passing `parent=self` as a
+  keyword there. Added `test_marks_preview_source_is_none_for_an_empty_album`,
+  `test_pending_marks_carry_a_thumbnail_source` and
+  `test_review_rows_pick_up_a_thumbnail_once_it_settles` (the last against a
+  real `PreviewLoader`, asserting through the delegate's own `tile_entry()`
+  lookup, reusing `test_gui_previews.py`'s existing archive/loader fixtures
+  rather than building a fresh `QThreadPool` per test, which proved to crash
+  the interpreter when run alongside other `MainWindow`-heavy tests in the
+  same session). Full suite green throughout (same pre-existing,
+  order-dependent Windows path-separator/permission flakes as before, each
+  confirmed to pass in isolation and unrelated to this work), ruff and
+  `mypy --strict` clean.
 - 2026-10-10 — **Increased gallery/control sizing; cached offloaded-preview
   lookups to fix repeat-import slowness.** User feedback after the first real
   run: (1) grid thumbnails and buttons were too small to see comfortably, and

@@ -134,7 +134,9 @@ class ReclaimDialog(QDialog):
         self.caption.setWordWrap(True)
         layout.addWidget(self.caption)
 
-        self.review_list = ReviewList("Nothing on the phone can be safely deleted yet.", self)
+        self.review_list = ReviewList(
+            "Nothing on the phone can be safely deleted yet.", parent=self
+        )
         rows = reclaim_rows(result)
         self.review_list.review_set_rows(rows)
         layout.addWidget(self.review_list, 1)

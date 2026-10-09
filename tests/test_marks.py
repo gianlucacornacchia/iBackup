@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from iphone_archive.catalog import repository
+from iphone_archive.catalog.models import Album
 from iphone_archive.device.fake_device import FakeDevice
 from iphone_archive.service import marks, selection
 from iphone_archive.service.app_service import AppService
@@ -44,6 +45,41 @@ def test_marks_are_deduplicated(service):
     service.app_service_mark_many([asset_id])
 
     assert marks.marks_resolve_asset_ids(connection) == [asset_id]
+
+
+def test_pending_marks_carry_a_thumbnail_source(service):
+    """Listing marks resolves enough of each target to preview it.
+
+    An asset mark previews itself; an album mark previews one of its photos,
+    since the mark covers the whole album rather than a single asset.
+    """
+    device = FakeDevice(
+        {"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b"},
+        album_map={"/DCIM/A.HEIC": ["Trip"], "/DCIM/B.HEIC": ["Trip"]},
+    )
+    service.app_service_import(device)
+    connection, _ = service.app_service_require()
+    asset_id = service.app_service_list_assets()[0].asset_id
+    album_id = repository.repository_list_albums(connection)[0].album_id
+
+    service.app_service_mark(marks.TARGET_ASSET, asset_id)
+    service.app_service_mark(marks.TARGET_ALBUM, album_id)
+
+    summaries = {summary.target_type: summary for summary in marks.marks_list_pending(connection)}
+    for summary in summaries.values():
+        assert summary.sha256
+        assert summary.relative_path
+
+
+def test_marks_preview_source_is_none_for_an_empty_album(service):
+    """An album mark with no members yet has nothing to preview."""
+    service.app_service_import(FakeDevice({"/DCIM/A.HEIC": b"a"}))
+    connection, _ = service.app_service_require()
+    empty_album_id = repository.repository_upsert_album(
+        connection, Album(name="Empty", safe_name="Empty")
+    )
+
+    assert marks.marks_preview_source(connection, marks.TARGET_ALBUM, empty_album_id) is None
 
 
 def test_clear_removes_all_marks(service):

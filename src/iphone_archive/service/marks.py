@@ -30,6 +30,8 @@ class MarkSummary:
     target_id: int
     marked_at: str | None
     reason: str | None
+    sha256: str | None = None
+    relative_path: str | None = None
 
 
 @dataclass
@@ -153,22 +155,65 @@ def marks_add_many(
     return created
 
 
+def marks_preview_source(
+    connection: sqlite3.Connection, target_type: str, target_id: int
+) -> tuple[str, str] | None:
+    """Resolve a mark's target to a thumbnail source, if one can be shown.
+
+    connection: an open catalog connection.
+    target_type: ``asset``, ``album``, or ``file``.
+    target_id: the corresponding asset, album, or asset-file id.
+    Returns a ``(sha256, relative_path)`` pair for one representative stored
+    copy, or None when the target no longer resolves to a storable asset (an
+    album with no photos yet, for instance). An album mark previews its first
+    photo, since the mark covers the whole album rather than one asset.
+    """
+    asset_id: int | None = None
+    if target_type == TARGET_ASSET:
+        asset_id = target_id
+    elif target_type == TARGET_FILE:
+        row = connection.execute(
+            "SELECT asset_id FROM asset_files WHERE id = ?", (target_id,)
+        ).fetchone()
+        asset_id = int(row["asset_id"]) if row is not None else None
+    elif target_type == TARGET_ALBUM:
+        row = connection.execute(
+            "SELECT asset_id FROM asset_albums WHERE album_id = ? LIMIT 1", (target_id,)
+        ).fetchone()
+        asset_id = int(row["asset_id"]) if row is not None else None
+    if asset_id is None:
+        return None
+    asset = repository.repository_get_asset(connection, asset_id)
+    if asset is None:
+        return None
+    stored_files = repository.repository_list_asset_files(connection, asset_id)
+    if not stored_files:
+        return None
+    return asset.sha256, stored_files[0].path
+
+
 def marks_list_pending(connection: sqlite3.Connection) -> list[MarkSummary]:
     """List marks that have not been committed yet.
 
     connection: an open catalog connection.
-    Returns the staged marks awaiting review.
+    Returns the staged marks awaiting review, each carrying a thumbnail
+    source when its target still resolves to a stored asset.
     """
-    return [
-        MarkSummary(
-            mark_id=mark.mark_id if mark.mark_id is not None else 0,
-            target_type=mark.target_type,
-            target_id=mark.target_id,
-            marked_at=mark.marked_at,
-            reason=mark.reason,
+    summaries = []
+    for mark in repository.repository_list_pending_marks(connection):
+        source = marks_preview_source(connection, mark.target_type, mark.target_id)
+        summaries.append(
+            MarkSummary(
+                mark_id=mark.mark_id if mark.mark_id is not None else 0,
+                target_type=mark.target_type,
+                target_id=mark.target_id,
+                marked_at=mark.marked_at,
+                reason=mark.reason,
+                sha256=source[0] if source is not None else None,
+                relative_path=source[1] if source is not None else None,
+            )
         )
-        for mark in repository.repository_list_pending_marks(connection)
-    ]
+    return summaries
 
 
 def marks_unmark(connection: sqlite3.Connection, mark_id: int) -> None:

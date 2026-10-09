@@ -150,7 +150,12 @@ class ShellPage(QWidget):
             self.body_label.setVisible(True)
             return
         self.body_label.setVisible(False)
-        if widget.parent() is not self:
+        # Checked against the layout, not `widget.parent()`: a widget can
+        # already be parented to this page (e.g. constructed with it as the
+        # Qt parent) without ever having been inserted into `body_layout`, and
+        # testing parentage alone would then skip `addWidget` and leave the
+        # widget floating at its default size outside the layout entirely.
+        if self.body_layout.indexOf(widget) == -1:
             widget.setParent(self)
             self.body_layout.addWidget(widget, 1)
         widget.setVisible(True)
@@ -244,7 +249,14 @@ class ArchiveShell(QWidget):
         for view in LIBRARY_VIEWS:
             page = self.shell_page(view.key, view.label)
             if view.key in REVIEW_VIEWS:
-                review = DeletedPhonePage(page) if view.key == "deleted-phone" else MarksPage(page)
+                # No parent here: shell_page_take_body() re-parents the widget
+                # itself, and only does so when the widget's current parent
+                # isn't already the page - pre-parenting it to `page` would
+                # make that check a no-op, so the widget would never actually
+                # be inserted into the page's layout.
+                review = DeletedPhonePage(previews) if view.key == "deleted-phone" else (
+                    MarksPage(previews)
+                )
                 # The page already draws the heading, so the review widget keeps
                 # only its caption and list.
                 review.title_label.setVisible(False)
