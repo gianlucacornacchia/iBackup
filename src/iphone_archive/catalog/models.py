@@ -49,6 +49,11 @@ class Asset:
     offloaded_original_path: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    camera_model: str | None = None
+    lens_model: str | None = None
+    iso: int | None = None
+    aperture: float | None = None
+    focal_length_mm: float | None = None
 
 
 @dataclass

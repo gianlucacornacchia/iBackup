@@ -31,7 +31,7 @@ from ..catalog.sidecar import sidecar_from_catalog, sidecar_path_for, sidecar_wr
 from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
 from ..service.progress import ProgressHandle
-from . import archive_layout, hashing, name_safety
+from . import archive_layout, exif, hashing, name_safety
 from .file_operations import file_operations_path, file_operations_write_journal
 
 OPERATION_NAME = "import"
@@ -404,6 +404,7 @@ def importer_process_item(
         result.skipped_count += 1
         return
 
+    exif_metadata = exif.exif_read_metadata(placed.path)
     asset = Asset(
         sha256=placed.sha256,
         size=placed.size,
@@ -421,8 +422,15 @@ def importer_process_item(
         phone_modified_at=item.modified_at,
         is_offloaded_preview=item.is_offloaded_preview,
         offloaded_original_path=item.offloaded_original_path,
-        latitude=item.latitude,
-        longitude=item.longitude,
+        # The phone database is the primary GPS source; a file's own EXIF is
+        # only consulted when the phone had no location for this item.
+        latitude=item.latitude if item.latitude is not None else exif_metadata.latitude,
+        longitude=item.longitude if item.longitude is not None else exif_metadata.longitude,
+        camera_model=exif_metadata.camera_model,
+        lens_model=exif_metadata.lens_model,
+        iso=exif_metadata.iso,
+        aperture=exif_metadata.aperture,
+        focal_length_mm=exif_metadata.focal_length_mm,
     )
     asset_id = repository.repository_insert_asset(connection, asset)
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)
@@ -479,6 +487,7 @@ def importer_upgrade_offloaded_preview(
         file_operations_path(paths, stored.path).unlink(missing_ok=True)
         repository.repository_delete_asset_file(connection, stored.file_id)
 
+    exif_metadata = exif.exif_read_metadata(placed.path)
     repository.repository_upgrade_offloaded_asset(
         connection,
         asset_id,
@@ -490,8 +499,13 @@ def importer_upgrade_offloaded_preview(
         phone_size=item.size,
         phone_modified_at=item.modified_at,
         verified_at=importer_now(),
-        latitude=item.latitude,
-        longitude=item.longitude,
+        latitude=item.latitude if item.latitude is not None else exif_metadata.latitude,
+        longitude=item.longitude if item.longitude is not None else exif_metadata.longitude,
+        camera_model=exif_metadata.camera_model,
+        lens_model=exif_metadata.lens_model,
+        iso=exif_metadata.iso,
+        aperture=exif_metadata.aperture,
+        focal_length_mm=exif_metadata.focal_length_mm,
     )
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)
 

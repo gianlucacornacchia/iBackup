@@ -837,6 +837,55 @@ def test_new_asset_stores_location_from_phone_item(archive):
     assert (asset.latitude, asset.longitude) == (45.07, 7.69)
 
 
+def test_new_asset_stores_camera_metadata_from_exif(archive):
+    """Camera/lens/ISO/aperture/focal-length are read from the archived file's own EXIF."""
+    from tests.test_core_exif import make_jpeg_with_exif
+
+    paths, connection = archive
+    device = FakeDevice({"/DCIM/A.JPG": make_jpeg_with_exif()})
+
+    importer.importer_run(connection, paths, device)
+
+    asset = repository.repository_get_asset(
+        connection, repository.repository_all_asset_files(connection)[0].asset_id
+    )
+    assert asset.camera_model == "Apple iPhone 12"
+    assert asset.lens_model == "iPhone 12 back camera 4.2mm f/1.6"
+    assert asset.iso == 64
+    assert asset.aperture == 1.6
+    assert asset.focal_length_mm == 4.2
+
+
+def test_exif_gps_used_only_when_phone_gps_absent(archive):
+    """Phone-sourced GPS wins; EXIF GPS is only a fallback when the phone had none."""
+    from tests.test_core_exif import make_jpeg_with_exif
+
+    paths, connection = archive
+    device = FakeDevice(
+        {
+            "/DCIM/A.JPG": make_jpeg_with_exif(latitude=10.0, longitude=20.0),
+            "/DCIM/B.JPG": make_jpeg_with_exif(
+                latitude=10.0, longitude=20.0, iso=100
+            ),
+        },
+        locations={"/DCIM/A.JPG": (45.07, 7.69)},
+    )
+
+    importer.importer_run(connection, paths, device)
+
+    assets = {
+        asset.original_name.upper(): asset
+        for asset in (
+            repository.repository_get_asset(connection, file.asset_id)
+            for file in repository.repository_all_asset_files(connection)
+        )
+    }
+    asset_a = assets["A.JPG"]
+    asset_b = assets["B.JPG"]
+    assert (asset_a.latitude, asset_a.longitude) == (45.07, 7.69)
+    assert (asset_b.latitude, asset_b.longitude) == pytest.approx((10.0, 20.0), abs=0.01)
+
+
 def test_offloaded_preview_upgrade_replaces_location(archive):
     """Upgrading an offloaded preview replaces its coordinates with the original's."""
     paths, connection = archive

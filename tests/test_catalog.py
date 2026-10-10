@@ -155,6 +155,50 @@ def test_asset_latitude_longitude_round_trip(catalog_connection):
     assert (asset.latitude, asset.longitude) == (45.07, 7.69)
 
 
+def test_v6_migration_adds_camera_metadata_columns(tmp_path):
+    """A pre-v6 catalog gains the EXIF camera columns without touching existing rows."""
+    path = tmp_path / ".ibackup" / "catalog.sqlite"
+    connection = database.database_connect(path)
+    database.database_initialize(connection)
+    asset_id = repository.repository_insert_asset(connection, make_asset())
+    database.database_write_version(connection, 5)
+    connection.commit()
+    connection.close()
+
+    reopened = database.database_connect(path)
+    database.database_initialize(reopened)
+    assert database.database_read_version(reopened) == database.SCHEMA_VERSION
+    columns = {row["name"] for row in reopened.execute("PRAGMA table_info(assets)")}
+    assert {"camera_model", "lens_model", "iso", "aperture", "focal_length_mm"} <= columns
+    asset = repository.repository_get_asset(reopened, asset_id)
+    assert asset.camera_model is None
+    assert asset.lens_model is None
+    assert asset.iso is None
+    assert asset.aperture is None
+    assert asset.focal_length_mm is None
+    reopened.close()
+
+
+def test_asset_camera_metadata_round_trip(catalog_connection):
+    """EXIF camera facts survive an insert/read round trip through the repository."""
+    asset_id = repository.repository_insert_asset(
+        catalog_connection,
+        make_asset(
+            camera_model="Apple iPhone 12",
+            lens_model="iPhone 12 back camera 4.2mm f/1.6",
+            iso=64,
+            aperture=1.6,
+            focal_length_mm=4.2,
+        ),
+    )
+    asset = repository.repository_get_asset(catalog_connection, asset_id)
+    assert asset.camera_model == "Apple iPhone 12"
+    assert asset.lens_model == "iPhone 12 back camera 4.2mm f/1.6"
+    assert asset.iso == 64
+    assert asset.aperture == 1.6
+    assert asset.focal_length_mm == 4.2
+
+
 def test_v1_migration_does_not_invent_device_provenance(catalog_connection):
     """Old content remains indexed, but legacy identities cannot authorize a fast skip."""
     connection = catalog_connection

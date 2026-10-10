@@ -5,9 +5,9 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-11 (album placement now reconciles with the phone's
-current membership on every import, so moving a photo between albums — or
-into/out of an album entirely — never leaves a stale duplicate copy behind)._
+_Last updated: 2026-10-13 (archived photos now have their own EXIF camera/lens/
+ISO/aperture/focal-length read and stored, with EXIF GPS as a fallback when the
+phone's database had no coordinates)._
 
 ## Current status
 
@@ -322,6 +322,47 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-13 — **Added EXIF camera metadata extraction (lens, ISO, aperture,
+  focal length) and a GPS fallback read from each photo's own EXIF.** User
+  asked whether lens/camera/GPS metadata is available on imported photos, is
+  importable, and whether it lives in the internal DB or the picture
+  metadata; answered that GPS/capture-time are DB-sourced from the phone's
+  `Photos.sqlite` (already implemented), but lens/camera/ISO/aperture are not
+  captured anywhere, though still physically present in each archived file's
+  own EXIF since files are copied byte-for-byte. This adds that capture.
+  Schema v6 adds `camera_model`/`lens_model`/`iso`/`aperture`/
+  `focal_length_mm` columns to `assets` (migration mirrors the v3–v5
+  pattern). New module `core/exif.py` (`ExifMetadata`, `exif_read_metadata`)
+  opens the archived file with Pillow/pillow-heif, reads `Make`/`Model`
+  (combined without duplicating the brand name), the EXIF sub-IFD for lens
+  model/ISO/aperture/focal length, and the GPS IFD as a **fallback only**
+  — phone-sourced GPS from `Photos.sqlite` still wins whenever present.
+  Reading is maximally defensive (bare `except Exception` degrading to an
+  all-`None` result) since metadata is a bonus, never a reason to fail an
+  import; this mirrors the existing degrade-gracefully philosophy used for
+  Photos.sqlite album/GPS parsing. `Asset` gained the five new optional
+  fields; `PhoneItem` is deliberately unchanged, since this data comes from
+  the archived file after copy, not from phone-side enumeration.
+  `importer.py` calls `exif_read_metadata()` once the file is placed on disk,
+  for both newly archived assets and offloaded-preview upgrades, with EXIF
+  GPS only used when the phone item had no coordinates. `core/exif.py` does
+  not import `browse/thumbnails.py`'s HEIC registration helper to avoid an
+  upward dependency from `core` to `browse`; it duplicates the same small
+  registration call locally instead. No new GUI service operation was added
+  (unlike the GPS/map feature) since this only enriches existing listing
+  calls rather than adding a new callable, so no new `gui/parity.py` entries
+  were needed; GUI display of the new fields was not added this round and
+  remains a possible follow-up. Added `tests/test_core_exif.py` (synthetic
+  JPEGs built with Pillow carrying known EXIF, covering camera/lens/ISO/
+  aperture/focal-length extraction, GPS sign handling, missing-EXIF and
+  corrupt-file degradation, and the Make/Model/one-tuple-numeric quirks),
+  plus a v6 migration/round-trip test in `test_catalog.py` and two importer
+  integration tests in `test_importer.py` (camera metadata lands on new
+  assets; phone GPS beats EXIF GPS when both are present). ruff and mypy
+  clean; full suite green aside from the pre-existing Windows flakes
+  (`test_gui_settings.py`, an occasional `test_recycle.py` monkeypatched-
+  fsync settings-file race, and the occasional `test_cli.py::
+  test_marks_remove` file-locking flake).
 - 2026-10-12 — **Added GPS/map support: every album and library now has a
   "Map" button showing a trip map of its located photos.** User asked to (1)
   recap every photo action possible from the iPhone vs. the PC app, and (2)

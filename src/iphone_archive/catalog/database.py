@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 # Current catalog schema version. Bump when adding a migration step.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA_STATEMENTS = [
     """
@@ -42,7 +42,12 @@ SCHEMA_STATEMENTS = [
         is_offloaded_preview INTEGER NOT NULL DEFAULT 0,
         offloaded_original_path TEXT,
         latitude REAL,
-        longitude REAL
+        longitude REAL,
+        camera_model TEXT,
+        lens_model TEXT,
+        iso INTEGER,
+        aperture REAL,
+        focal_length_mm REAL
     )
     """,
     """
@@ -222,4 +227,22 @@ def database_apply_migrations(connection: sqlite3.Connection, from_version: int)
             connection.execute("ALTER TABLE assets ADD COLUMN latitude REAL")
         if "longitude" not in existing_columns:
             connection.execute("ALTER TABLE assets ADD COLUMN longitude REAL")
+    if from_version < 6:
+        # V5 archives have no camera/lens facts recorded. These come from the
+        # archived file's own EXIF block rather than the phone database, so
+        # they are a separate migration step. The columns may already exist if
+        # SCHEMA_STATEMENTS created a fresh table before this ran.
+        existing_columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(assets)").fetchall()
+        }
+        if "camera_model" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN camera_model TEXT")
+        if "lens_model" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN lens_model TEXT")
+        if "iso" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN iso INTEGER")
+        if "aperture" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN aperture REAL")
+        if "focal_length_mm" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN focal_length_mm REAL")
     database_write_version(connection, SCHEMA_VERSION)

@@ -61,6 +61,11 @@ def repository_row_to_asset(row: sqlite3.Row) -> Asset:
         offloaded_original_path=row["offloaded_original_path"],
         latitude=row["latitude"],
         longitude=row["longitude"],
+        camera_model=row["camera_model"],
+        lens_model=row["lens_model"],
+        iso=row["iso"],
+        aperture=row["aperture"],
+        focal_length_mm=row["focal_length_mm"],
     )
 
 
@@ -78,8 +83,8 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             verified_at, first_seen_on_phone_at, last_seen_on_phone_at,
             present_on_phone, archive_state, phone_asset_id, phone_path,
             phone_size, phone_modified_at, is_offloaded_preview, offloaded_original_path,
-            latitude, longitude
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            latitude, longitude, camera_model, lens_model, iso, aperture, focal_length_mm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             asset.sha256,
@@ -101,6 +106,11 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             asset.offloaded_original_path,
             asset.latitude,
             asset.longitude,
+            asset.camera_model,
+            asset.lens_model,
+            asset.iso,
+            asset.aperture,
+            asset.focal_length_mm,
         ),
     )
     return repository_last_row_id(cursor)
@@ -199,6 +209,11 @@ def repository_upgrade_offloaded_asset(
     verified_at: str | None,
     latitude: float | None = None,
     longitude: float | None = None,
+    camera_model: str | None = None,
+    lens_model: str | None = None,
+    iso: int | None = None,
+    aperture: float | None = None,
+    focal_length_mm: float | None = None,
 ) -> None:
     """Replace a preview asset's identity with its full-resolution original.
 
@@ -208,6 +223,8 @@ def repository_upgrade_offloaded_asset(
     phone_path, phone_size, phone_modified_at: the real file's phone identity.
     verified_at: timestamp recorded as both the new verification and import time.
     latitude, longitude: the real file's GPS coordinates, when known.
+    camera_model, lens_model, iso, aperture, focal_length_mm: the real file's
+        EXIF camera facts, when known.
     Returns None. Clears ``is_offloaded_preview``/``offloaded_original_path`` so
     the asset is indistinguishable from one imported full-resolution from the
     start; callers are responsible for replacing its stored file(s).
@@ -219,7 +236,8 @@ def repository_upgrade_offloaded_asset(
             phone_path = ?, phone_size = ?, phone_modified_at = ?,
             imported_at = ?, verified_at = ?,
             is_offloaded_preview = 0, offloaded_original_path = NULL,
-            latitude = ?, longitude = ?
+            latitude = ?, longitude = ?,
+            camera_model = ?, lens_model = ?, iso = ?, aperture = ?, focal_length_mm = ?
         WHERE id = ?
         """,
         (
@@ -234,6 +252,11 @@ def repository_upgrade_offloaded_asset(
             verified_at,
             latitude,
             longitude,
+            camera_model,
+            lens_model,
+            iso,
+            aperture,
+            focal_length_mm,
             asset_id,
         ),
     )
