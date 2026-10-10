@@ -5,12 +5,20 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-13 (re-importing an already-archived library now backfills
-GPS/camera metadata onto existing assets, not just newly archived ones — the
-map was reporting "no location" everywhere because that data was never written
-retroactively)._
+_Last updated: 2026-10-13 (the offline trip map now draws a lat/lon graticule,
+compass and distance scale bar instead of bare floating dots, after feedback
+that the map had "no background")._
 
 ## Current status
+
+- **Map now looks like a map, still offline:** `TripMapCanvas` fills the
+  background, then draws a dashed latitude/longitude graticule with degree
+  labels, a north-pointing compass arrow, and a haversine-based distance scale
+  bar, all computed purely from the plotted points' own bounding box — no
+  bundled geographic data and no network tile fetches, consistent with the
+  app never making network calls on the user's behalf. If real map imagery
+  (coastlines/roads/satellite tiles) is wanted later, that is a separate,
+  explicit decision since it requires relaxing the no-network-calls guarantee.
 
 - **Gallery and control sizing:** thumbnail tiles in the main photo grid
   (`TILE_IMAGE`) grew from 120px to 160px, every button's minimum/fixed height
