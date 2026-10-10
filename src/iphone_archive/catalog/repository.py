@@ -262,6 +262,50 @@ def repository_upgrade_offloaded_asset(
     )
 
 
+def repository_backfill_asset_metadata(
+    connection: sqlite3.Connection,
+    asset_id: int,
+    *,
+    latitude: float | None,
+    longitude: float | None,
+    camera_model: str | None,
+    lens_model: str | None,
+    iso: int | None,
+    aperture: float | None,
+    focal_length_mm: float | None,
+) -> None:
+    """Fill in GPS/camera facts an asset was archived without, in place.
+
+    connection: an open catalog connection.
+    asset_id: the existing asset row to update.
+    latitude, longitude, camera_model, lens_model, iso, aperture,
+        focal_length_mm: the values to write. Callers are responsible for
+        only passing newly discovered values here (any field still unknown
+        should be passed through unchanged) so this never erases data a
+        previous import already recorded.
+    Returns None. Content identity, phone identity, and album links are
+    untouched; this never re-copies or re-verifies the file.
+    """
+    connection.execute(
+        """
+        UPDATE assets SET
+            latitude = ?, longitude = ?,
+            camera_model = ?, lens_model = ?, iso = ?, aperture = ?, focal_length_mm = ?
+        WHERE id = ?
+        """,
+        (
+            latitude,
+            longitude,
+            camera_model,
+            lens_model,
+            iso,
+            aperture,
+            focal_length_mm,
+            asset_id,
+        ),
+    )
+
+
 def repository_delete_asset_file(connection: sqlite3.Connection, file_id: int | None) -> None:
     """Remove a stored-file row (used when replacing a preview copy).
 

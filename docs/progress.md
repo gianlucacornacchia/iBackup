@@ -5,9 +5,10 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-13 (archived photos now have their own EXIF camera/lens/
-ISO/aperture/focal-length read and stored, with EXIF GPS as a fallback when the
-phone's database had no coordinates)._
+_Last updated: 2026-10-13 (re-importing an already-archived library now backfills
+GPS/camera metadata onto existing assets, not just newly archived ones — the
+map was reporting "no location" everywhere because that data was never written
+retroactively)._
 
 ## Current status
 
@@ -322,6 +323,37 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-13 — **Fixed: every map reported "no location" — existing assets
+  were never backfilled with GPS/camera metadata.** The prior GPS/map and
+  EXIF features only wrote `latitude`/`longitude`/camera fields onto
+  *newly* archived assets and offloaded-preview upgrades; an asset already
+  present in the catalog from before those features existed took the
+  "fast-skip" path on every later import (identity already matches, no
+  bytes re-transferred) and was never revisited, so its location/camera
+  columns stayed permanently `NULL`. Verified directly on the user's real
+  6,630-item archive: 0 assets had `latitude`/`camera_model` populated
+  despite the phone's `Photos.sqlite` carrying GPS for thousands of them.
+  Added `importer_backfill_metadata()`, called from both places an
+  already-known asset is recognized during import (the phone-identity
+  fast-skip path and the content-hash duplicate path): if `latitude` is
+  still `NULL` and the just-enumerated phone item now reports a location,
+  it's written in; if `camera_model` is still `NULL`, the asset's already-
+  archived file is read locally for EXIF (no phone round trip needed) and
+  any camera/lens/ISO/aperture/focal-length/GPS it carries is filled in.
+  New `repository_backfill_asset_metadata()` performs the update. Existing
+  non-`NULL` values are never overwritten — only genuinely missing fields
+  are filled in — so a later import can never clobber data an earlier one
+  already found, including from a phone location that may have moved on to
+  reporting different (or no) coordinates for that same path. Cost is
+  self-amortizing: once an asset's fields are filled, later imports skip it
+  immediately (`camera_model`/`latitude` already non-`NULL`), so repeat
+  imports of an already-backfilled archive do no extra disk I/O. Verified
+  end-to-end against the real archive: re-running `import` lifted assets
+  with GPS from 0 to 5,396 and assets with camera metadata from 0 to 1,123
+  out of 6,641. Added `test_reimport_backfills_location_and_camera_
+  metadata_on_existing_asset` and `test_reimport_never_overwrites_already_
+  recorded_metadata` to `test_importer.py`. ruff/mypy clean; full suite
+  green aside from the pre-existing Windows flakes.
 - 2026-10-13 — **Added EXIF camera metadata extraction (lens, ISO, aperture,
   focal length) and a GPS fallback read from each photo's own EXIF.** User
   asked whether lens/camera/GPS metadata is available on imported photos, is

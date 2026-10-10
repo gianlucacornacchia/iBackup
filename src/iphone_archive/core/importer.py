@@ -336,6 +336,7 @@ def importer_process_item(
     ):
         # Fast-skip pass: identity match means the bytes are already archived, so
         # nothing is transferred; only newly discovered albums are reconciled.
+        importer_backfill_metadata(connection, paths, known, item)
         importer_sync_albums(connection, paths, known.asset_id, item, link_mode)
         importer_update_sidecar(connection, paths, known.asset_id, journal)
         result.seen_sources.append((item.phone_path, known.asset_id))
@@ -374,6 +375,7 @@ def importer_process_item(
             stored.path == placed_relative
             for stored in repository.repository_list_asset_files(connection, existing.asset_id)
         )
+        importer_backfill_metadata(connection, paths, existing, item, file_path=placed.path)
         # Placement may have restored a missing catalogued path. Do not mistake
         # that newly restored file for a pre-existing duplicate and unlink it.
         if not restored_recorded_copy and importer_has_valid_copy(connection, paths, existing):
@@ -542,6 +544,83 @@ def importer_has_valid_copy(
             if hashing.hashing_sha256_file(target) == asset.sha256:
                 return True
     return False
+
+
+def importer_backfill_metadata(
+    connection: sqlite3.Connection,
+    paths: ArchivePaths,
+    asset: Asset,
+    item: PhoneItem,
+    file_path: Path | None = None,
+) -> None:
+    """Fill in GPS/camera facts for an asset archived before this data existed.
+
+    connection: an open catalog connection.
+    paths: resolved archive paths.
+    asset: the already-archived asset, as read from the catalog.
+    item: the just-enumerated phone item standing in for the same content.
+    file_path: an already-open copy of the file to read EXIF from, when one
+        is available (e.g. a freshly downloaded duplicate, before it is
+        unlinked). When None, the asset's first recorded archive copy is
+        used instead, so a purely local repair never re-contacts the phone.
+    Returns None. A no-op whenever the asset already has every field this
+    import could discover, so repeat imports cost nothing once backfilled.
+    Existing values are never overwritten, only missing ones are filled in.
+    """
+    if asset.asset_id is None:
+        return
+    latitude, longitude = asset.latitude, asset.longitude
+    camera_model = asset.camera_model
+    lens_model = asset.lens_model
+    iso = asset.iso
+    aperture = asset.aperture
+    focal_length_mm = asset.focal_length_mm
+    needs_update = False
+
+    if latitude is None and item.latitude is not None:
+        latitude, longitude = item.latitude, item.longitude
+        needs_update = True
+
+    if camera_model is None:
+        target = file_path
+        if target is None:
+            stored_files = repository.repository_list_asset_files(connection, asset.asset_id)
+            stored = next(iter(stored_files), None)
+            target = file_operations_path(paths, stored.path) if stored is not None else None
+        if target is not None and target.is_file():
+            metadata = exif.exif_read_metadata(target)
+            if any(
+                value is not None
+                for value in (
+                    metadata.camera_model,
+                    metadata.lens_model,
+                    metadata.iso,
+                    metadata.aperture,
+                    metadata.focal_length_mm,
+                )
+            ):
+                camera_model = metadata.camera_model
+                lens_model = metadata.lens_model
+                iso = metadata.iso
+                aperture = metadata.aperture
+                focal_length_mm = metadata.focal_length_mm
+                needs_update = True
+            if latitude is None and metadata.latitude is not None:
+                latitude, longitude = metadata.latitude, metadata.longitude
+                needs_update = True
+
+    if needs_update:
+        repository.repository_backfill_asset_metadata(
+            connection,
+            asset.asset_id,
+            latitude=latitude,
+            longitude=longitude,
+            camera_model=camera_model,
+            lens_model=lens_model,
+            iso=iso,
+            aperture=aperture,
+            focal_length_mm=focal_length_mm,
+        )
 
 
 def importer_update_sidecar(

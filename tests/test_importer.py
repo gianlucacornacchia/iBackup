@@ -886,6 +886,65 @@ def test_exif_gps_used_only_when_phone_gps_absent(archive):
     assert (asset_b.latitude, asset_b.longitude) == pytest.approx((10.0, 20.0), abs=0.01)
 
 
+def test_reimport_backfills_location_and_camera_metadata_on_existing_asset(archive):
+    """Assets archived before GPS/EXIF support existed gain that data on the next import.
+
+    Simulates an asset imported by an older version of the app (no latitude/
+    longitude/camera columns populated), then re-imported once the phone
+    reports a location for that same item: the fast-skip pass must backfill
+    the existing row in place rather than leaving it permanently blank.
+    """
+    from tests.test_core_exif import make_jpeg_with_exif
+
+    paths, connection = archive
+    content = make_jpeg_with_exif(latitude=44.4, longitude=12.2)
+    device = FakeDevice({"/DCIM/A.JPG": content}, locations={"/DCIM/A.JPG": (44.4, 12.2)})
+
+    importer.importer_run(connection, paths, device)
+    asset_id = repository.repository_all_asset_files(connection)[0].asset_id
+    # Roll back the asset to what an old, pre-GPS/EXIF import would have recorded.
+    connection.execute(
+        "UPDATE assets SET latitude=NULL, longitude=NULL, camera_model=NULL, "
+        "lens_model=NULL, iso=NULL, aperture=NULL, focal_length_mm=NULL WHERE id=?",
+        (asset_id,),
+    )
+    connection.commit()
+    blanked = repository.repository_get_asset(connection, asset_id)
+    assert blanked.latitude is None
+    assert blanked.camera_model is None
+
+    result = importer.importer_run(connection, paths, device)
+
+    assert result.skipped_count == 1
+    assert result.added_count == 0
+    backfilled = repository.repository_get_asset(connection, asset_id)
+    assert (backfilled.latitude, backfilled.longitude) == pytest.approx((44.4, 12.2), abs=0.01)
+    assert backfilled.camera_model == "Apple iPhone 12"
+    assert backfilled.iso == 64
+
+
+def test_reimport_never_overwrites_already_recorded_metadata(archive):
+    """A later import cannot clobber GPS/camera data an earlier import already found."""
+    from tests.test_core_exif import make_jpeg_with_exif
+
+    paths, connection = archive
+    content = make_jpeg_with_exif(latitude=44.4, longitude=12.2)
+    device = FakeDevice({"/DCIM/A.JPG": content}, locations={"/DCIM/A.JPG": (1.0, 2.0)})
+
+    importer.importer_run(connection, paths, device)
+    asset_id = repository.repository_all_asset_files(connection)[0].asset_id
+    first_pass = repository.repository_get_asset(connection, asset_id)
+    assert (first_pass.latitude, first_pass.longitude) == (1.0, 2.0)
+
+    # A second scan with a different (bogus) phone location must not override
+    # the value already recorded; only a currently-missing field may be filled.
+    device.locations["/DCIM/A.JPG"] = (99.0, 99.0)
+    importer.importer_run(connection, paths, device)
+
+    unchanged = repository.repository_get_asset(connection, asset_id)
+    assert (unchanged.latitude, unchanged.longitude) == (1.0, 2.0)
+
+
 def test_offloaded_preview_upgrade_replaces_location(archive):
     """Upgrading an offloaded preview replaces its coordinates with the original's."""
     paths, connection = archive
