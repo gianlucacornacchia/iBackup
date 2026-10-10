@@ -1,4 +1,4 @@
-"""Tests for the incremental, append-only import workflow."""
+"""Tests for the incremental import workflow, including album reconciliation."""
 
 from __future__ import annotations
 
@@ -116,6 +116,39 @@ def test_album_growth_is_append_only(archive):
     new_paths = {f.path for f in repository.repository_all_asset_files(connection)}
     assert original_paths.issubset(new_paths)
     assert len(new_paths) == 2
+
+
+def test_album_move_removes_stale_copy(archive):
+    """Moving a photo to a different album on the phone drops the old copy."""
+    paths, connection = archive
+    first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
+    importer.importer_run(connection, paths, first)
+
+    second = FakeDevice(
+        {"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Favorites"]}
+    )
+    importer.importer_run(connection, paths, second)
+
+    files = repository.repository_all_asset_files(connection)
+    assert len(files) == 1
+    assert "Favorites" in files[0].path
+    assert not any("Trip" in f.path for f in files)
+    assert all((paths.root / f.path).is_file() for f in files)
+
+
+def test_album_removed_on_phone_falls_back_to_unsorted(archive):
+    """Removing a photo from its only album returns it to _Unsorted, not a copy."""
+    paths, connection = archive
+    first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
+    importer.importer_run(connection, paths, first)
+
+    second = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={})
+    importer.importer_run(connection, paths, second)
+
+    files = repository.repository_all_asset_files(connection)
+    assert len(files) == 1
+    assert "_Unsorted" in files[0].path
+    assert (paths.root / files[0].path).is_file()
 
 
 def test_sidecar_written_for_each_asset(archive):

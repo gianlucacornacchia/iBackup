@@ -5,9 +5,9 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-11 (offloaded-preview assets now upgrade in place once
-the real original is re-downloaded to the phone, instead of archiving a
-duplicate)._
+_Last updated: 2026-10-11 (album placement now reconciles with the phone's
+current membership on every import, so moving a photo between albums — or
+into/out of an album entirely — never leaves a stale duplicate copy behind)._
 
 ## Current status
 
@@ -38,6 +38,20 @@ duplicate)._
   the full-resolution original still requires either opening the photo in the
   Photos app on the phone, or disabling "Optimize iPhone Storage", before
   reimporting.
+- **Album placement reconciliation:** moving a photo between albums on the
+  phone (or into/out of an album entirely) used to leave the old copy behind —
+  album growth was strictly append-only, by design, so a move looked like a
+  new album *plus* a stale, now-orphaned copy of the old one. `importer_sync_
+  albums` now compares the phone item's *current* full album membership
+  against what's archived and reconciles both directions: it still adds a
+  copy for any newly discovered album (a photo can genuinely belong to more
+  than one at once), but it also removes any existing copy for an album the
+  phone no longer reports, including a stale `_Unsorted` copy once a photo
+  gains its first real album, and restores an `_Unsorted` copy if a photo
+  loses all album membership. New copies are always created before stale ones
+  are removed, so an interrupted import can never drop an asset below one
+  valid on-disk copy. Recycle-bin copies are untouched — this is purely about
+  the `Photos/<Album>` / `Photos/_Unsorted` placement matching the phone.
 - **Offloaded-preview upgrade on reimport (schema v4):** a preview now
   remembers the real album-member path it stands in for
   (`assets.offloaded_original_path`). When a later import finds the real
@@ -308,6 +322,37 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-11 — **Album placement now reconciles with the phone's current
+  membership on every import; moving a photo between albums, or into/out of
+  one entirely, no longer leaves a duplicate copy behind.** Follow-up to a
+  sequence of user questions about creating an album directly on the phone
+  and moving photos into it: investigating "what happens on the next import
+  if I move a photo into a different album" surfaced that `importer_sync_
+  albums` was deliberately append-only — its own docstring said existing
+  copies are "never moved or removed." That was fine for genuine multi-album
+  growth (a photo gaining a *second* album while keeping the first) but wrong
+  for an actual move: the phone reports the photo in its new album and no
+  longer in the old one, yet the importer only ever added, so the stale copy
+  (or a stale `_Unsorted` copy, the same gap flagged earlier when discussing
+  moving photos out of Unsorted) persisted forever alongside the new one —
+  the user explicitly required this not to happen. Rewrote `importer_sync_
+  albums` to build the asset's *desired* set of album placements from the
+  phone item's current `album_names` (treating "no albums" as a desired
+  `_Unsorted` placement), add a copy for any desired placement not yet on
+  disk, and then remove any existing `Photos`-location copy whose placement
+  is no longer desired — unlinking its file, its `asset_files` row
+  (`repository_delete_asset_file`), and its `asset_albums` link via the new
+  `repository_unlink_asset_album`. New copies are always created before old
+  ones are removed. Recycle-bin copies are filtered out up front and never
+  touched. Updated `tests/test_e2e.py::test_album_added_later_is_appended`
+  (renamed `test_album_added_later_replaces_unsorted_copy`, since the old
+  duplicate-leaving behavior was the bug being fixed) and added
+  `test_album_growth_keeps_both_copies`, `test_album_moved_on_phone_is_not_
+  duplicated`, `tests/test_importer.py::test_album_move_removes_stale_copy`,
+  and `test_album_removed_on_phone_falls_back_to_unsorted`. The
+  pre-existing `test_album_growth_is_append_only` (genuine two-album growth)
+  needed no change and still passes. Full suite green aside from the two
+  known pre-existing Windows path-separator flakes in `test_gui_settings.py`.
 - 2026-10-11 — **Offloaded-preview assets now upgrade in place when their real
   original comes back to the phone, instead of being archived as a duplicate.**
   User question after the review-page fix: "is there a way to download

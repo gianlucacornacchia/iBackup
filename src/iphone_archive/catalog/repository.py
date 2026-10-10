@@ -410,6 +410,22 @@ def repository_link_asset_album(
     )
 
 
+def repository_unlink_asset_album(
+    connection: sqlite3.Connection, asset_id: int, album_id: int
+) -> None:
+    """Remove a recorded album membership (used when reconciling album moves).
+
+    connection: an open catalog connection.
+    asset_id: the asset side of the membership.
+    album_id: the album side of the membership.
+    Returns None.
+    """
+    connection.execute(
+        "DELETE FROM asset_albums WHERE asset_id = ? AND album_id = ?",
+        (asset_id, album_id),
+    )
+
+
 def repository_page_clause(limit: int | None, offset: int = 0) -> tuple[str, list[int]]:
     """Build validated SQLite pagination; None preserves existing unbounded listings."""
     if type(offset) is not int or offset < 0:

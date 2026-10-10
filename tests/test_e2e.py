@@ -131,19 +131,54 @@ def test_catalog_and_sidecars_stay_consistent(service):
         assert (paths.root / stored.path).is_file()
 
 
-def test_album_added_later_is_appended(service):
-    """Adding an album on the phone adds a copy without moving existing files."""
+def test_album_added_later_replaces_unsorted_copy(service):
+    """Gaining a first album on the phone relocates the file out of _Unsorted."""
     device = FakeDevice({"/DCIM/IMG_0001.HEIC": b"first-photo-bytes"})
     service.app_service_import(device)
     before = helper_archive_files(service)
+    assert any("_Unsorted" in path for path in before)
 
     device.albums["/DCIM/IMG_0001.HEIC"] = ["Later Album"]
     service.app_service_import(device)
 
     after = helper_archive_files(service)
+    assert len(after) == len(before)
+    assert not any("_Unsorted" in path for path in after)
+    assert any("Later Album" in path for path in after)
+
+
+def test_album_growth_keeps_both_copies(service):
+    """A photo that gains a second album membership keeps a copy in each."""
+    device = FakeDevice({"/DCIM/IMG_0001.HEIC": b"first-photo-bytes"})
+    device.albums["/DCIM/IMG_0001.HEIC"] = ["Trip"]
+    service.app_service_import(device)
+    before = helper_archive_files(service)
+
+    device.albums["/DCIM/IMG_0001.HEIC"] = ["Trip", "Favorites"]
+    service.app_service_import(device)
+
+    after = helper_archive_files(service)
     assert set(before).issubset(set(after))
     assert len(after) == len(before) + 1
-    assert any("Later Album" in path for path in after)
+    assert any("Favorites" in path for path in after)
+    assert any("Trip" in path for path in after)
+
+
+def test_album_moved_on_phone_is_not_duplicated(service):
+    """Moving a photo from one album to another removes the stale copy."""
+    device = FakeDevice({"/DCIM/IMG_0001.HEIC": b"first-photo-bytes"})
+    device.albums["/DCIM/IMG_0001.HEIC"] = ["Trip"]
+    service.app_service_import(device)
+    before = helper_archive_files(service)
+    assert any("Trip" in path for path in before)
+
+    device.albums["/DCIM/IMG_0001.HEIC"] = ["Favorites"]
+    service.app_service_import(device)
+
+    after = helper_archive_files(service)
+    assert len(after) == len(before)
+    assert not any("Trip" in path for path in after)
+    assert any("Favorites" in path for path in after)
 
 
 def test_crash_mid_import_leaves_no_partial_state(service, monkeypatch, tmp_path):

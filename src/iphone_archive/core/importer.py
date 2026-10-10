@@ -620,22 +620,31 @@ def importer_sync_albums(
     item: PhoneItem,
     link_mode: str,
 ) -> None:
-    """Add copies for albums discovered after an asset was first imported.
+    """Make an asset's archived copies match its current phone album membership.
 
     connection: an open catalog connection.
     paths: resolved archive paths.
     asset_id: the already-archived asset.
     item: the phone item carrying current album membership.
     link_mode: ``copy`` or ``hardlink``.
-    Returns None. Album growth is append-only: existing copies are never moved
-    or removed.
+    Returns None. Adds a copy for every album newly discovered on the phone
+    (a photo can belong to several albums at once, and each keeps its own
+    copy), and removes any existing copy for an album the asset no longer
+    belongs to there (including a stale ``_Unsorted`` copy once a photo gains
+    its first album), so moving a photo between albums on the phone never
+    leaves a duplicate behind. Recycle-bin copies are a separate, user-driven
+    lifecycle and are never touched here. New copies are always created
+    before any stale ones are removed, so a crash mid-reconciliation can
+    never drop the asset below one valid, on-disk copy.
     """
-    existing_files = repository.repository_list_asset_files(connection, asset_id)
+    existing_files = [
+        stored
+        for stored in repository.repository_list_asset_files(connection, asset_id)
+        if stored.location == FileLocation.PHOTOS
+    ]
     if not existing_files:
         return
-    existing_album_ids = {
-        stored.album_id for stored in existing_files if stored.album_id is not None
-    }
+    existing_album_ids = {stored.album_id for stored in existing_files}
     asset = repository.repository_get_asset(connection, asset_id)
     source_path: Path | None = None
     for stored in existing_files:
@@ -647,11 +656,7 @@ def importer_sync_albums(
     if source_path is None:
         raise OSError(f"no valid archive copy for album reconciliation: {asset_id}")
 
-    for index in range(len(item.album_names)):
-        album_id = importer_album_id(connection, item, index)
-        if album_id is None or album_id in existing_album_ids:
-            continue
-        target_dir = archive_layout.archive_layout_album_dir(paths, item.album_names[index])
+    def place_copy(target_dir: Path, album_id: int | None) -> None:
         duplicate = archive_layout.archive_layout_duplicate_file(
             source_path, target_dir, link_mode=link_mode
         )
@@ -665,5 +670,34 @@ def importer_sync_albums(
                 location=FileLocation.PHOTOS,
             ),
         )
-        repository.repository_link_asset_album(connection, asset_id, album_id)
+        if album_id is not None:
+            repository.repository_link_asset_album(connection, asset_id, album_id)
+
+    desired_album_ids: set[int | None] = set()
+    for index in range(len(item.album_names)):
+        album_id = importer_album_id(connection, item, index)
+        desired_album_ids.add(album_id)
+        if album_id is None or album_id in existing_album_ids:
+            continue
+        target_dir = archive_layout.archive_layout_album_dir(paths, item.album_names[index])
+        place_copy(target_dir, album_id)
         existing_album_ids.add(album_id)
+
+    if not item.album_names:
+        # No album membership at all: the asset belongs in _Unsorted. Give it
+        # a copy there if it does not already have one.
+        desired_album_ids.add(None)
+        if None not in existing_album_ids:
+            place_copy(archive_layout.archive_layout_unsorted_dir(paths, item.captured_at), None)
+
+    for stored in existing_files:
+        if stored.album_id in desired_album_ids:
+            continue
+        # This copy's album is no longer part of the phone's current
+        # membership (or the asset gained its first real album, retiring its
+        # old _Unsorted placeholder): remove it now that a desired copy is
+        # already guaranteed to exist.
+        file_operations_path(paths, stored.path).unlink(missing_ok=True)
+        repository.repository_delete_asset_file(connection, stored.file_id)
+        if stored.album_id is not None:
+            repository.repository_unlink_asset_album(connection, asset_id, stored.album_id)
