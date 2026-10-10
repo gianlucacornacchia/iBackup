@@ -1,23 +1,27 @@
-"""A lightweight, offline trip map for one album/library view.
+"""A real, zoomable trip map for one album/library view.
 
-Plots every located photo in a view using a simple equirectangular projection
-fitted to the bounding box of the points shown, and connects them in capture
-order so the sequence traces the path taken between them ("trip steps"). This
-deliberately never fetches map tiles from the internet or any other online
-service: nothing else in the app makes a network call on the user's behalf,
-and a map feature is not worth breaking that guarantee. To still read like a
-map rather than floating dots, a latitude/longitude graticule, a compass
-arrow, and a distance scale bar are drawn entirely from the plotted
-coordinates themselves — no bundled geographic data, no network.
+Renders located photos on an interactive Leaflet.js map (OpenStreetMap tiles)
+embedded in a ``QWebEngineView``, with full pan/zoom, a trip line connecting
+the photos in capture order, and distinct start/end markers. This is the one
+feature in the app that makes network calls on the user's behalf: it fetches
+map tiles from the OpenStreetMap tile servers on demand, caching them to disk
+(via a dedicated, named ``QWebEngineProfile``) so re-viewing the same area
+later needs the network again only for tiles that were never seen before.
+Leaflet itself (``webassets/leaflet/``) is vendored locally, so only the
+tile imagery requires network access — the map UI and controls work the
+same offline, just without imagery.
 """
 
 from __future__ import annotations
 
-import math
+import json
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QPaintEvent, QPen, QPolygonF
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -30,30 +34,14 @@ from PySide6.QtWidgets import (
 from ..browse.gallery import AssetView
 from .theme import GROUP_GAP, PAGE_MARGIN, theme_font
 
-MARGIN = 28.0
-POINT_RADIUS = 4.0
-ENDPOINT_RADIUS = 6.0
-LINE_COLOR = QColor(90, 140, 220)
-POINT_COLOR = QColor(60, 120, 220)
-POINT_BORDER = QColor(40, 80, 160)
-START_COLOR = QColor(60, 190, 90)
-END_COLOR = QColor(220, 70, 70)
-BACKGROUND_COLOR = QColor(235, 241, 247)
-GRATICULE_COLOR = QColor(200, 213, 224)
-GRATICULE_LABEL_COLOR = QColor(120, 135, 150)
-COMPASS_COLOR = QColor(110, 125, 140)
-SCALE_BAR_COLOR = QColor(80, 95, 110)
-EARTH_RADIUS_KM = 6371.0
-# "Nice" graticule spacings in degrees, from coarse to fine, so a grid line
-# lands on a round number regardless of how tightly the photos cluster.
-GRATICULE_STEPS = (
-    10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
+WEBASSETS_DIR = Path(__file__).parent / "webassets" / "leaflet"
+TILE_PROFILE_NAME = "ibackup-map-tiles"
+TILE_CACHE_MAX_BYTES = 200 * 1024 * 1024  # 200MB of OpenStreetMap tiles.
+TILE_URL_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+TILE_ATTRIBUTION = (
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 )
-# "Nice" scale-bar lengths in kilometres, from coarse to fine.
-SCALE_BAR_STEPS_KM = (
-    2000.0, 1000.0, 500.0, 200.0, 100.0, 50.0, 20.0, 10.0, 5.0, 2.0, 1.0,
-    0.5, 0.2, 0.1, 0.05, 0.02, 0.01,
-)
+USER_AGENT = "ibackup-photo-archive/1.0 (personal desktop app; non-commercial)"
 
 
 @dataclass(frozen=True)
@@ -78,238 +66,109 @@ def mapview_points(assets: list[AssetView]) -> list[MapPoint]:
     ]
 
 
-def mapview_graticule_step(span: float) -> float:
-    """Pick a round degree spacing that draws a handful of grid lines across ``span``.
+@lru_cache(maxsize=1)
+def mapview_leaflet_css() -> str:
+    """Return the vendored Leaflet stylesheet (read once, then cached)."""
+    return (WEBASSETS_DIR / "leaflet.css").read_text(encoding="utf-8")
 
-    span: the latitude or longitude range being displayed, in degrees.
-    Returns the largest step from ``GRATICULE_STEPS`` that still produces at
-    least two grid lines across the span, falling back to the smallest step
-    for a very tight cluster of photos.
+
+@lru_cache(maxsize=1)
+def mapview_leaflet_js() -> str:
+    """Return the vendored Leaflet script (read once, then cached)."""
+    return (WEBASSETS_DIR / "leaflet.js").read_text(encoding="utf-8")
+
+
+def mapview_points_json(points: list[MapPoint]) -> str:
+    """Serialize points to JSON safe for embedding inside an inline ``<script>``.
+
+    points: the locations to plot, in capture order.
+    Returns a JSON array of ``{lat, lon, label}`` objects with any
+    ``</script>``-like substring escaped so it cannot break out of the
+    surrounding script tag.
     """
-    for step in GRATICULE_STEPS:
-        if span / step >= 2:
-            return step
-    return GRATICULE_STEPS[-1]
+    payload = [
+        {"lat": point.latitude, "lon": point.longitude, "label": point.label} for point in points
+    ]
+    return json.dumps(payload).replace("</", "<\\/")
 
 
-def mapview_scale_bar_km(max_km: float) -> float:
-    """Pick a round real-world distance that fits within ``max_km``.
+def mapview_build_html(points: list[MapPoint]) -> str:
+    """Build the full, self-contained HTML page for the trip map.
 
-    max_km: the largest distance the scale bar may span.
-    Returns the largest step from ``SCALE_BAR_STEPS_KM`` that still fits, or
-    the smallest step when even that does not fit (an unrealistically tiny
-    view).
+    points: the locations to plot, in capture order (oldest first).
+    Returns an HTML document with Leaflet inlined (no external file:// or
+    http:// references except the OpenStreetMap tile requests themselves),
+    showing a trip line and start/end-highlighted markers when there are
+    any points, or a world view when there are none.
     """
-    for step in SCALE_BAR_STEPS_KM:
-        if step <= max_km:
-            return step
-    return SCALE_BAR_STEPS_KM[-1]
+    points_json = mapview_points_json(points)
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body, #map {{ height: 100%; margin: 0; padding: 0; }}
+{mapview_leaflet_css()}
+</style>
+<script>
+{mapview_leaflet_js()}
+</script>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var map = L.map('map');
+  L.tileLayer({json.dumps(TILE_URL_TEMPLATE)}, {{
+      maxZoom: 19,
+      attribution: {json.dumps(TILE_ATTRIBUTION)}
+  }}).addTo(map);
+  L.control.scale({{metric: true, imperial: true}}).addTo(map);
+  var points = {points_json};
+  if (points.length > 0) {{
+    var latlngs = points.map(function (p) {{ return [p.lat, p.lon]; }});
+    L.polyline(latlngs, {{color: '#5a8cdc', weight: 3}}).addTo(map);
+    points.forEach(function (p, i) {{
+      var isEndpoint = (i === 0) || (i === points.length - 1);
+      var fill = (i === 0) ? '#3cbe5a' : (i === points.length - 1 ? '#dc4646' : '#3c78dc');
+      L.circleMarker([p.lat, p.lon], {{
+        radius: isEndpoint ? 8 : 5,
+        color: '#28508f',
+        weight: 1,
+        fillColor: fill,
+        fillOpacity: 0.9
+      }}).addTo(map).bindPopup(p.label);
+    }});
+    map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
+  }} else {{
+    map.setView([20, 0], 2);
+  }}
+</script>
+</body>
+</html>
+"""
 
 
-def mapview_haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Return the great-circle distance between two coordinates, in kilometres."""
-    lat1_rad, lat2_rad = math.radians(lat1), math.radians(lat2)
-    delta_lat = math.radians(lat2 - lat1)
-    delta_lon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(delta_lat / 2) ** 2
-        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2
-    )
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
+@lru_cache(maxsize=1)
+def mapview_tile_profile() -> QWebEngineProfile:
+    """Return the app-wide, persistent profile used for every trip map view.
+
+    A single named profile (rather than the WebEngine default one) keeps the
+    on-disk tile cache in its own, clearly labelled storage area, isolated
+    from anything else Qt WebEngine might ever be used for, while persisting
+    across runs so previously-viewed areas redraw without the network.
+    """
+    profile = QWebEngineProfile(TILE_PROFILE_NAME)
+    profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+    profile.setHttpCacheMaximumSize(TILE_CACHE_MAX_BYTES)
+    profile.setHttpUserAgent(USER_AGENT)
+    return profile
 
 
-class TripMapCanvas(QWidget):
-    """Custom-painted canvas: one marker per photo plus a chronological trip line."""
+class WebMapWidget(QWidget):
+    """A caption plus an interactive, zoomable Leaflet map."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Create an empty canvas; points are supplied later via ``mapview_set_points``."""
-        super().__init__(parent)
-        self.points: list[MapPoint] = []
-        self.setMinimumSize(320, 240)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-    def mapview_set_points(self, points: list[MapPoint]) -> None:
-        """Replace the plotted points and repaint.
-
-        points: the locations to plot, in capture order.
-        Returns None.
-        """
-        self.points = points
-        self.update()
-
-    def mapview_bounds(self) -> tuple[float, float, float, float, float]:
-        """Compute the plotted bounding box and its mean-latitude longitude scale.
-
-        Returns ``(min_lat, max_lat, min_lon, max_lon, lon_scale)``. Degenerate
-        single-point spans are widened slightly so a grid/scale can still be
-        drawn around a lone photo instead of collapsing to a point.
-        """
-        lats = [point.latitude for point in self.points]
-        lons = [point.longitude for point in self.points]
-        min_lat, max_lat = min(lats), max(lats)
-        min_lon, max_lon = min(lons), max(lons)
-        if max_lat - min_lat < 1e-4:
-            min_lat -= 0.0005
-            max_lat += 0.0005
-        if max_lon - min_lon < 1e-4:
-            min_lon -= 0.0005
-            max_lon += 0.0005
-        mean_lat_rad = math.radians((min_lat + max_lat) / 2.0)
-        lon_scale = max(math.cos(mean_lat_rad), 0.05)
-        return min_lat, max_lat, min_lon, max_lon, lon_scale
-
-    def mapview_project_point(self, rect: QRectF, latitude: float, longitude: float) -> QPointF:
-        """Project one arbitrary coordinate into ``rect`` using the plotted bounding box.
-
-        rect: the drawable area, already inset by the margin.
-        latitude, longitude: the coordinate to project; need not be one of
-            the plotted points, so graticule lines and scale-bar endpoints
-            share the exact same projection as the photo markers.
-        Returns the corresponding screen point.
-        """
-        min_lat, max_lat, min_lon, max_lon, lon_scale = self.mapview_bounds()
-        lat_span = max(max_lat - min_lat, 1e-6)
-        lon_span = max(max_lon - min_lon, 1e-6)
-        aspect = (lon_span * lon_scale) / lat_span
-        width, height = rect.width(), rect.height()
-        available_aspect = (width / height) if height else aspect
-        if aspect > available_aspect:
-            draw_width = width
-            draw_height = (width / aspect) if aspect else height
-        else:
-            draw_height = height
-            draw_width = height * aspect
-        x_offset = rect.left() + (width - draw_width) / 2.0
-        y_offset = rect.top() + (height - draw_height) / 2.0
-        x_ratio = (longitude - min_lon) / lon_span
-        y_ratio = (latitude - min_lat) / lat_span
-        return QPointF(
-            x_offset + x_ratio * draw_width,
-            # North is up: a higher latitude draws nearer the top.
-            y_offset + (1.0 - y_ratio) * draw_height,
-        )
-
-    def mapview_draw_graticule(self, painter: QPainter, rect: QRectF) -> None:
-        """Draw latitude/longitude grid lines and degree labels across ``rect``.
-
-        painter: the active painter.
-        rect: the drawable area, already inset by the margin.
-        Returns None. Gives the canvas map-like visual structure without any
-        bundled geographic data or network access.
-        """
-        min_lat, max_lat, min_lon, max_lon, _lon_scale = self.mapview_bounds()
-        lat_step = mapview_graticule_step(max_lat - min_lat)
-        lon_step = mapview_graticule_step(max_lon - min_lon)
-        painter.setPen(QPen(GRATICULE_COLOR, 1, Qt.PenStyle.DashLine))
-        font_metrics = QFontMetricsF(painter.font())
-
-        lat_value = math.ceil(min_lat / lat_step) * lat_step
-        while lat_value <= max_lat:
-            start = self.mapview_project_point(rect, lat_value, min_lon)
-            end = self.mapview_project_point(rect, lat_value, max_lon)
-            painter.drawLine(start, end)
-            painter.setPen(QPen(GRATICULE_LABEL_COLOR))
-            painter.drawText(
-                QPointF(rect.left(), start.y() - font_metrics.descent() - 1),
-                f"{lat_value:.4f}°",
-            )
-            painter.setPen(QPen(GRATICULE_COLOR, 1, Qt.PenStyle.DashLine))
-            lat_value += lat_step
-
-        lon_value = math.ceil(min_lon / lon_step) * lon_step
-        while lon_value <= max_lon:
-            start = self.mapview_project_point(rect, min_lat, lon_value)
-            end = self.mapview_project_point(rect, max_lat, lon_value)
-            painter.drawLine(start, end)
-            painter.setPen(QPen(GRATICULE_LABEL_COLOR))
-            painter.drawText(
-                QPointF(start.x() + 2, rect.bottom() + font_metrics.ascent()),
-                f"{lon_value:.4f}°",
-            )
-            painter.setPen(QPen(GRATICULE_COLOR, 1, Qt.PenStyle.DashLine))
-            lon_value += lon_step
-
-    def mapview_draw_compass(self, painter: QPainter, rect: QRectF) -> None:
-        """Draw a simple north-pointing compass arrow in the top-right corner."""
-        size = 16.0
-        x = rect.right() - size
-        y = rect.top() + size
-        arrow = QPolygonF(
-            [
-                QPointF(x, y - size),
-                QPointF(x - size * 0.4, y + size * 0.5),
-                QPointF(x, y + size * 0.2),
-                QPointF(x + size * 0.4, y + size * 0.5),
-            ]
-        )
-        painter.setPen(QPen(COMPASS_COLOR, 1))
-        painter.setBrush(COMPASS_COLOR)
-        painter.drawPolygon(arrow)
-        painter.drawText(QPointF(x - 4, y - size - 4), "N")
-
-    def mapview_draw_scale_bar(self, painter: QPainter, rect: QRectF) -> None:
-        """Draw a distance scale bar in the bottom-left corner.
-
-        painter: the active painter.
-        rect: the drawable area, already inset by the margin.
-        Returns None. The bar's real-world length is derived with the
-        haversine formula from the same bounding box used to project every
-        point, so it stays accurate at any zoom level of the fitted view.
-        """
-        min_lat, max_lat, min_lon, max_lon, _lon_scale = self.mapview_bounds()
-        mean_lat = (min_lat + max_lat) / 2.0
-        full_width_km = mapview_haversine_km(mean_lat, min_lon, mean_lat, max_lon)
-        if full_width_km <= 0:
-            return
-        bar_km = mapview_scale_bar_km(full_width_km * 0.4)
-        bar_lon_span = (max_lon - min_lon) * (bar_km / full_width_km)
-        left_point = self.mapview_project_point(rect, min_lat, min_lon)
-        right_point = self.mapview_project_point(rect, min_lat, min_lon + bar_lon_span)
-        y = rect.bottom() - 6
-        painter.setPen(QPen(SCALE_BAR_COLOR, 2))
-        painter.drawLine(QPointF(left_point.x(), y), QPointF(right_point.x(), y))
-        painter.drawLine(QPointF(left_point.x(), y - 4), QPointF(left_point.x(), y + 4))
-        painter.drawLine(QPointF(right_point.x(), y - 4), QPointF(right_point.x(), y + 4))
-        label = f"{bar_km:g} km" if bar_km >= 1 else f"{bar_km * 1000:g} m"
-        painter.drawText(QPointF(left_point.x(), y - 8), label)
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        """Draw the map background, graticule, trip line and photo markers."""
-        del event
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), BACKGROUND_COLOR)
-        rect = QRectF(self.rect()).adjusted(MARGIN, MARGIN, -MARGIN, -MARGIN)
-        if self.points:
-            self.mapview_draw_graticule(painter, rect)
-            self.mapview_draw_compass(painter, rect)
-            self.mapview_draw_scale_bar(painter, rect)
-        screen_points = [
-            self.mapview_project_point(rect, point.latitude, point.longitude)
-            for point in self.points
-        ]
-        if screen_points:
-            painter.setPen(QPen(LINE_COLOR, 2))
-            for start, end in zip(screen_points, screen_points[1:], strict=False):
-                painter.drawLine(start, end)
-            painter.setPen(QPen(POINT_BORDER, 1))
-            painter.setBrush(POINT_COLOR)
-            for screen_point in screen_points:
-                painter.drawEllipse(screen_point, POINT_RADIUS, POINT_RADIUS)
-            # The trip's start and end are marked distinctly from the rest.
-            painter.setBrush(START_COLOR)
-            painter.drawEllipse(screen_points[0], ENDPOINT_RADIUS, ENDPOINT_RADIUS)
-            if len(screen_points) > 1:
-                painter.setBrush(END_COLOR)
-                painter.drawEllipse(screen_points[-1], ENDPOINT_RADIUS, ENDPOINT_RADIUS)
-        painter.end()
-
-
-class TripMapWidget(QWidget):
-    """A map canvas with a caption describing what is plotted."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        """Build the caption label above the drawing canvas."""
+        """Build the caption label above the embedded map view."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -317,9 +176,12 @@ class TripMapWidget(QWidget):
         self.caption = QLabel("", self)
         self.caption.setFont(theme_font("caption"))
         self.caption.setProperty("role", "secondary")
-        self.canvas = TripMapCanvas(self)
+        self.view = QWebEngineView(self)
+        self.view.setPage(QWebEnginePage(mapview_tile_profile(), self.view))
+        self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.view.setMinimumSize(320, 240)
         layout.addWidget(self.caption)
-        layout.addWidget(self.canvas, 1)
+        layout.addWidget(self.view, 1)
 
     def mapview_set_assets(self, assets: list[AssetView]) -> None:
         """Plot every located asset, oldest first, as the trip path.
@@ -328,13 +190,13 @@ class TripMapWidget(QWidget):
         Returns None.
         """
         points = mapview_points(assets)
-        self.canvas.mapview_set_points(points)
         if not points:
             self.caption.setText("No photos in this view have location data.")
         elif len(points) == 1:
             self.caption.setText("1 located photo (no trip path to draw).")
         else:
             self.caption.setText(f"{len(points)} located photos, plotted in capture order.")
+        self.view.setHtml(mapview_build_html(points), QUrl("https://tile.openstreetmap.org/"))
 
 
 class MapDialog(QDialog):
@@ -353,7 +215,7 @@ class MapDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
         layout.setSpacing(GROUP_GAP)
-        self.widget = TripMapWidget(self)
+        self.widget = WebMapWidget(self)
         self.widget.mapview_set_assets(assets)
         layout.addWidget(self.widget, 1)
         close_button = QPushButton("Close", self)

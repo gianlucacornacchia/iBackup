@@ -30,7 +30,15 @@ a = Analysis(
     [str(PACKAGING_DIR / "run_gui.py")],
     pathex=[str(SRC)],
     binaries=[],
-    datas=[],
+    # Vendored Leaflet (gui/mapview.py's interactive map) is read from disk at
+    # runtime, not imported as Python, so PyInstaller's import analysis can't
+    # find it on its own; it must be listed explicitly.
+    datas=[
+        (
+            str(SRC / "iphone_archive" / "gui" / "webassets"),
+            "iphone_archive/gui/webassets",
+        )
+    ],
     # pymobiledevice3 and its plugin-style dependents (e.g. click command
     # groups) are only reached indirectly through iphone_archive.device at
     # runtime, which static import analysis can miss; keep the whole package.

@@ -53,6 +53,9 @@ ibackup-gui = "iphone_archive.gui.application:application_main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"iphone_archive.gui" = ["webassets/leaflet/*.js", "webassets/leaflet/*.css", "webassets/leaflet/LICENSE"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

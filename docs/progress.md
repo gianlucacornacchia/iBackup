@@ -5,20 +5,27 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-13 (the offline trip map now draws a lat/lon graticule,
-compass and distance scale bar instead of bare floating dots, after feedback
-that the map had "no background")._
+_Last updated: 2026-10-13 (the trip map is now a real, zoomable Leaflet/
+OpenStreetMap map embedded via Qt WebEngine, replacing the offline hand-drawn
+canvas, after the user explicitly asked for a Google-Maps-like experience with
+zoom)._
 
 ## Current status
 
-- **Map now looks like a map, still offline:** `TripMapCanvas` fills the
-  background, then draws a dashed latitude/longitude graticule with degree
-  labels, a north-pointing compass arrow, and a haversine-based distance scale
-  bar, all computed purely from the plotted points' own bounding box — no
-  bundled geographic data and no network tile fetches, consistent with the
-  app never making network calls on the user's behalf. If real map imagery
-  (coastlines/roads/satellite tiles) is wanted later, that is a separate,
-  explicit decision since it requires relaxing the no-network-calls guarantee.
+- **Map is now a real, zoomable OpenStreetMap view:** `gui/mapview.py` embeds
+  a `QWebEngineView` running a self-contained Leaflet.js page (vendored at
+  `gui/webassets/leaflet/`, BSD-2-Clause) with an OpenStreetMap tile layer,
+  full mouse/touch pan and zoom, a trip polyline, and start/end-highlighted
+  circle markers with popups. **This is the first and only feature that makes
+  network calls on the user's behalf** (fetching tiles from
+  `tile.openstreetmap.org`), a deliberate, explicit exception the user asked
+  for after an earlier, more conservative offline-grid attempt was judged not
+  good enough. Tiles are cached to disk via a dedicated, named
+  `QWebEngineProfile` ("ibackup-map-tiles", 200MB disk cache) so re-viewing a
+  previously-seen area needs the network again only for genuinely new tiles.
+  A descriptive User-Agent is set per OpenStreetMap's tile usage policy. If
+  the network is unavailable, the map UI (zoom, pan, markers, trip line)
+  still works, just without tile imagery.
 
 - **Gallery and control sizing:** thumbnail tiles in the main photo grid
   (`TILE_IMAGE`) grew from 120px to 160px, every button's minimum/fixed height
