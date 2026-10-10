@@ -29,6 +29,8 @@ class AssetView:
     archive_state: str
     paths: list[str] = field(default_factory=list)
     file_ids: list[int] = field(default_factory=list)
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 def gallery_row_to_view(
@@ -52,6 +54,8 @@ def gallery_row_to_view(
         archive_state=str(row["archive_state"]),
         paths=paths,
         file_ids=file_ids if file_ids is not None else [],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
     )
 
 
@@ -207,6 +211,54 @@ def gallery_list_recycled(
         [FileLocation.DELETED.value, *parameters],
     ).fetchall()
     return gallery_build_views(connection, rows, FileLocation.DELETED)
+
+
+def gallery_list_located(
+    connection: sqlite3.Connection,
+    album_id: int | None = None,
+    only_unsorted: bool = False,
+    include_deleted: bool = False,
+) -> list[AssetView]:
+    """List every asset carrying GPS coordinates, for a map view.
+
+    connection: an open catalog connection.
+    album_id: restrict to one album, or None for all when ``only_unsorted`` is
+        also False.
+    only_unsorted: when True, restrict to active assets that belong to no
+        album (``album_id`` is ignored).
+    include_deleted: when True, list recycled assets instead of active ones
+        (``album_id``/``only_unsorted`` are ignored, matching the recycle bin's
+        own album-less browsing).
+    Returns matching ``AssetView`` models ordered by capture time, oldest
+    first, so plotting them in order traces a trip as it happened.
+    """
+    location = FileLocation.DELETED if include_deleted else FileLocation.PHOTOS
+    clauses = ["assets.latitude IS NOT NULL", "assets.longitude IS NOT NULL"]
+    parameters: list[object] = []
+    scoped_album_id: int | None = None
+    if include_deleted:
+        clauses.append("assets.id IN (SELECT asset_id FROM asset_files WHERE location = ?)")
+        parameters.append(location.value)
+    else:
+        clauses.append("assets.archive_state = ?")
+        parameters.append(ArchiveState.ACTIVE.value)
+        if only_unsorted:
+            clauses.append("assets.id NOT IN (SELECT asset_id FROM asset_albums)")
+        elif album_id is not None:
+            clauses.append(
+                "assets.id IN "
+                "(SELECT asset_id FROM asset_files WHERE album_id = ? AND location = ?)"
+            )
+            parameters.extend([album_id, FileLocation.PHOTOS.value])
+            scoped_album_id = album_id
+
+    query = (
+        "SELECT * FROM assets WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY COALESCE(captured_at, ''), original_name, id"
+    )
+    rows = connection.execute(query, parameters).fetchall()
+    return gallery_build_views(connection, rows, location, scoped_album_id)
 
 
 def gallery_count_assets(connection: sqlite3.Connection, include_deleted: bool = False) -> int:

@@ -59,6 +59,8 @@ def repository_row_to_asset(row: sqlite3.Row) -> Asset:
         phone_modified_at=row["phone_modified_at"],
         is_offloaded_preview=bool(row["is_offloaded_preview"]),
         offloaded_original_path=row["offloaded_original_path"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
     )
 
 
@@ -75,8 +77,9 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             sha256, size, original_name, media_type, captured_at, imported_at,
             verified_at, first_seen_on_phone_at, last_seen_on_phone_at,
             present_on_phone, archive_state, phone_asset_id, phone_path,
-            phone_size, phone_modified_at, is_offloaded_preview, offloaded_original_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            phone_size, phone_modified_at, is_offloaded_preview, offloaded_original_path,
+            latitude, longitude
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             asset.sha256,
@@ -96,6 +99,8 @@ def repository_insert_asset(connection: sqlite3.Connection, asset: Asset) -> int
             asset.phone_modified_at,
             int(asset.is_offloaded_preview),
             asset.offloaded_original_path,
+            asset.latitude,
+            asset.longitude,
         ),
     )
     return repository_last_row_id(cursor)
@@ -192,6 +197,8 @@ def repository_upgrade_offloaded_asset(
     phone_size: int | None,
     phone_modified_at: str | None,
     verified_at: str | None,
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> None:
     """Replace a preview asset's identity with its full-resolution original.
 
@@ -200,6 +207,7 @@ def repository_upgrade_offloaded_asset(
     sha256, size, original_name, media_type: the real file's content identity.
     phone_path, phone_size, phone_modified_at: the real file's phone identity.
     verified_at: timestamp recorded as both the new verification and import time.
+    latitude, longitude: the real file's GPS coordinates, when known.
     Returns None. Clears ``is_offloaded_preview``/``offloaded_original_path`` so
     the asset is indistinguishable from one imported full-resolution from the
     start; callers are responsible for replacing its stored file(s).
@@ -210,7 +218,8 @@ def repository_upgrade_offloaded_asset(
             sha256 = ?, size = ?, original_name = ?, media_type = ?,
             phone_path = ?, phone_size = ?, phone_modified_at = ?,
             imported_at = ?, verified_at = ?,
-            is_offloaded_preview = 0, offloaded_original_path = NULL
+            is_offloaded_preview = 0, offloaded_original_path = NULL,
+            latitude = ?, longitude = ?
         WHERE id = ?
         """,
         (
@@ -223,6 +232,8 @@ def repository_upgrade_offloaded_asset(
             phone_modified_at,
             verified_at,
             verified_at,
+            latitude,
+            longitude,
             asset_id,
         ),
     )

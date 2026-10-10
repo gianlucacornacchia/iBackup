@@ -191,6 +191,75 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
     return membership
 
 
+def albums_location_query(connection: sqlite3.Connection) -> str | None:
+    """Build the GPS-coordinate query for the schema actually present.
+
+    connection: an open photo-database connection.
+    Returns the SQL text, or None when the asset table has no recognisable
+    latitude/longitude columns. iOS stores "no location" as CoreLocation's
+    invalid coordinate (-180, -180) rather than NULL, so those sentinel rows
+    are excluded alongside genuinely missing values.
+    """
+    asset_table = albums_asset_table(connection)
+    if asset_table is None:
+        return None
+    columns = albums_table_columns(connection, asset_table)
+    if "ZLATITUDE" not in columns or "ZLONGITUDE" not in columns:
+        return None
+
+    path_expr = albums_asset_key_sql(connection, asset_table)
+    return f"""
+        SELECT {path_expr} AS asset_path,
+            asset.ZLATITUDE AS latitude, asset.ZLONGITUDE AS longitude
+        FROM "{asset_table}" AS asset
+        WHERE ({path_expr}) IS NOT NULL
+          AND asset.ZLATITUDE IS NOT NULL AND asset.ZLONGITUDE IS NOT NULL
+          AND asset.ZLATITUDE <> -180.0 AND asset.ZLONGITUDE <> -180.0
+    """
+
+
+def albums_parse_location_data(database_path: Path) -> dict[str, tuple[float, float]]:
+    """Extract GPS coordinates from a phone ``Photos.sqlite`` file.
+
+    database_path: path to a copy of the phone's photo database.
+    Returns a mapping of AFC asset path to ``(latitude, longitude)``; empty
+    when the database is missing, unreadable, or exposes no recognisable
+    location columns, so callers simply treat those assets as having no map
+    position rather than failing the import.
+    """
+    locations: dict[str, tuple[float, float]] = {}
+    if not database_path.is_file():
+        return locations
+
+    try:
+        connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return locations
+
+    try:
+        connection.row_factory = sqlite3.Row
+        query = albums_location_query(connection)
+        if query is None:
+            return locations
+        try:
+            rows = connection.execute(query).fetchall()
+        except sqlite3.Error as error:
+            logger.warning("location query failed: %s", error)
+            return locations
+        for row in rows:
+            try:
+                locations[str(row["asset_path"])] = (
+                    float(row["latitude"]),
+                    float(row["longitude"]),
+                )
+            except (TypeError, ValueError):
+                continue
+    finally:
+        connection.close()
+
+    return locations
+
+
 def albums_list(
     connection: sqlite3.Connection, limit: int | None = None, offset: int = 0
 ) -> list[AlbumSummary]:

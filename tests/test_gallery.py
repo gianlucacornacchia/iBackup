@@ -105,6 +105,62 @@ def test_absolute_path_resolution(archive):
     assert (paths.root / view.paths[0]).is_file()
 
 
+def test_list_located_filters_and_orders_by_capture_time(archive):
+    """Only assets carrying GPS coordinates are returned, oldest capture first."""
+    paths, connection = archive
+    device = FakeDevice(
+        {"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b", "/DCIM/C.HEIC": b"c"},
+        locations={"/DCIM/A.HEIC": (45.07, 7.69), "/DCIM/C.HEIC": (48.85, 2.35)},
+    )
+    device.metadata = {
+        "/DCIM/A.HEIC": {"captured_at": "2024-01-02T00:00:00"},
+        "/DCIM/C.HEIC": {"captured_at": "2024-01-01T00:00:00"},
+    }
+    importer.importer_run(connection, paths, device)
+
+    views = gallery.gallery_list_located(connection)
+
+    assert [view.original_name for view in views] == ["C.HEIC", "A.HEIC"]
+
+
+def test_list_located_scoped_to_album_unsorted_and_recycled(archive):
+    """``album_id``, ``only_unsorted`` and ``include_deleted`` scope the located listing
+    the same way they scope the regular gallery and unsorted/recycled listings."""
+    paths, connection = archive
+    device = FakeDevice(
+        {"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b", "/DCIM/C.HEIC": b"c"},
+        album_map={"/DCIM/A.HEIC": ["Trip"]},
+        locations={
+            "/DCIM/A.HEIC": (45.07, 7.69),
+            "/DCIM/B.HEIC": (1.0, 1.0),
+            "/DCIM/C.HEIC": (2.0, 2.0),
+        },
+    )
+    importer.importer_run(connection, paths, device)
+    album_id = repository.repository_list_albums(connection)[0].album_id
+    recycled_id = next(
+        view.asset_id
+        for view in gallery.gallery_list_assets(connection)
+        if view.original_name == "C.HEIC"
+    )
+    recycle.recycle_move_to_deleted(connection, paths, [recycled_id])
+
+    located_in_album = gallery.gallery_list_located(connection, album_id=album_id)
+    assert [v.original_name for v in located_in_album] == ["A.HEIC"]
+    unsorted_located = gallery.gallery_list_located(connection, only_unsorted=True)
+    assert [v.original_name for v in unsorted_located] == ["B.HEIC"]
+    recycled_located = gallery.gallery_list_located(connection, include_deleted=True)
+    assert [v.original_name for v in recycled_located] == ["C.HEIC"]
+
+
+def test_list_located_excludes_assets_without_coordinates(archive):
+    """Assets with no GPS data never appear in the map listing."""
+    paths, connection = archive
+    importer.importer_run(connection, paths, FakeDevice({"/DCIM/A.HEIC": b"a"}))
+
+    assert gallery.gallery_list_located(connection) == []
+
+
 def test_empty_archive_lists_nothing(archive):
     """An empty archive returns empty listings."""
     paths, connection = archive

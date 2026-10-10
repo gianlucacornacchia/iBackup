@@ -234,6 +234,22 @@ class AppService:
         connection, _ = self.app_service_require()
         return gallery.gallery_list_recycled(connection, limit, offset)
 
+    def app_service_list_locations(
+        self,
+        album_id: int | None = None,
+        only_unsorted: bool = False,
+        include_deleted: bool = False,
+    ) -> list[gallery.AssetView]:
+        """List every located asset in one library/album scope, for a map view.
+
+        album_id: restrict to one album, or None for all.
+        only_unsorted: restrict to assets that belong to no album.
+        include_deleted: list recycled assets instead of active ones.
+        Returns the matching ``AssetView`` models, oldest capture first.
+        """
+        connection, _ = self.app_service_require()
+        return gallery.gallery_list_located(connection, album_id, only_unsorted, include_deleted)
+
     def app_service_scan_phone(self, source: MediaSource) -> None:
         """Refresh present-on-phone state from a metadata-only device scan.
 

@@ -50,12 +50,14 @@ from .dialogs import (
     ReportDialog,
     dialogs_dedup_lines,
 )
+from .mapview import MapDialog
 from .models import ArchiveModels, AssetSelection
+from .navigation import navigation_album_id
 from .operations import OperationDialog, operations_summary, operations_title
 from .previews import MAX_PREVIEW_SIZE, MIN_PREVIEW_SIZE, PreviewLoader
 from .reclaim import ReclaimDialog, reclaim_selected_bytes
 from .settings_dialog import SettingsDialog
-from .shell import ArchiveShell
+from .shell import VIEW_SCOPES, ArchiveShell
 from .theme import ThemeController
 from .viewer import VIEWER_PREVIEW_SIZE, ViewerDialog
 from .worker import WorkerController, WorkerFailure, WorkerResult
@@ -129,6 +131,9 @@ class MainWindow(QMainWindow):
         # Short reads report one line; the entry is removed by the reply, and
         # every accepted request has exactly one terminal outcome.
         self.quiet_requests: dict[int, str] = {}
+        # The title a map request's own dialog should use, since the generic
+        # quiet-reply path only carries the operation name and its result.
+        self.map_titles: dict[int, str] = {}
         # Preference reads and writes are routed separately: they are the only
         # operations that work with no archive open, and their replies drive the
         # settings dialog rather than the status bar alone.
@@ -142,6 +147,7 @@ class MainWindow(QMainWindow):
         self.shell.shell_selection_action.connect(self.main_window_selection_action)
         self.shell.shell_review_action.connect(self.main_window_review_action)
         self.shell.shell_album_action.connect(self.main_window_album_action)
+        self.shell.shell_map_requested.connect(self.main_window_map_action)
         self.shell.shell_open_asset.connect(self.main_window_open_viewer)
         self.shell.shell_set_deleted_default(self.preferences.default_deleted_action)
         self.worker.result_ready.connect(self.main_window_quiet_reply)
@@ -425,6 +431,32 @@ class MainWindow(QMainWindow):
                 f'Marking the album "{self.main_window_album_name(album_id)}". '
                 "Nothing has been deleted."
             )
+
+    def main_window_map_action(self, key: str) -> None:
+        """Fetch the located photos for one view and open its trip map.
+
+        key: the navigation key the Map button was pressed on (an album, or
+            one of the gallery-backed library views).
+        Returns None. The review pages (marks, deleted-on-phone) have no
+        gallery scope and never reach here; the shell only shows the Map
+        button where one applies.
+        """
+        album_id = navigation_album_id(key)
+        if album_id is not None:
+            parameters: dict[str, object] = {"album_id": album_id}
+        elif key == "unsorted":
+            parameters = {"only_unsorted": True}
+        elif key == "recycled":
+            parameters = {"include_deleted": True}
+        elif key in VIEW_SCOPES:
+            parameters = {}
+        else:
+            return
+        page = self.shell.pages.get(key)
+        title = page.title_label.text() if page is not None else key
+        request_id = self.main_window_start_quiet("app_service_list_locations", parameters)
+        if request_id is not None:
+            self.map_titles[request_id] = title
 
     def main_window_confirm_selection(self, key: str, selection: object) -> None:
         """Describe a destructive selection action and ask for confirmation.
@@ -1070,12 +1102,17 @@ class MainWindow(QMainWindow):
         already holds them on screen.
         """
         operation = self.quiet_requests.pop(reply.request_id, None)
+        map_title = self.map_titles.pop(reply.request_id, None)
         if operation is None or isinstance(reply, WorkerFailure):
             return
         if reply.cancelled:
             self.main_window_show_status(f"{operations_title(operation)} was cancelled.")
             return
         self.main_window_show_status(operations_summary(operation, reply.value))
+        if operation == "app_service_list_locations":
+            assets = reply.value if isinstance(reply.value, list) else []
+            MapDialog(map_title or operations_title(operation), assets, self).show()
+            return
         self.main_window_completed(operation, reply.value)
 
     @Slot(str, object)

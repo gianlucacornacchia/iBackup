@@ -62,6 +62,18 @@ def test_album_map_exposed_in_items():
     assert device.device_album_map() == {"/DCIM/IMG.HEIC": ["Trip", "Favorites"]}
 
 
+def test_fake_device_locations_exposed_in_items():
+    """FakeDevice attaches latitude/longitude from its ``locations`` mapping."""
+    device = FakeDevice(
+        {"/DCIM/IMG.HEIC": b"x", "/DCIM/OTHER.HEIC": b"y"},
+        locations={"/DCIM/IMG.HEIC": (45.07, 7.69)},
+    )
+    items = {item.phone_path: item for item in device.device_enumerate()}
+    assert (items["/DCIM/IMG.HEIC"].latitude, items["/DCIM/IMG.HEIC"].longitude) == (45.07, 7.69)
+    assert items["/DCIM/OTHER.HEIC"].latitude is None
+    assert items["/DCIM/OTHER.HEIC"].longitude is None
+
+
 def test_media_type_classification():
     """Extensions map to the expected media types."""
     assert fake_device_media_type("a.MOV") == "video"
@@ -297,7 +309,7 @@ def test_afc_album_fallback_is_only_for_legacy_bare_keys(monkeypatch, paths, alb
     monkeypatch.setattr(device, "afc_device_require_client", lambda: object())
     monkeypatch.setattr(device, "afc_device_walk", lambda client, root: iter(items))
     monkeypatch.setattr(
-        device, "afc_device_photo_metadata", lambda: (albums, {"A.JPG": "capture-time"})
+        device, "afc_device_photo_metadata", lambda: (albums, {"A.JPG": "capture-time"}, {})
     )
     result = list(device.device_enumerate())
     assert [item.album_names for item in result] == expected
@@ -307,6 +319,48 @@ def test_afc_album_fallback_is_only_for_legacy_bare_keys(monkeypatch, paths, alb
     assert device.album_cache == {
         path: names for path, names in zip(paths, expected, strict=True) if names
     }
+
+
+def test_afc_location_fallback_is_only_for_legacy_bare_keys(monkeypatch):
+    """A direct phone-path location match is used as-is; a bare filename is only
+    used as a fallback when the original name is unique across the inventory."""
+    from iphone_archive.device.interface import PhoneItem
+
+    item = PhoneItem(
+        phone_path="/DCIM/101APPLE/A.JPG", original_name="A.JPG", size=1, media_type="image"
+    )
+    device = AfcDevice()
+    monkeypatch.setattr(device, "afc_device_require_client", lambda: object())
+    monkeypatch.setattr(device, "afc_device_walk", lambda client, root: iter([item]))
+    monkeypatch.setattr(
+        device,
+        "afc_device_photo_metadata",
+        lambda: ({}, {}, {"A.JPG": (45.07, 7.69)}),
+    )
+    result = list(device.device_enumerate())
+    assert (result[0].latitude, result[0].longitude) == (45.07, 7.69)
+
+
+def test_afc_location_direct_match_is_preferred_over_bare_fallback(monkeypatch):
+    from iphone_archive.device.interface import PhoneItem
+
+    item = PhoneItem(
+        phone_path="/DCIM/101APPLE/A.JPG", original_name="A.JPG", size=1, media_type="image"
+    )
+    device = AfcDevice()
+    monkeypatch.setattr(device, "afc_device_require_client", lambda: object())
+    monkeypatch.setattr(device, "afc_device_walk", lambda client, root: iter([item]))
+    monkeypatch.setattr(
+        device,
+        "afc_device_photo_metadata",
+        lambda: (
+            {},
+            {},
+            {"/DCIM/101APPLE/A.JPG": (48.85, 2.35), "A.JPG": (45.07, 7.69)},
+        ),
+    )
+    result = list(device.device_enumerate())
+    assert (result[0].latitude, result[0].longitude) == (48.85, 2.35)
 
 
 def test_offloaded_member_cannot_label_unassigned_local_photo(tmp_path, monkeypatch, caplog):

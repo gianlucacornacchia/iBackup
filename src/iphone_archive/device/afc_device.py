@@ -24,7 +24,11 @@ from typing import Any, BinaryIO, cast
 from uuid import uuid4
 
 from ..catalog.models import PhoneItem
-from ..core.albums import albums_asset_key_sql, albums_parse_photos_database
+from ..core.albums import (
+    albums_asset_key_sql,
+    albums_parse_location_data,
+    albums_parse_photos_database,
+)
 from .interface import DeviceError
 
 MEDIA_ROOTS = ("/DCIM",)
@@ -241,7 +245,7 @@ class AfcDevice:
         """Yield metadata for every media file without reading its contents."""
         client = self.afc_device_require_client()
         items = [item for root in MEDIA_ROOTS for item in self.afc_device_walk(client, root)]
-        albums, capture_times = self.afc_device_photo_metadata()
+        albums, capture_times, locations = self.afc_device_photo_metadata()
         counts = Counter(item.original_name for item in items)
 
         self.album_cache = {}
@@ -250,11 +254,16 @@ class AfcDevice:
             # Never strip the directory from a modern metadata key.
             item.album_names = list(albums.get(item.phone_path, []))
             item.captured_at = capture_times.get(item.phone_path)
+            location = locations.get(item.phone_path)
             if counts[item.original_name] == 1:
                 if item.phone_path not in albums:
                     item.album_names = list(albums.get(item.original_name, []))
                 if item.phone_path not in capture_times:
                     item.captured_at = capture_times.get(item.original_name)
+                if location is None:
+                    location = locations.get(item.original_name)
+            if location is not None:
+                item.latitude, item.longitude = location
             if item.album_names:
                 self.album_cache[item.phone_path] = list(item.album_names)
         available = {item.phone_path for item in items}
@@ -270,6 +279,9 @@ class AfcDevice:
                     continue
                 preview.album_names = list(names)
                 preview.captured_at = capture_times.get(path)
+                preview_location = locations.get(path)
+                if preview_location is not None:
+                    preview.latitude, preview.longitude = preview_location
                 previews.append(preview)
                 self.album_cache[preview.phone_path] = list(names)
             self.afc_device_save_preview_cache()
@@ -484,12 +496,15 @@ class AfcDevice:
         list(self.device_enumerate())
         return dict(self.album_cache)
 
-    def afc_device_photo_metadata(self) -> tuple[dict[str, list[str]], dict[str, str]]:
+    def afc_device_photo_metadata(
+        self,
+    ) -> tuple[dict[str, list[str]], dict[str, str], dict[str, tuple[float, float]]]:
         """Copy accessible Photos database/WAL and parse supported schemas best-effort."""
         directory = Path.cwd() / ".ibackup-device-cache" / uuid4().hex
         database_path = directory / "Photos.sqlite"
         membership: dict[str, list[str]] = {}
         capture_times: dict[str, str] = {}
+        locations: dict[str, tuple[float, float]] = {}
         try:
             directory.mkdir(parents=True)
             for suffix in ("", "-wal"):
@@ -501,6 +516,7 @@ class AfcDevice:
                     if not suffix:
                         raise
             membership = albums_parse_photos_database(database_path)
+            locations = albums_parse_location_data(database_path)
             connection = sqlite3.connect(database_path)
             try:
                 for table in ("ZASSET", "ZGENERICASSET"):
@@ -525,4 +541,4 @@ class AfcDevice:
         finally:
             if directory.exists():
                 shutil.rmtree(directory)
-        return membership, capture_times
+        return membership, capture_times, locations

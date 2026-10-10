@@ -322,6 +322,61 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-12 — **Added GPS/map support: every album and library now has a
+  "Map" button showing a trip map of its located photos.** User asked to (1)
+  recap every photo action possible from the iPhone vs. the PC app, and (2)
+  add a map section to each album/library that places photos at their GPS
+  location and shows trip steps from the phone's metadata. Part 1 was
+  answered directly. For part 2, confirmed no location/EXIF/GPS handling
+  existed anywhere in the codebase, so this is a full-stack addition: schema
+  v5 adds `latitude`/`longitude` columns to `assets` (migration mirrors the
+  existing v3/v4 pattern); `Asset`/`PhoneItem` carry the new fields;
+  `core/albums.py` gained `albums_location_query`/`albums_parse_location_
+  data`, which discover `ZLATITUDE`/`ZLONGITUDE` on the phone's `Photos.sqlite`
+  asset table the same way album membership is discovered, filtering out both
+  NULL and CoreLocation's `(-180, -180)` "no location" sentinel;
+  `afc_device_photo_metadata` now returns a third `locations` mapping,
+  reusing the Photos.sqlite copy already made for album/capture-time parsing
+  (no extra AFC round trip), and `device_enumerate` wires it onto each
+  `PhoneItem` with the same legacy-bare-filename fallback already used for
+  albums; `importer.py` propagates `latitude`/`longitude` into both newly
+  archived assets and offloaded-preview upgrades; `browse/gallery.py` gained
+  `gallery_list_located()` (assets with coordinates, ordered oldest-capture-
+  first so plotting them in order traces a trip), exposed through the new
+  `app_service_list_locations()`. On the GUI side, added `gui/mapview.py`
+  with `TripMapCanvas` (custom `QPainter` equirectangular projection fit to
+  the points' bounding box, scaled by `cos(mean_latitude)` to avoid
+  longitude stretching, with a chronological trip line and distinct
+  start/end markers), `TripMapWidget`, and `MapDialog` — deliberately
+  offline/custom-painted rather than tile-based, consistent with the app
+  never making network calls on the user's behalf. Added a "Map" button to
+  `ShellPage`'s header, shown only on gallery-backed views (All photos,
+  Unsorted, Recycle bin, each album); `MainWindow.main_window_map_action`
+  resolves the view to `album_id`/`only_unsorted`/`include_deleted`
+  parameters and opens `MapDialog` with the result. Declared the new
+  operation's surface in `gui/parity.py` and gave it a title/summary in
+  `gui/operations.py` so `tests/test_gui_parity.py` continues to guarantee
+  every service capability is actually reachable from the GUI, not just
+  described. Added tests for the location query/parsing (`test_albums.py`),
+  device-layer wiring including the bare-filename fallback
+  (`test_device.py`), the new gallery listing scoped to album/unsorted/
+  recycled (`test_gallery.py`), the service facade (`test_service.py`), the
+  schema migration and repository round trip (`test_catalog.py`), and
+  importer propagation for new assets and offloaded-preview upgrades
+  (`test_importer.py`). Known limitation: the Marked and Deleted-from-phone
+  review pages have no map yet (different underlying data model — a list of
+  decisions, not a gallery). Known assumption, not yet verified against a
+  real device (the user's iPhone 12 was not connected during this session):
+  GPS columns are read directly from `ZASSET`/`ZGENERICASSET`, not from any
+  `ZADDITIONALASSETATTRIBUTES` join; if a given iOS version stores location
+  only there, the feature will silently show "no location data" rather than
+  erroring, matching the app's existing degrade-gracefully philosophy for
+  unsupported Photos.sqlite schemas. "Trip steps" currently means "located
+  photos in that view, plotted in capture-time order," not automatic
+  multi-trip segmentation. Full suite green aside from the two known
+  pre-existing Windows path-separator flakes in `test_gui_settings.py` and
+  the occasional transient `test_cli.py::test_marks_remove` file-locking
+  flake.
 - 2026-10-11 — **Album placement now reconciles with the phone's current
   membership on every import; moving a photo between albums, or into/out of
   one entirely, no longer leaves a duplicate copy behind.** Follow-up to a

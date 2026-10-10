@@ -47,6 +47,8 @@ class Asset:
     phone_modified_at: str | None = None
     is_offloaded_preview: bool = False
     offloaded_original_path: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclass
@@ -111,3 +113,5 @@ class PhoneItem:
     album_names: list[str] = field(default_factory=list)
     is_offloaded_preview: bool = False
     offloaded_original_path: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None

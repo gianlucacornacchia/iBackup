@@ -25,6 +25,7 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
@@ -108,6 +109,8 @@ VIEW_ACTIONS: dict[str, tuple[str, ...]] = {
 class ShellPage(QWidget):
     """One content page: a Settings-style header above a body placeholder."""
 
+    map_requested = Signal()
+
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         """Build a page whose body is filled in by later steps.
 
@@ -121,6 +124,17 @@ class ShellPage(QWidget):
         layout.setSpacing(GROUP_GAP)
         self.title_label = QLabel(title, self)
         self.title_label.setFont(theme_font("title"))
+        # Hidden for views the asset model does not back (the review pages):
+        # a trip map needs located photos in capture order, which only a
+        # gallery view currently provides.
+        self.map_button = QPushButton("Map", self)
+        self.map_button.setVisible(False)
+        self.map_button.clicked.connect(self.map_requested.emit)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.addWidget(self.title_label)
+        header_row.addStretch(1)
+        header_row.addWidget(self.map_button)
         self.subtitle_label = QLabel("", self)
         self.subtitle_label.setFont(theme_font("caption"))
         self.subtitle_label.setProperty("role", "secondary")
@@ -129,7 +143,7 @@ class ShellPage(QWidget):
         self.body_label.setProperty("role", "secondary")
         self.body_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.body_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.title_label)
+        layout.addLayout(header_row)
         layout.addWidget(self.subtitle_label)
         layout.addWidget(self.body_label, 1)
         self.body_layout = layout
@@ -188,6 +202,7 @@ class ArchiveShell(QWidget):
     shell_open_asset = Signal(int)
     shell_review_action = Signal(str, str)
     shell_album_action = Signal(int, str)
+    shell_map_requested = Signal(str)
 
     def __init__(
         self,
@@ -290,6 +305,7 @@ class ArchiveShell(QWidget):
         page = self.pages.get(key)
         if page is None:
             page = ShellPage(title, self)
+            page.map_requested.connect(partial(self.shell_map_requested.emit, key))
             self.pages[key] = page
             self.stack.addWidget(page)
         return page
@@ -340,6 +356,9 @@ class ArchiveShell(QWidget):
         if page is not None:
             page.shell_page_set_header(page.title_label.text(), self.shell_subtitle(key))
             actions = self.shell_view_actions(key)
+            # Only gallery-backed views have located photos in capture order;
+            # the review pages (marks, deleted-on-phone) do not.
+            page.map_button.setVisible(self.archive_open and actions is not None)
             review = self.reviews.get(key)
             if review is not None:
                 # A report page owns its body for the window's lifetime; only

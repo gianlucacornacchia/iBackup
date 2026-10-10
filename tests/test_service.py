@@ -69,6 +69,20 @@ def test_browse_albums_and_assets(service):
     assert len(service.app_service_list_assets(album_id=album_list[0].album_id)) == 1
 
 
+def test_list_locations_through_facade(service):
+    """Located-photo browsing is available from the facade, for the map view."""
+    device = FakeDevice(
+        {"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b"},
+        locations={"/DCIM/A.HEIC": (45.07, 7.69)},
+    )
+    service.app_service_import(device)
+
+    located = service.app_service_list_locations()
+
+    assert [view.original_name for view in located] == ["A.HEIC"]
+    assert (located[0].latitude, located[0].longitude) == (45.07, 7.69)
+
+
 def test_deleted_on_phone_workflow(service):
     """Scan, review, and recycle the deleted-from-phone assets."""
     service.app_service_import(FakeDevice({"/DCIM/A.HEIC": b"a", "/DCIM/B.HEIC": b"b"}))

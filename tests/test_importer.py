@@ -757,6 +757,8 @@ class ScriptedPreviewThenOriginalDevice:
                 is_offloaded_preview=True,
                 offloaded_original_path="/DCIM/100APPLE/IMG_0001.HEIC",
                 album_names=["Vacation"],
+                latitude=45.07,
+                longitude=7.69,
             )
         else:
             yield PhoneItem(
@@ -765,6 +767,8 @@ class ScriptedPreviewThenOriginalDevice:
                 original_name="IMG_0001.HEIC",
                 media_type="image",
                 album_names=["Vacation"],
+                latitude=48.85,
+                longitude=2.35,
             )
 
     def device_open(self, phone_path: str):
@@ -816,3 +820,36 @@ def test_offloaded_preview_upgraded_in_place_once_original_reappears(archive):
     final_files = repository.repository_list_asset_files(connection, asset_id)
     assert len(final_files) == 1
     assert (paths.root / final_files[0].path).read_bytes() == b"full-resolution-original"
+
+
+def test_new_asset_stores_location_from_phone_item(archive):
+    """A phone item's GPS coordinates are copied onto the new catalog asset."""
+    paths, connection = archive
+    device = FakeDevice(
+        {"/DCIM/A.HEIC": b"a"}, locations={"/DCIM/A.HEIC": (45.07, 7.69)}
+    )
+
+    importer.importer_run(connection, paths, device)
+
+    asset = repository.repository_get_asset(
+        connection, repository.repository_all_asset_files(connection)[0].asset_id
+    )
+    assert (asset.latitude, asset.longitude) == (45.07, 7.69)
+
+
+def test_offloaded_preview_upgrade_replaces_location(archive):
+    """Upgrading an offloaded preview replaces its coordinates with the original's."""
+    paths, connection = archive
+    device = ScriptedPreviewThenOriginalDevice()
+
+    importer.importer_run(connection, paths, device)
+    asset_id = connection.execute("SELECT id FROM assets").fetchone()["id"]
+    preview_asset = repository.repository_get_asset(connection, asset_id)
+    assert (preview_asset.latitude, preview_asset.longitude) == (45.07, 7.69)
+
+    device.phase = "original"
+    importer.importer_run(connection, paths, device)
+
+    upgraded_asset = repository.repository_get_asset(connection, asset_id)
+    assert (upgraded_asset.latitude, upgraded_asset.longitude) == (48.85, 2.35)
+

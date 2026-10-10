@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 # Current catalog schema version. Bump when adding a migration step.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA_STATEMENTS = [
     """
@@ -40,7 +40,9 @@ SCHEMA_STATEMENTS = [
         phone_size INTEGER,
         phone_modified_at TEXT,
         is_offloaded_preview INTEGER NOT NULL DEFAULT 0,
-        offloaded_original_path TEXT
+        offloaded_original_path TEXT,
+        latitude REAL,
+        longitude REAL
     )
     """,
     """
@@ -209,4 +211,15 @@ def database_apply_migrations(connection: sqlite3.Connection, from_version: int)
         }
         if "offloaded_original_path" not in existing_columns:
             connection.execute("ALTER TABLE assets ADD COLUMN offloaded_original_path TEXT")
+    if from_version < 5:
+        # V4 archives have no GPS coordinates recorded. The columns may
+        # already exist if SCHEMA_STATEMENTS created a fresh table before
+        # this ran.
+        existing_columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(assets)").fetchall()
+        }
+        if "latitude" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN latitude REAL")
+        if "longitude" not in existing_columns:
+            connection.execute("ALTER TABLE assets ADD COLUMN longitude REAL")
     database_write_version(connection, SCHEMA_VERSION)

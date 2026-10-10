@@ -23,16 +23,19 @@ class FakeDevice:
         items: dict[str, bytes] | None = None,
         udid: str = "FAKE-UDID",
         album_map: dict[str, list[str]] | None = None,
+        locations: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         """Create a fake device.
 
         items: mapping of phone path to file content.
         udid: the identifier reported for this device.
         album_map: optional mapping of phone path to album names.
+        locations: optional mapping of phone path to ``(latitude, longitude)``.
         """
         self.items: dict[str, bytes] = dict(items or {})
         self.udid = udid
         self.albums: dict[str, list[str]] = dict(album_map or {})
+        self.locations: dict[str, tuple[float, float]] = dict(locations or {})
         self.deleted_paths: list[str] = []
         self.metadata: dict[str, dict[str, str]] = {}
 
@@ -45,6 +48,7 @@ class FakeDevice:
         for phone_path, content in sorted(self.items.items()):
             extra = self.metadata.get(phone_path, {})
             name = phone_path.rsplit("/", 1)[-1]
+            location = self.locations.get(phone_path)
             yield PhoneItem(
                 phone_path=phone_path,
                 size=len(content),
@@ -54,6 +58,8 @@ class FakeDevice:
                 modified_at=extra.get("modified_at"),
                 captured_at=extra.get("captured_at"),
                 album_names=list(self.albums.get(phone_path, [])),
+                latitude=location[0] if location is not None else None,
+                longitude=location[1] if location is not None else None,
             )
 
     def device_open(self, phone_path: str) -> BinaryIO:

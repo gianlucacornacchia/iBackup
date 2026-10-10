@@ -99,6 +99,7 @@ OPERATION_TITLES = {
     "app_service_update_settings": "Saving settings",
     "app_service_reset_settings": "Resetting settings",
     "app_service_forget_archive": "Forgetting an archive",
+    "app_service_list_locations": "Finding located photos",
 }
 
 
@@ -333,6 +334,18 @@ def operations_marks_summary(value: object) -> str:
     return f"{count} marked for deletion. Nothing has been deleted."
 
 
+def operations_locations_summary(value: object) -> str:
+    """Summarise the located-photo listing fetched for the trip map.
+
+    value: the worker's returned list of ``AssetView`` rows carrying GPS data.
+    Returns the summary line.
+    """
+    count = len(value) if isinstance(value, list) else 0
+    if not count:
+        return "No located photos found for the map."
+    return f"{count} located photos found for the map."
+
+
 SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_import": operations_import_summary,
     "app_service_verify": operations_verify_summary,
@@ -348,6 +361,7 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_commit_marks": operations_recycle_summary,
     "app_service_reclaim": operations_reclaim_summary,
     "app_service_list_marks": operations_marks_summary,
+    "app_service_list_locations": operations_locations_summary,
     "app_service_mark": lambda value: "Marked for delete. Nothing has been deleted.",
     "app_service_mark_many": lambda value: (
         f"Marked {len(value) if isinstance(value, list) else 0} items. Nothing has been deleted."

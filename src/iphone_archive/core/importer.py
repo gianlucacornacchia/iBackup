@@ -421,6 +421,8 @@ def importer_process_item(
         phone_modified_at=item.modified_at,
         is_offloaded_preview=item.is_offloaded_preview,
         offloaded_original_path=item.offloaded_original_path,
+        latitude=item.latitude,
+        longitude=item.longitude,
     )
     asset_id = repository.repository_insert_asset(connection, asset)
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)
@@ -488,6 +490,8 @@ def importer_upgrade_offloaded_preview(
         phone_size=item.size,
         phone_modified_at=item.modified_at,
         verified_at=importer_now(),
+        latitude=item.latitude,
+        longitude=item.longitude,
     )
     repository.repository_record_source(connection, asset_id, source.device_udid(), item)
 

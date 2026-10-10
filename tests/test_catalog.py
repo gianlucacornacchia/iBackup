@@ -125,6 +125,36 @@ def test_old_catalog_upgrades(tmp_path):
     reopened.close()
 
 
+def test_v5_migration_adds_latitude_longitude_columns(tmp_path):
+    """A pre-v5 catalog gains the GPS columns without touching existing rows."""
+    path = tmp_path / ".ibackup" / "catalog.sqlite"
+    connection = database.database_connect(path)
+    database.database_initialize(connection)
+    asset_id = repository.repository_insert_asset(connection, make_asset())
+    database.database_write_version(connection, 4)
+    connection.commit()
+    connection.close()
+
+    reopened = database.database_connect(path)
+    database.database_initialize(reopened)
+    assert database.database_read_version(reopened) == database.SCHEMA_VERSION
+    columns = {row["name"] for row in reopened.execute("PRAGMA table_info(assets)")}
+    assert {"latitude", "longitude"} <= columns
+    asset = repository.repository_get_asset(reopened, asset_id)
+    assert asset.latitude is None
+    assert asset.longitude is None
+    reopened.close()
+
+
+def test_asset_latitude_longitude_round_trip(catalog_connection):
+    """GPS coordinates survive an insert/read round trip through the repository."""
+    asset_id = repository.repository_insert_asset(
+        catalog_connection, make_asset(latitude=45.07, longitude=7.69)
+    )
+    asset = repository.repository_get_asset(catalog_connection, asset_id)
+    assert (asset.latitude, asset.longitude) == (45.07, 7.69)
+
+
 def test_v1_migration_does_not_invent_device_provenance(catalog_connection):
     """Old content remains indexed, but legacy identities cannot authorize a fast skip."""
     connection = catalog_connection

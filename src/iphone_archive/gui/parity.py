@@ -51,6 +51,10 @@ ACTION_SURFACES = {
     "app_service_restore": 'Recycle bin and viewer: "Restore"',
     "app_service_purge": 'Selection bar, viewer and phone report: "Purge..."',
     "app_service_settings_path": 'Settings: "Show settings file"',
+    "app_service_list_locations": (
+        'Page header "Map" button, on every gallery-backed view (All photos, '
+        "Unsorted, Recycle bin, and each album)"
+    ),
 }
 
 # Capabilities the GUI covers by another route than calling the method. Each one

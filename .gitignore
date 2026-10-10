@@ -19,6 +19,7 @@ dist/
 
 # Archive internals (never version-control a user's archive)
 .ibackup/
+.ibackup-device-cache/
 
 # Stray tool report dumps
 report.*.json

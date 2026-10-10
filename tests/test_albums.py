@@ -282,6 +282,72 @@ def test_unreadable_database_returns_empty(tmp_path):
     assert albums.albums_parse_photos_database(bogus) == {}
 
 
+def make_photos_db_with_location(path, rows):
+    """Build a Photos.sqlite whose ZASSET table carries GPS columns.
+
+    path: destination file.
+    rows: tuples of (asset_pk, file_name, latitude, longitude).
+    """
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE ZASSET (
+            Z_PK INTEGER PRIMARY KEY,
+            ZFILENAME TEXT,
+            ZLATITUDE REAL,
+            ZLONGITUDE REAL
+        );
+        """
+    )
+    for asset_pk, file_name, latitude, longitude in rows:
+        connection.execute(
+            "INSERT INTO ZASSET(Z_PK, ZFILENAME, ZLATITUDE, ZLONGITUDE) VALUES (?, ?, ?, ?)",
+            (asset_pk, file_name, latitude, longitude),
+        )
+    connection.commit()
+    connection.close()
+
+
+def test_parses_gps_coordinates(tmp_path):
+    """A photo database exposing ZLATITUDE/ZLONGITUDE yields a location map."""
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db_with_location(
+        database_path,
+        [(10, "IMG_0001.HEIC", 45.07, 7.69), (11, "IMG_0002.HEIC", 48.85, 2.35)],
+    )
+
+    locations = albums.albums_parse_location_data(database_path)
+
+    assert locations == {
+        "IMG_0001.HEIC": (45.07, 7.69),
+        "IMG_0002.HEIC": (48.85, 2.35),
+    }
+
+
+def test_invalid_sentinel_coordinates_are_excluded(tmp_path):
+    """CoreLocation's (-180, -180) "no location" sentinel is not reported as a position."""
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db_with_location(
+        database_path,
+        [(10, "IMG_0001.HEIC", -180.0, -180.0), (11, "IMG_0002.HEIC", None, None)],
+    )
+
+    assert albums.albums_parse_location_data(database_path) == {}
+
+
+def test_schema_without_gps_columns_returns_empty_locations(tmp_path):
+    """An asset table with no latitude/longitude columns degrades gracefully."""
+    database_path = tmp_path / "Photos.sqlite"
+    make_photos_db(database_path, [(1, "Trip", 10, "IMG_0001.HEIC")])
+
+    assert albums.albums_parse_location_data(database_path) == {}
+
+
+def test_missing_database_returns_empty_locations(tmp_path):
+    """A missing photo database degrades gracefully to no location data."""
+    assert albums.albums_parse_location_data(tmp_path / "nope.sqlite") == {}
+
+
 def test_album_listing_counts_assets(archive):
     """Albums are listed with their archived asset counts."""
     paths, connection = archive
