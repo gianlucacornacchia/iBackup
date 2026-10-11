@@ -31,7 +31,7 @@ from ..catalog.sidecar import sidecar_from_catalog, sidecar_path_for, sidecar_wr
 from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
 from ..service.progress import ProgressHandle
-from . import archive_layout, exif, hashing, name_safety
+from . import archive_layout, exif, hashing
 from .file_operations import file_operations_path, file_operations_write_journal
 
 OPERATION_NAME = "import"
@@ -636,6 +636,23 @@ def importer_update_sidecar(
     sidecar_write(paths.sidecars_dir, data)
 
 
+def importer_album_targets(item: PhoneItem) -> list[tuple[str, str]]:
+    """Return every album an item belongs to, as ``(name, kind)`` pairs.
+
+    item: the phone item carrying album membership.
+    Returns the user's own albums first (so the primary copy keeps its old
+    place), then iCloud Shared Albums, without duplicates.
+    """
+    targets: list[tuple[str, str]] = []
+    for name in item.album_names:
+        if (name, "user") not in targets:
+            targets.append((name, "user"))
+    for name in item.shared_album_names:
+        if (name, archive_layout.ALBUM_KIND_SHARED) not in targets:
+            targets.append((name, archive_layout.ALBUM_KIND_SHARED))
+    return targets
+
+
 def importer_target_dir(paths: ArchivePaths, item: PhoneItem) -> Path:
     """Return the folder the item's primary copy belongs in.
 
@@ -643,8 +660,10 @@ def importer_target_dir(paths: ArchivePaths, item: PhoneItem) -> Path:
     item: the phone item being imported.
     Returns the first album's folder, or a dated _Unsorted folder.
     """
-    if item.album_names:
-        target = archive_layout.archive_layout_album_dir(paths, item.album_names[0])
+    targets = importer_album_targets(item)
+    if targets:
+        name, kind = targets[0]
+        target = archive_layout.archive_layout_album_dir(paths, name, kind)
     else:
         target = archive_layout.archive_layout_unsorted_dir(paths, item.captured_at)
     return target
@@ -655,17 +674,19 @@ def importer_album_id(connection: sqlite3.Connection, item: PhoneItem, index: in
 
     connection: an open catalog connection.
     item: the phone item whose album to resolve.
-    index: position within the item's album list.
+    index: position within ``importer_album_targets(item)``.
     Returns the album id, or None when the item has no album at that position.
     """
     result: int | None = None
-    if len(item.album_names) > index:
-        name = item.album_names[index]
+    targets = importer_album_targets(item)
+    if len(targets) > index:
+        name, kind = targets[index]
         result = repository.repository_upsert_album(
             connection,
             Album(
                 name=name,
-                safe_name=name_safety.name_safety_sanitize_component(name, fallback="Album"),
+                safe_name=archive_layout.archive_layout_album_safe_name(name, kind),
+                kind=kind,
             ),
         )
     return result
@@ -689,11 +710,12 @@ def importer_place_extra_albums(
     link_mode: ``copy`` or ``hardlink``.
     Returns None.
     """
-    for index in range(1, len(item.album_names)):
+    targets = importer_album_targets(item)
+    for index in range(1, len(targets)):
         album_id = importer_album_id(connection, item, index)
         if album_id is None:
             continue
-        target_dir = archive_layout.archive_layout_album_dir(paths, item.album_names[index])
+        target_dir = archive_layout.archive_layout_album_dir(paths, *targets[index])
         duplicate = archive_layout.archive_layout_duplicate_file(
             source_path, target_dir, link_mode=link_mode
         )
@@ -771,16 +793,17 @@ def importer_sync_albums(
             repository.repository_link_asset_album(connection, asset_id, album_id)
 
     desired_album_ids: set[int | None] = set()
-    for index in range(len(item.album_names)):
+    targets = importer_album_targets(item)
+    for index in range(len(targets)):
         album_id = importer_album_id(connection, item, index)
         desired_album_ids.add(album_id)
         if album_id is None or album_id in existing_album_ids:
             continue
-        target_dir = archive_layout.archive_layout_album_dir(paths, item.album_names[index])
+        target_dir = archive_layout.archive_layout_album_dir(paths, *targets[index])
         place_copy(target_dir, album_id)
         existing_album_ids.add(album_id)
 
-    if not item.album_names:
+    if not targets:
         # No album membership at all: the asset belongs in _Unsorted. Give it
         # a copy there if it does not already have one.
         desired_album_ids.add(None)

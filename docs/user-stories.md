@@ -118,6 +118,41 @@ Acceptance criteria:
   placed in a folder named after each album it belongs to.
 - Given album data is unavailable, then assets are placed under
   `_Unsorted/YYYY/MM/` and the import still succeeds.
+- Given a photo was moved between albums (or into/out of every album) on the
+  phone, when I import again, then its `Photos/` copies match its current
+  albums and no stale copy remains; `Deleted/` copies are untouched and the
+  asset never drops below one copy. _(Added 2026-10-10, `d7eea11`.)_
+- Given an album member whose original is offloaded from the phone, when I
+  import, then the phone's cached low-resolution preview is archived in that
+  album, marked `(offloaded preview)`; and when the original later returns to
+  the phone, the next import replaces the preview in place rather than adding
+  a duplicate. _(Added 2026-10-09, `22fa9ae`/`30db3e2`.)_
+- Given two photos share a filename in different phone folders, then album
+  membership is matched by exact folder and filename and never transferred
+  between them. _(Added 2026-09-16, `c0f2f91`.)_
+
+### US-D1b — Archive iCloud Shared Albums
+**As** a user, **I want** the shared albums on my phone archived too **so that**
+photos other people shared with me are preserved alongside my own.
+
+Acceptance criteria:
+- Given a shared album whose media is cached on the phone, when I import, then
+  each member is stored under `Photos/_Shared Albums/<album>/` and the album is
+  recorded with kind `shared`, never merged with a same-named album of mine.
+- Given a photo of mine that is also in a shared album, then I keep my
+  original and the shared album's copy as separate files.
+- Given a member that is not cached on the phone, then it is skipped and the
+  log tells me to open the album in Photos and import again; nothing is
+  imported from the shared cache that the photo database does not name.
+- Given the shared-album cache or photo database cannot be read, then the rest
+  of the import succeeds and no shared media lands in `_Unsorted`.
+- Given shared albums exist, then the GUI lists them in a separate "Shared
+  albums" section, `ibackup albums` tags them `(shared)`, and
+  `ibackup albums --shared` lists only them.
+- Given a reclaim run, then shared-album cache files are never offered for
+  deletion from the phone.
+- Given any of this, then no iCloud sign-in or network access is used.
+_(Added 2026-10-11; pending real-iPhone validation.)_
 
 ### US-D2 — Browse by album without the app
 **As** a user, **I want** to open album folders directly **so that** I don't

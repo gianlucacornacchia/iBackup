@@ -21,6 +21,7 @@ GLYPH_NAMES = frozenset(
     {
         "photos",
         "album",
+        "shared-album",
         "unsorted",
         "phone",
         "recycle",
@@ -69,6 +70,12 @@ def icons_draw(painter: QPainter, rect: QRect, glyph: str, color: QColor) -> Non
     elif glyph in {"album", "folder"}:
         painter.drawRoundedRect(QRect(left, top + 2, box.width() - 3, box.height() - 2), 2, 2)
         painter.drawLine(left + 3, top, right, top)
+    elif glyph == "shared-album":
+        # The album outline with a small person badge: "shared with people".
+        painter.drawRoundedRect(QRect(left, top + 2, box.width() - 3, box.height() - 2), 2, 2)
+        painter.drawLine(left + 3, top, right, top)
+        painter.drawEllipse(QPoint(middle_x, middle_y - 1), 2, 2)
+        painter.drawArc(QRect(middle_x - 4, middle_y + 2, 8, 6), 0, 180 * 16)
     elif glyph == "unsorted":
         painter.drawRoundedRect(box, 2, 2)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, "?")

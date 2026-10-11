@@ -111,6 +111,7 @@ class AlbumRole(IntEnum):
     NAME = Qt.ItemDataRole.UserRole + 2
     SAFE_NAME = Qt.ItemDataRole.UserRole + 3
     ASSET_COUNT = Qt.ItemDataRole.UserRole + 4
+    KIND = Qt.ItemDataRole.UserRole + 5
 
 
 ASSET_FIELDS = {int(role): role.name.lower() for role in AssetRole}
@@ -549,7 +550,8 @@ class AlbumModel(PagedListModel[AlbumSummary]):
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.AccessibleTextRole):
             return row.name
         if role == Qt.ItemDataRole.ToolTipRole:
-            return f"{row.name}: {row.asset_count} assets"
+            shared = " (iCloud Shared Album)" if row.kind == "shared" else ""
+            return f"{row.name}{shared}: {row.asset_count} assets"
         if role in ALBUM_FIELDS:
             return getattr(row, ALBUM_FIELDS[role])
         return None

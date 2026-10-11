@@ -62,3 +62,16 @@ Still unvalidated: deletion from the phone. `AfcDevice.device_delete` refuses
 unconditionally, so `reclaim` currently reports candidates and then fails
 without freeing anything. Raw AFC unlink under `/DCIM` does not update the
 Photos library, which would leave the phone's database inconsistent.
+
+## Addendum (2026-10-11): iCloud Shared Albums
+
+The decision is unchanged; the AFC read scope grows. Besides user albums
+(`ZKIND = 2`), the adapter now reads iCloud Shared Albums (`ZKIND = 1505`)
+from the same `Photos.sqlite` copy through the same runtime-discovered join,
+and walks `/PhotoData/PhotoCloudSharingData` (the phone's local shared-album
+cache) for the members that database names. This is still local USB/AFC
+access: no iCloud login or network, and only media iOS has already cached can
+be imported. `reclaim` never offers files from that cache. **Not yet validated
+on hardware:** `ZKIND = 1505` and the `PhotoCloudSharingData` `ZDIRECTORY`
+layout follow known iOS conventions and need a real-iPhone check. See
+`specifications.md` §12.1.

@@ -12,6 +12,12 @@ zoom)._
 
 ## Current status
 
+- **iCloud Shared Albums (2026-10-11):** imported from the phone's local
+  shared cache into `Photos/_Shared Albums/<name>/`, listed separately in the
+  GUI and by `ibackup albums --shared`, excluded from reclaim. Offline tests
+  only; a real-iPhone check of `ZKIND = 1505` and the `PhotoCloudSharingData`
+  layout is the next validation step.
+
 - **Map is now a real, zoomable OpenStreetMap view:** `gui/mapview.py` embeds
   a `QWebEngineView` running a self-contained Leaflet.js page (vendored at
   `gui/webassets/leaflet/`, BSD-2-Clause) with an OpenStreetMap tile layer,
@@ -340,6 +346,50 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-11 — **iCloud Shared Albums.** `Photos.sqlite` albums with
+  `ZKIND = 1505` (`core/albums.py` `SHARED_ALBUM_KIND`) are read through the
+  same runtime-discovered join as user albums (new `kind` parameter on
+  `albums_membership_query`/`albums_parse_photos_database`;
+  `albums_parse_shared_albums()` keeps only keys under
+  `/PhotoData/PhotoCloudSharingData`). Schemas without `ZKIND` yield no shared
+  albums; user-album parsing (`ZKIND = 2`) is unchanged. `AfcDevice` parses
+  shared membership from the same database copy, then
+  `afc_device_shared_items()` walks the sharing cache only when membership
+  exists and yields only named members, carried in the new
+  `PhoneItem.shared_album_names`; walk failures log "shared albums
+  unavailable", uncached members are skipped with an info log, and there is
+  no preview fallback. Shared albums are stored in
+  `Photos/_Shared Albums/<name>/` with `albums.kind = 'shared'` and
+  `safe_name = '_Shared Albums/<name>'`, so they never merge with a same-named
+  user album; no schema change (`SCHEMA_VERSION` still 6).
+  `importer_album_targets()` puts user albums first (primary copy) then
+  shared albums; extra copies and reconciliation treat both alike. Reclaim
+  never offers shared-cache files; move-to-album prefers the user album on a
+  name clash. `AlbumSummary.kind`; `ibackup albums` tags `(shared)` and
+  `ibackup albums --shared` lists only them; the GUI lists a separate
+  "Shared albums" navigation section with a `shared-album` glyph and an
+  "(iCloud Shared Album)" tooltip; `gui/parity.py` names both sections. New
+  `tests/test_shared_albums.py` (11 tests) and
+  `test_gui_shell.py::test_navigation_lists_shared_albums_in_their_own_section`;
+  those 12 were re-run for this docs update and pass. Reported full-suite
+  result: all pass except the two pre-existing Windows path-separator
+  failures in `tests/test_gui_settings.py`
+  (`test_reset_asks_once_and_forget_names_the_archive`,
+  `test_cache_and_folder_buttons_need_something_to_act_on`, also failing at
+  HEAD); coverage 90%. **Not validated on a real iPhone:** `ZKIND = 1505` and
+  the `PhotoCloudSharingData` `ZDIRECTORY` layout follow known iOS
+  conventions and the existing `tests/test_albums.py` docstring. The album
+  owner is not captured. Only media already cached on the phone can be
+  imported; still local USB, no iCloud login or network. Docs updated:
+  `README.md`, `readme-user.md`, `specifications.md` (§6, §8, §9, §12.1,
+  §13, §15, §16.2), `structure.md`, `unit-tests.md`, `user-stories.md`
+  (US-D1b), `todos.md`, `plan.md`, `ui-sketch/README.md` (§1 note, §8
+  parity rows), ADR-0008 addendum and ADR index.
+  **Open items (pre-existing at HEAD, not caused by this feature):**
+  `ruff format --check` flags `src/iphone_archive/gui/review.py`,
+  `src/iphone_archive/gui/shell.py` and `tests/test_importer.py`;
+  `mypy --strict` reports 2 errors in `src/iphone_archive/core/exif.py`; the
+  two `test_gui_settings.py` failures above.
 - 2026-10-11 — **Docs reconciled with commits since 2026-09-16** (`7c7b477`
   through `aa0086b`), checked against the source at HEAD; documentation only,
   no code or tests changed. Updated: root `README.md` (status, post-Phase-2

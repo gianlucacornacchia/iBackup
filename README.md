@@ -35,6 +35,40 @@ apart. Windows packaging (step 12) is in place: `packaging/ibackup.spec` freezes
 the GUI into `dist/ibackup-gui/ibackup-gui.exe`, which CI builds and launches as
 a smoke test. A signed, downloadable release is still a later milestone.
 
+Since then (commits of 2026-09-16 to 2026-10-10, plus the 2026-10-11 shared
+albums work; see `docs/progress.md`):
+
+- **Exact album paths.** Album membership and capture dates are keyed by the
+  phone's `ZDIRECTORY` + filename; a reused filename never assigns albums.
+- **Offloaded previews.** Album members whose originals were offloaded
+  ("Optimize iPhone Storage") are imported from the phone's cached
+  `/PhotoData/Thumbnails/V2` JPEG, named `… (offloaded preview).jpg` and
+  flagged in the catalog. When the original returns to the phone, the next
+  import upgrades that asset in place (`upgraded` count) instead of adding a
+  duplicate. Resolved preview paths are cached per device in
+  `.ibackup-device-cache/offloaded-preview-cache.json`.
+- **Album reconciliation.** Each import makes an asset's `Photos/` copies match
+  its *current* phone album membership: new album copies are added and copies
+  for albums the phone no longer reports (including a stale `_Unsorted` copy)
+  are removed. Recycle-bin copies are untouched.
+- **Location and camera metadata.** GPS from `Photos.sqlite` (EXIF GPS as a
+  fallback) and EXIF camera/lens/ISO/aperture/focal length are stored in the
+  catalog (schema v6) and backfilled onto already-archived assets on reimport.
+- **Trip map.** Every gallery view (All photos, Unsorted, Recycle bin, each
+  album) has a **Map** button opening a zoomable Leaflet/OpenStreetMap map of
+  its located photos in capture order. **This is the only feature that uses
+  the network:** it downloads map tiles from `tile.openstreetmap.org` while
+  the map is open. Everything else, including import, stays local.
+- **GUI fixes.** Larger tiles/buttons/navigation icons; the Marked and
+  Deleted-from-phone pages now lay out correctly and show real thumbnails.
+- **iCloud Shared Albums (2026-10-11).** Shared albums (`Photos.sqlite`
+  `ZKIND = 1505`) are imported from the phone's local shared-album cache
+  (`/PhotoData/PhotoCloudSharingData`) over USB into
+  `Photos/_Shared Albums/<album>/`, listed separately in the GUI ("Shared
+  albums") and by `ibackup albums --shared`. Only media already downloaded to
+  the phone can be imported; no iCloud login or network is used. Not yet
+  validated on a real iPhone.
+
 ## Documentation
 
 | Doc | Purpose |

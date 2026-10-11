@@ -287,6 +287,74 @@ never starts before the layer beneath it is proven. Descriptions live in
   nearly-black poster frame triggers a short scan for a brighter one so clips that
   open on a fade-in do not become black tiles.
 
+## Delivered after Phase 2 (2026-09-16 – 2026-10-10)
+
+Recorded in `progress.md`; docs reconciled 2026-10-11.
+
+- [x] **album-exact-paths** (`7c7b477`, `c0f2f91`) — album membership and
+  capture dates keyed by `ZDIRECTORY` + filename; legacy bare filenames only
+  when unique across the whole database and USB inventory. Settings saves use
+  unique staging files and propagate publication failures.
+- [x] **offloaded-previews** (`22fa9ae`, `66420ac`) — import the phone's cached
+  `/PhotoData/Thumbnails/V2` JPEG for offloaded album members (schema v3
+  `is_offloaded_preview`); resolved lookups cached per device in
+  `.ibackup-device-cache/offloaded-preview-cache.json`.
+- [x] **offloaded-preview-upgrade** (`30db3e2`) — upgrade a preview in place
+  when its original returns (schema v4 `offloaded_original_path`,
+  `ImportResult.upgraded_count`).
+- [x] **album-reconcile** (`d7eea11`) — import makes `Photos/` copies match the
+  phone's current album membership, removing stale album/`_Unsorted` copies.
+- [x] **gps-map** (`2237104`, `26b3d7c`, `aa0086b`) — schema v5 GPS,
+  `app_service_list_locations`, per-view **Map** button; now a Leaflet/
+  OpenStreetMap map via Qt WebEngine (the app's only network use).
+- [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
+  ISO/aperture/focal length from EXIF; backfill onto existing assets.
+- [x] **gui-sizing-review-pages** (`66420ac`, `9cc2bb1`, `3827515`) — larger
+  tiles/buttons/icons; Marked and Deleted-from-phone pages laid out correctly
+  with real thumbnails.
+- [x] **shared-albums** (2026-10-11) — iCloud
+  Shared Albums (`ZKIND = 1505`) imported from `/PhotoData/PhotoCloudSharingData`
+  into `Photos/_Shared Albums/<name>/` (`albums.kind = shared`, no schema
+  change); separate GUI "Shared albums" section, `ibackup albums --shared`,
+  `(shared)` tag; excluded from reclaim; `tests/test_shared_albums.py`.
+  Offline only.
+
+Follow-ups found while reconciling (not scheduled):
+
+- [ ] **reconcile-guard** — skip album reconciliation when `Photos.sqlite`
+  could not be read; today an unreadable database moves album copies of
+  still-present assets into `_Unsorted` until the next good import.
+- [ ] **map-packaging-check** — rebuild the `.exe` with Qt WebEngine and the
+  web assets, open a map in it, and assert the `webassets` `datas` entry in
+  `tests/test_packaging.py`.
+- [ ] **map-notices** — ship Leaflet's licence, Qt WebEngine/Chromium notices
+  and OSM attribution in the release notice set (ADR-0011 note); revisit the
+  tile provider before a public release.
+- [ ] **metadata-display** — camera/lens/ISO fields are stored but not shown
+  in the GUI or written to sidecars.
+- [ ] **review-page-map** — the Marked and Deleted-from-phone pages have no
+  map.
+- [ ] **preview-cache-location** — the offloaded-preview cache and the
+  temporary `Photos.sqlite` copy live under the process working directory,
+  not a per-user or per-archive location.
+- [ ] **shared-albums-hardware** — confirm on a real iPhone that shared albums
+  use `ZKIND = 1505`, that members sit under `PhotoCloudSharingData` with the
+  expected `ZDIRECTORY`, that AFC can read that cache, and that shared copies
+  differ in bytes from the DCIM originals (identical bytes would merge them
+  into one asset whose album copies the two phone items keep reconciling).
+- [ ] **shared-album-owner** — record the shared album's owner/subscriber
+  status (not captured today).
+- [ ] **shared-album-preview-fallback** — uncached shared-album members are
+  skipped; consider a low-resolution fallback like offloaded previews, if iOS
+  keeps one.
+- [ ] **shared-album-absence** — uncached or left shared-album items count as
+  "not seen" and can appear in the deleted-from-phone review; decide whether
+  that is wanted.
+- [ ] **pre-existing-lint-type** — at HEAD, `ruff format --check` flags
+  `gui/review.py`, `gui/shell.py` and `tests/test_importer.py`, and
+  `mypy --strict` reports 2 errors in `core/exif.py`; two
+  `tests/test_gui_settings.py` path-separator tests fail on Windows.
+
 ## Future backlog (agreed, not scheduled)
 
 Architect recommendations captured for later — not part of the current build:

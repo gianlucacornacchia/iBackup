@@ -16,6 +16,7 @@ from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
 from ..service.progress import ProgressHandle
 from . import hashing, verifier
+from .albums import albums_is_shared_path
 
 OPERATION_NAME = "reclaim"
 
@@ -74,6 +75,10 @@ def reclaim_find_candidates(
         if handle.progress_is_cancelled():
             break
         handle.progress_report(OPERATION_NAME, index, total, item.original_name)
+        if albums_is_shared_path(item.phone_path):
+            # A shared-album copy is iCloud's cache, not the user's library:
+            # deleting it frees nothing durable and would alter the shared album.
+            continue
 
         with source.device_open(item.phone_path) as stream:
             digest = hashing.hashing_sha256_stream(stream)

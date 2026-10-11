@@ -201,6 +201,7 @@ class NavigationPane(QFrame):
         self.collapsed = False
         self.counts: dict[str, int] = {}
         self.albums: tuple[tuple[int, str, int], ...] = ()
+        self.shared_album_ids: frozenset[int] = frozenset()
         self.current_key = LIBRARY_VIEWS[0].key
         self.setFixedWidth(NAV_WIDTH)
 
@@ -259,10 +260,17 @@ class NavigationPane(QFrame):
         self.counts = {key: int(value) for key, value in counts.items() if isinstance(value, int)}
         self.navigation_populate()
 
-    def navigation_set_albums(self, albums: Sequence[tuple[int, str, int]]) -> None:
+    def navigation_set_albums(
+        self,
+        albums: Sequence[tuple[int, str, int]],
+        shared_album_ids: Sequence[int] = (),
+    ) -> None:
         """Replace the album rows.
 
-        albums: ``(album_id, name, asset_count)`` triples in display order.
+        albums: ``(album_id, name, asset_count)`` triples in display order,
+            covering every album including iCloud Shared Albums.
+        shared_album_ids: the ids among ``albums`` that are iCloud Shared
+            Albums; they are listed under their own "Shared albums" header.
         Returns None.
         """
         rows: list[tuple[int, str, int]] = []
@@ -270,6 +278,7 @@ class NavigationPane(QFrame):
             navigation_album_key(album_id)
             rows.append((album_id, str(name), int(count)))
         self.albums = tuple(rows)
+        self.shared_album_ids = frozenset(int(album_id) for album_id in shared_album_ids)
         self.navigation_populate()
 
     def navigation_populate(self) -> None:
@@ -282,10 +291,16 @@ class NavigationPane(QFrame):
             self.navigation_add_row(
                 view.key, view.label, view.glyph, self.counts.get(view.count_key)
             )
-        if self.albums:
-            self.navigation_add_header("Albums")
-            for album_id, name, count in self.albums:
-                self.navigation_add_row(navigation_album_key(album_id), name, "album", count)
+        own = [row for row in self.albums if row[0] not in self.shared_album_ids]
+        shared = [row for row in self.albums if row[0] in self.shared_album_ids]
+        for header, glyph, rows in (
+            ("Albums", "album", own),
+            ("Shared albums", "shared-album", shared),
+        ):
+            if rows:
+                self.navigation_add_header(header)
+                for album_id, name, count in rows:
+                    self.navigation_add_row(navigation_album_key(album_id), name, glyph, count)
         self.list_widget.blockSignals(False)
         if not self.navigation_select(wanted):
             # The selected album disappeared, so this really is a view change

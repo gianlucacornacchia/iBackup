@@ -88,6 +88,7 @@ The archive lives under a user-chosen `<archive_root>`:
         IMG_0001.HEIC
         IMG_0002.MOV
     _Unsorted/YYYY/MM/            # assets that belong to no album, by date
+    _Shared Albums/<Album Name>/  # iCloud Shared Albums, real files
   Deleted/                        # "recycle bin" for items removed from Photos/
     <Album Name>/                 #   original album subpath is preserved
     _Unsorted/YYYY/MM/
@@ -115,7 +116,20 @@ Rules:
   portability) or `hardlink` (space-saving, only where the filesystem supports
   it, e.g. NTFS). It automatically falls back to `copy` on exFAT/FAT.
 - **Immutability.** Files are immutable once committed; imports never modify or
-  overwrite existing archive files.
+  overwrite existing archive files. Imports may *remove* two kinds of file:
+  a `Photos/` album or `_Unsorted` copy whose placement the phone no longer
+  reports (§12), and the low-resolution file of an offloaded preview being
+  upgraded to its original (§9). Neither removes an asset's last copy.
+- **Offloaded previews.** A preview is stored as
+  `<original stem> (offloaded preview).<ext>` (normally `.jpg`) in the same
+  album folders as a full-resolution copy would be.
+- **Shared albums.** iCloud Shared Albums live one level down, in
+  `Photos/_Shared Albums/<sanitized name>/` (`archive_layout.SHARED_ALBUMS_DIR_NAME`),
+  so a shared album never merges with a same-named user album. Their catalog
+  row has `albums.kind = 'shared'` and `safe_name = '_Shared Albums/<name>'`;
+  albums are upserted by `safe_name`, which keeps the two apart. No schema
+  change: `albums.kind` already existed (default `'user'`), and
+  `SCHEMA_VERSION` stays 6.
 - **`Deleted/` recycle bin.** The `Deleted/` tree holds items the user removed
   from `Photos/` via the "deleted from phone" review (§18). It mirrors the album
   subpath, retains the original bytes, and is excluded from normal album
@@ -153,7 +167,9 @@ reusing an existing catalog.
   track whether the asset still exists on the phone.
 - `asset_files(id, asset_id, path, album_id NULL, link_mode, location)` —
   every on-disk copy of an asset; `location` is `photos` or `deleted`.
-- `albums(id, phone_album_id, name, safe_name, kind)`
+- `albums(id, phone_album_id, name, safe_name, kind)` — `kind` is `user`
+  (default) or `shared` (iCloud Shared Album, §12.1); import upserts albums
+  by `safe_name` (no UNIQUE constraint).
 - `asset_albums(asset_id, album_id)` — many-to-many membership.
 - `import_sessions(id, device_udid, started_at, finished_at, added_count,
   skipped_count, error_count)` — a session also records the scan that updates
@@ -197,24 +213,58 @@ paths, locations, album IDs/names and link modes; older sidecars remain readable
 
 1. Detect and pair the device; open an AFC session.
 2. Enumerate media from the AFC media domain (`/DCIM` and, best-effort,
-   `PhotoData/Photos.sqlite` for album membership). Enumeration reads only
-   metadata (name, size, dates, identifier), not file contents.
+   `PhotoData/Photos.sqlite` for album membership, capture time and GPS).
+   Enumeration reads only metadata (name, size, dates, identifier), not file
+   contents. Photo-database facts are keyed by exact AFC path
+   (`/<ZDIRECTORY>/<ZFILENAME>`); a bare filename is used only for legacy
+   schemas without `ZDIRECTORY`, and only when unique across the whole asset
+   table and the USB inventory. Coordinates of `(-180, -180)` (no location)
+   are ignored.
+   Album members recorded in `Photos.sqlite` but absent from `/DCIM`
+   (typically offloaded by "Optimize iPhone Storage") are looked up under
+   `/PhotoData/Thumbnails/V2/<same path>/`; when a cached thumbnail exists it
+   is enumerated as an **offloaded preview** item carrying the original's
+   albums, capture time and GPS. Lookup failures leave the path missing and
+   never break enumeration; a warning reports recovered vs. unrecoverable
+   paths. Resolved lookups are cached per device UDID in
+   `.ibackup-device-cache/offloaded-preview-cache.json` under the process
+   working directory (not the archive), so later imports skip those AFC calls.
+   **Shared-album items** (§12.1) are enumerated last, from
+   `/PhotoData/PhotoCloudSharingData`, and only when the same `Photos.sqlite`
+   copy reported shared-album membership; they carry `shared_album_names`
+   plus capture time and GPS by exact path. They get no offloaded-preview
+   fallback.
 3. **Fast skip pass (no data transfer):** for each enumerated item, look up its
    phone identity (`phone_asset_id`, or `phone_path`+`phone_size`+
-   `phone_modified_at`) in the catalog. If it matches an already-imported asset,
-   **skip the transfer** entirely — only reconciling album membership if new
-   albums were discovered (append-only album growth). This keeps re-runs on large
-   libraries fast, since unchanged items are never re-copied.
+   `phone_modified_at`) in the catalog. If it matches an already-imported asset
+   with a valid copy, **skip the transfer** entirely. The asset is still
+   (a) backfilled: missing `latitude`/`longitude` are taken from the phone item,
+   and if `camera_model` is empty the archived copy's EXIF is read locally;
+   existing values are never overwritten; and (b) album-reconciled (§12).
+   This keeps re-runs on large libraries fast, since unchanged items are never
+   re-copied.
 4. **Import pass (new/changed items only):** for each remaining candidate:
    a. Stream it from the phone into `.ibackup/tmp` while computing SHA-256.
-   b. If the resulting hash already exists (same content under a different phone
-      identity), **skip** as a duplicate and just link the identity/album.
-   c. Otherwise verify the staged file's hash and exclusively publish each
+   b. If it is a real (non-preview) item and the catalog holds an offloaded
+      preview whose `offloaded_original_path` equals this phone path, **upgrade
+      that asset in place**: delete every stored file of the preview (in
+      `Photos/` and `Deleted/`), rewrite the same asset
+      row's content/phone identity and metadata, clear the preview flags and
+      place the new copies. Asset id, album links and marks are kept; the
+      result counts it in `ImportResult.upgraded_count`.
+   c. If the resulting hash already exists (same content under a different phone
+      identity), **skip** as a duplicate, link the identity, backfill missing
+      metadata and reconcile albums (§12).
+   d. Otherwise verify the staged file's hash and exclusively publish each
       destination album copy (or `_Unsorted`), recording ownership for recovery.
-      Publication strategy and visibility depend on filesystem support.
-   d. Write the sidecar and commit the catalog rows (including phone identity).
+      Publication strategy and visibility depend on filesystem support. Read
+      camera/lens/ISO/aperture/focal length (and fallback GPS) from the placed
+      file's EXIF; a read failure yields empty fields, never an import error.
+   e. Write the sidecar and commit the catalog rows (including phone identity).
 5. Record an `import_sessions` summary (added / skipped / errors) and update
    `present_on_phone` / `last_seen_on_phone_at` for the deleted-from-phone review.
+   The CLI and GUI summaries report added, skipped, duplicates, upgraded and
+   errors.
 
 Idempotent retry is a requirement. Test partial placement, sidecar/catalog
 failure and recovery explicitly: SQLite transactions and atomic renames do not
@@ -251,11 +301,87 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 ## 12. Album Preservation
 
 - Album membership is read best-effort from the phone's `PhotoData/Photos.sqlite`
-  via AFC.
+  via AFC (user albums, `ZKIND = 2`, where `ZKIND` exists; iCloud Shared
+  Albums separately, §12.1), keyed by exact AFC path
+  (§9 step 2). A reused filename never transfers albums between photos.
 - If album data cannot be read (iOS version, pairing state, permissions),
-  import still succeeds and affected assets are filed under `_Unsorted/YYYY/MM/`.
-- Album membership discovered on a later import is added (append-only); existing
-  files are never moved or deleted automatically.
+  import still succeeds and new assets are filed under `_Unsorted/YYYY/MM/`.
+- **Reconciliation with the phone (since 2026-10-10).** Every import that sees
+  an already-archived asset (fast-skip or duplicate path) makes its `Photos/`
+  copies match the phone item's *current* album list:
+  1. add a copy for each reported album that has none (multi-album growth
+     keeps every copy);
+  2. if the item reports no album, add an `_Unsorted` copy when none exists;
+  3. then delete each existing `Photos/` copy whose album (or `_Unsorted`) is
+     no longer reported — its file, its `asset_files` row and its
+     `asset_albums` link.
+  New copies are created before stale ones are removed, so an interrupted
+  reconciliation never leaves the asset without a valid copy. `Deleted/`
+  copies are never touched, and assets not enumerated in this import (e.g.
+  deleted from the phone) keep their placement.
+- Consequences: an archive-side `move` of an asset still on the phone is
+  reverted by the next import when the phone's albums differ; the phone's
+  albums win. Earlier wrong (filename-matched) album copies are corrected
+  the same way.
+- **Known limitation:** when `Photos.sqlite` is unavailable for a whole import
+  (logged as "Photos metadata unavailable"), every item reports no albums, so
+  reconciliation moves the album copies of still-present assets into
+  `_Unsorted`. No asset loses its last copy, and the next import with readable
+  metadata restores the album copies, but the folder churn is real. A guard
+  that skips reconciliation when membership could not be read is not
+  implemented. Shared-album items are simply not enumerated in that case, so
+  their archived copies are left where they are.
+
+### 12.1 iCloud Shared Albums (2026-10-11)
+
+- **Source.** Albums with `ZGENERICALBUM.ZKIND = 1505`
+  (`core/albums.py` `SHARED_ALBUM_KIND`) are iCloud Shared Albums, whether
+  owned or subscribed. They are read through the same runtime-discovered
+  `Z_nnASSETS` join as user albums: `albums_membership_query(connection,
+  kind)` / `albums_parse_photos_database(path, kind)` take a `kind`
+  (`USER_ALBUM_KIND = 2` by default, unchanged), and
+  `albums_parse_shared_albums()` keeps only keys under
+  `/PhotoData/PhotoCloudSharingData` (`SHARED_MEDIA_ROOT`,
+  `albums_is_shared_path`). Schemas without `ZKIND` yield no shared albums
+  rather than mislabelling every album as shared.
+- **Device.** `AfcDevice` parses shared membership from the same
+  `Photos.sqlite` copy (no second transfer) into `shared_album_membership`.
+  `afc_device_shared_items()` walks `SHARED_MEDIA_ROOT` only when that
+  membership is non-empty and yields only files the database names as
+  shared-album members, so cache-internal files are never imported and an
+  unreadable database imports no shared media (never `_Unsorted`). A walk
+  failure logs "shared albums unavailable" and enumeration continues. Members
+  not cached on the phone are skipped with an info log asking the user to open
+  the album in Photos and import again. Shared items are not part of
+  `device_album_map()`. `PhoneItem.shared_album_names` carries membership,
+  separate from `album_names`; `FakeDevice(shared_album_map=...)` mirrors it.
+- **Placement.** `importer_album_targets(item)` returns `(name, kind)` pairs:
+  user albums first (so the primary copy keeps its place), then shared
+  albums, de-duplicated. The primary copy goes to the first target; extra
+  copies and §12 reconciliation treat shared membership like any other
+  album, so leaving a shared album (or its removal of a photo) removes that
+  copy on the next import, never the asset's last copy.
+- **Identity.** Shared-album files are iCloud's re-encoded copies, so they
+  are separate assets from the owner's `/DCIM` originals (different bytes and
+  SHA-256). A photo in both a user album and a shared album gets a copy in
+  each.
+- **Move-to-album** (`service/selection.py`): when a user album and a shared
+  album share a name, the user album is chosen; a name that exists only as a
+  shared album still resolves to it.
+- **Listing.** `AlbumSummary.kind` (`"user"` default, or `"shared"`) is
+  returned by `albums_list`. `ibackup albums` appends `  (shared)`;
+  `ibackup albums --shared` lists only shared albums ("No shared albums
+  yet." when none). The GUI lists them in a separate "Shared albums"
+  navigation section (§16.2).
+- **Presence.** Shared-album items absent from an enumeration (no longer
+  cached, album left, or membership unreadable) count as not seen, like any
+  phone item, so they can appear in the deleted-from-phone review (§18).
+- **Not yet validated on hardware:** `ZKIND = 1505` and the
+  `PhotoCloudSharingData` `ZDIRECTORY` layout follow known iOS `Photos.sqlite`
+  conventions and the existing `tests/test_albums.py` regression docstring;
+  a real-iPhone check is pending. The album owner is not captured. Only media
+  iOS has already downloaded to the shared cache can be imported; access is
+  still local USB/AFC, with no iCloud login or network.
 
 ## 13. Space Reclamation (Safety Model)
 
@@ -265,6 +391,10 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 - `ibackup reclaim` previews candidates without deletion; there is no
   `--dry-run` flag. Repeated `--asset <id>` narrows the selection.
   `--device <UDID>` selects the source device.
+- `reclaim_find_candidates` never offers files under
+  `/PhotoData/PhotoCloudSharingData`: a shared-album copy is iCloud's cache,
+  not the user's library, so deleting it frees nothing durable and would
+  alter the shared album.
 - `ibackup reclaim --confirm` requires interactive typed `DELETE`, with no
   automation bypass, and execution-time candidate revalidation.
 - Real AFC deletion stays disabled until the Windows/iPhone read, album,
@@ -291,7 +421,19 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 - Requires the **Apple Mobile Device USB driver** on Windows (installed by
   Apple's iTunes or "Apple Devices" app).
 - Album extraction depends on AFC access to `Photos.sqlite`, which is not
-  guaranteed on all iOS versions.
+  guaranteed on all iOS versions. Shared albums additionally depend on AFC
+  access to `/PhotoData/PhotoCloudSharingData` and on iOS having cached the
+  media; both are unverified on hardware (§12.1).
+- GPS is read from `ZLATITUDE`/`ZLONGITUDE` on the `ZASSET`/`ZGENERICASSET`
+  table only; an iOS version storing location elsewhere yields no phone GPS
+  (EXIF GPS may still fill it). A backfill on one real iOS 26.4 archive found
+  GPS for 5,396 of 6,641 assets (`progress.md`); other iOS versions are
+  unqualified.
+- Offloaded previews depend on iOS keeping `/PhotoData/Thumbnails/V2`
+  path-mirrored thumbnails; confirmed on iOS 26.4 only. USB/AFC cannot make
+  the phone download an iCloud original.
+- The trip map requires Qt WebEngine (part of PySide6) and network access to
+  `tile.openstreetmap.org` for imagery, under OpenStreetMap's tile usage policy.
 - Recommended archive filesystems: **NTFS** (supports hardlinks) or **exFAT**
   (copy mode) for large external drives.
 
@@ -338,7 +480,9 @@ headless core; full parity is an acceptance requirement, enforced by
 
 ### 16.2 GUI capabilities (must match the CLI)
 
-- Browse pictures as a thumbnail grid; browse albums (including `_Unsorted`).
+- Browse pictures as a thumbnail grid; browse albums (including `_Unsorted`),
+  with iCloud Shared Albums in their own "Shared albums" navigation section
+  (`shared-album` glyph, tooltip "(iCloud Shared Album)").
 - Multi-select pictures (Ctrl/Shift/rubber-band) for batch actions.
 - Move selected pictures between albums.
 - Delete, or mark-for-delete, individual pictures and whole albums; staged marks

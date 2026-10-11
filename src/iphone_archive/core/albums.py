@@ -29,6 +29,25 @@ ASSET_TABLES = ("ZASSET", "ZGENERICASSET")
 # ZKIND of a user-created album. Other kinds are smart albums, folders and
 # internal bookkeeping such as the untitled system albums and 'progress-sync'.
 USER_ALBUM_KIND = 2
+# ZKIND of an iCloud Shared Album (formerly "Shared Photo Stream"), whether the
+# phone's owner created it or subscribed to someone else's.
+SHARED_ALBUM_KIND = 1505
+# Where iOS keeps the locally cached copies of shared-album media. These are
+# separate files from the owner's DCIM originals (iOS re-encodes on upload), and
+# Photos.sqlite records them with a ZDIRECTORY under this AFC-relative root.
+SHARED_MEDIA_ROOT = "/PhotoData/PhotoCloudSharingData"
+# Catalog ``albums.kind`` values.
+ALBUM_KIND_USER = "user"
+ALBUM_KIND_SHARED = "shared"
+
+
+def albums_is_shared_path(phone_path: str) -> bool:
+    """Return whether a phone path lies inside the shared-album media cache.
+
+    phone_path: an absolute AFC path.
+    Returns True for ``/PhotoData/PhotoCloudSharingData/...`` files.
+    """
+    return phone_path.startswith(f"{SHARED_MEDIA_ROOT}/")
 
 
 @dataclass
@@ -39,6 +58,7 @@ class AlbumSummary:
     name: str
     safe_name: str
     asset_count: int
+    kind: str = ALBUM_KIND_USER
 
 
 def albums_table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
@@ -107,24 +127,34 @@ def albums_asset_key_sql(connection: sqlite3.Connection, table: str) -> str:
     return "asset.ZFILENAME"
 
 
-def albums_membership_query(connection: sqlite3.Connection) -> str | None:
+def albums_membership_query(
+    connection: sqlite3.Connection, kind: int = USER_ALBUM_KIND
+) -> str | None:
     """Build the album-membership query for the schema actually present.
 
     connection: an open photo-database connection.
-    Returns the SQL text, or None when the required tables are missing.
+    kind: the ``ZKIND`` to select, ``USER_ALBUM_KIND`` or ``SHARED_ALBUM_KIND``.
+    Returns the SQL text, or None when the required tables are missing. Shared
+    albums can only be told apart via ZKIND, so a schema without it yields None
+    for them rather than mislabelling every album as shared.
     """
+    if kind not in (USER_ALBUM_KIND, SHARED_ALBUM_KIND):
+        raise ValueError(f"unsupported album kind: {kind}")
     join = albums_discover_join(connection)
     asset_table = albums_asset_table(connection)
     if join is None or asset_table is None:
         return None
-    if "ZTITLE" not in albums_table_columns(connection, "ZGENERICALBUM"):
+    album_columns = albums_table_columns(connection, "ZGENERICALBUM")
+    if "ZTITLE" not in album_columns:
         return None
 
     table, album_column, asset_column = join
     # Older schemas predate ZKIND; without it every titled album is accepted.
     kind_filter = ""
-    if "ZKIND" in albums_table_columns(connection, "ZGENERICALBUM"):
-        kind_filter = f"AND album.ZKIND = {USER_ALBUM_KIND}"
+    if "ZKIND" in album_columns:
+        kind_filter = f"AND album.ZKIND = {int(kind)}"
+    elif kind == SHARED_ALBUM_KIND:
+        return None
 
     path_expr = albums_asset_key_sql(connection, asset_table)
     # Count every asset, not only album members: an unassigned local photo can
@@ -150,10 +180,14 @@ def albums_membership_query(connection: sqlite3.Connection) -> str | None:
     """
 
 
-def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
+def albums_parse_photos_database(
+    database_path: Path, kind: int = USER_ALBUM_KIND
+) -> dict[str, list[str]]:
     """Extract album membership from a phone ``Photos.sqlite`` file.
 
     database_path: path to a copy of the phone's photo database.
+    kind: which albums to read; user-created albums by default, or
+        ``SHARED_ALBUM_KIND`` for iCloud Shared Albums.
     Returns a mapping of AFC asset path (e.g. ``/DCIM/100APPLE/IMG_0001.HEIC``)
     to album names; empty when the database is missing or unreadable, so callers
     fall back to ``_Unsorted``. On older schemas without ZDIRECTORY, bare keys
@@ -170,9 +204,10 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
 
     try:
         connection.row_factory = sqlite3.Row
-        query = albums_membership_query(connection)
+        query = albums_membership_query(connection, kind)
         if query is None:
-            logger.warning("no recognisable album tables in the photo database")
+            if kind == USER_ALBUM_KIND:
+                logger.warning("no recognisable album tables in the photo database")
             return membership
         try:
             rows = connection.execute(query).fetchall()
@@ -189,6 +224,19 @@ def albums_parse_photos_database(database_path: Path) -> dict[str, list[str]]:
         connection.close()
 
     return membership
+
+
+def albums_parse_shared_albums(database_path: Path) -> dict[str, list[str]]:
+    """Extract iCloud Shared Album membership from a phone ``Photos.sqlite``.
+
+    database_path: path to a copy of the phone's photo database.
+    Returns a mapping of AFC path to shared-album names. Only paths inside
+    ``SHARED_MEDIA_ROOT`` are kept: those are the files the phone actually
+    caches for a shared album, and any other key could never be enumerated.
+    Empty when the database is missing, unreadable or predates ZKIND.
+    """
+    membership = albums_parse_photos_database(database_path, SHARED_ALBUM_KIND)
+    return {path: names for path, names in membership.items() if albums_is_shared_path(path)}
 
 
 def albums_location_query(connection: sqlite3.Connection) -> str | None:
@@ -268,12 +316,14 @@ def albums_list(
     connection: an open catalog connection.
     limit: maximum albums, or None for all.
     offset: rows to skip in deterministic safe-name/id order.
-    Returns one ``AlbumSummary`` per album, excluding recycled assets.
+    Returns one ``AlbumSummary`` per album, excluding recycled assets. Each
+    summary carries the album's ``kind`` so frontends can list iCloud Shared
+    Albums separately from the user's own albums.
     """
     paging, parameters = repository.repository_page_clause(limit, offset)
     rows = connection.execute(
         """
-        SELECT albums.id, albums.name, albums.safe_name,
+        SELECT albums.id, albums.name, albums.safe_name, albums.kind,
             (SELECT COUNT(DISTINCT asset_id) FROM asset_files
              WHERE album_id = albums.id AND location = ?) AS asset_count
         FROM albums ORDER BY safe_name, id
@@ -287,6 +337,7 @@ def albums_list(
             name=str(row["name"]),
             safe_name=str(row["safe_name"]),
             asset_count=int(row["asset_count"]),
+            kind=str(row["kind"] or ALBUM_KIND_USER),
         )
         for row in rows
     ]

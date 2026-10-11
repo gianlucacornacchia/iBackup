@@ -159,6 +159,30 @@ def test_navigation_lists_library_rows_and_albums(qtbot):
         pane.navigation_set_counts([("all", 1)])
 
 
+def test_navigation_lists_shared_albums_in_their_own_section(qtbot):
+    """iCloud Shared Albums get a "Shared albums" header after the user's albums."""
+    pane = NavigationPane()
+    qtbot.addWidget(pane)
+    pane.navigation_set_albums([(3, "Family", 2), (4, "Trip", 5)], shared_album_ids=[3])
+    rows = [
+        (
+            pane.list_widget.item(row).data(Qt.ItemDataRole.DisplayRole),
+            pane.list_widget.item(row).data(NAV_KEY_ROLE),
+        )
+        for row in range(pane.list_widget.count())
+    ]
+    labels = [label for label, _ in rows]
+    assert labels.index("Albums") < labels.index("Trip") < labels.index("Shared albums")
+    assert labels.index("Shared albums") < labels.index("Family")
+    assert pane.shared_album_ids == frozenset({3})
+    pane.navigation_set_albums([(4, "Trip", 5)])
+    labels = [
+        pane.list_widget.item(row).data(Qt.ItemDataRole.DisplayRole)
+        for row in range(pane.list_widget.count())
+    ]
+    assert "Shared albums" not in labels
+
+
 def test_navigation_keeps_the_selected_row_across_refreshes(qtbot):
     """A count refresh must not throw the user back to the first view."""
     pane = NavigationPane()

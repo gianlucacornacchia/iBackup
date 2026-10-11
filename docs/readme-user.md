@@ -28,10 +28,20 @@ Explorer** and any photo viewer, **without needing this app**.
   from the archive.
 - Skips photos that are already archived (**incremental** backups).
 - **Verifies** every file after import so you know it copied correctly.
-- **Preserves your albums** when the information is available.
+- **Preserves your albums** when the information is available, and keeps the
+  album folders in step with the phone: if you move a photo to another album
+  on the phone, the next import moves its archive copy too (see
+  [Albums that change on the phone](#albums-that-change-on-the-phone)).
+- Also archives the **iCloud Shared Albums** you see on the phone, in their own
+  `_Shared Albums` folder (see [iCloud Shared Albums](#icloud-shared-albums)).
+- Records each photo's **location** and **camera details** (camera, lens, ISO,
+  aperture, focal length) in its index, and shows located photos on a
+  zoomable **map** in the desktop interface.
 - Provides a reclaim preview; real-phone destructive reclaim remains gated
   pending Windows/iPhone validation.
-- Runs **entirely on your machine** — no cloud, no iCloud required.
+- Runs **on your machine** — no cloud, no iCloud required. The only exception
+  is the optional map, which downloads map imagery from OpenStreetMap while
+  it is open (see the [FAQ](#frequently-asked-questions)).
 
 ## What it does NOT do
 
@@ -158,6 +168,8 @@ iphone-archive\
     Favorites\
     Family\
     Screenshots\
+    _Shared Albums\
+      Family Trip\         <- an iCloud Shared Album
     _Unsorted\2026\09\     <- photos that weren't in any album
 ```
 
@@ -177,7 +189,8 @@ Just open a folder and view the pictures like any other files.
 | `ibackup import` | Import new photos/videos and organize them by album. |
 | `ibackup verify` | Re-check that archived files are intact. |
 | `ibackup dedup` | Show duplicate and storage statistics. |
-| `ibackup albums` | List albums and their photo counts. |
+| `ibackup albums` | List albums and their photo counts; iCloud Shared Albums end with `(shared)`. |
+| `ibackup albums --shared` | List only iCloud Shared Albums (`No shared albums yet.` when there are none). |
 | `ibackup list` | List archived photos (`--album`, `--unsorted`, `--recycled`, `--limit`). |
 | `ibackup list --files` | Show aligned file IDs and paths for the current album/location filter; use file IDs for per-copy marks. |
 | `ibackup stats` | Show headline archive counts. |
@@ -303,6 +316,75 @@ This immediate reversible action moves only copy 34. On editing commands
   filesystems that support it (NTFS). Automatically falls back to `copy` on
   exFAT/FAT.
 
+### Albums that change on the phone
+
+Each import compares every photo still on the phone with its album folders in
+the archive and makes them match the phone's **current** albums:
+
+- Added to another album on the phone → a copy is added to that album folder;
+  existing album copies stay.
+- Moved to a different album, or removed from one → the copy in the old
+  album folder is removed from `Photos\`.
+- Added to its first album → its `_Unsorted` copy is removed.
+- Removed from every album → it gets an `_Unsorted` copy again.
+
+New copies are always written before old ones are removed, so a photo never
+drops below one copy in the archive. Copies in `Deleted\` are never touched,
+and photos no longer on the phone are left exactly where they are.
+
+Because the phone's albums win, an album change you made **in the archive**
+(`move`, or Move to album in the GUI) for a photo that is still on the phone
+is undone by the next import if the phone's albums differ. To keep a
+different arrangement, change the album on the phone as well.
+
+> **Caution:** if the phone's photo database cannot be read during an import
+> (the log says "Photos metadata unavailable"), every photo looks album-less,
+> and the import currently moves the album copies of photos still on the phone
+> into `_Unsorted`. No photo is lost (one copy always remains), and the next
+> import that can read the database puts the copies back in their albums, so
+> if you see that warning, fix the connection and import again.
+
+### iCloud Shared Albums
+
+Shared albums (the ones under **Shared Albums** in the Photos app, whether you
+created them or someone invited you) are imported too, as long as their photos
+are **already downloaded on the phone**:
+
+- They are stored in `Photos\_Shared Albums\<album name>\`, so a shared album
+  never mixes with one of your own albums that has the same name.
+- In the desktop interface they appear in their own **Shared albums** section
+  of the navigation pane, below **Albums**, with a "shared" icon; hovering
+  shows "(iCloud Shared Album)". They open like any album (grid, viewer, Map,
+  marks). **Move to album** with a name that exists both as your album and as
+  a shared album always picks your own album.
+- In the CLI, `ibackup albums` tags them `(shared)` and
+  `ibackup albums --shared` lists only them.
+- A photo you took that is also in a shared album is archived twice: your
+  original (in your album or `_Unsorted`) and the shared album's copy. iCloud
+  re-encodes shared photos, so the two are different files, not duplicates.
+- They follow the same rules as [albums that change on the phone](#albums-that-change-on-the-phone):
+  if you leave a shared album, or a photo is removed from it, the next import
+  removes that shared-album copy (the photo keeps at least one copy).
+- **Phone-space reclamation never offers shared-album files**; they are
+  iCloud's cache, and deleting them would free nothing lasting.
+
+Limitations:
+
+- Only photos the phone has already cached can be imported. If the log says
+  "shared-album items are not cached on the phone and were skipped", open the
+  shared album in Photos so the phone downloads them, then import again. There
+  is no low-resolution preview fallback for shared albums.
+- If the phone's shared-album folder cannot be read, the log says
+  "shared albums unavailable" and the rest of the import continues normally.
+  If the photo database cannot be read, no shared-album photos are imported
+  at all (they are never dumped into `_Unsorted`).
+- Shared-album photos that the phone no longer has cached, or albums you have
+  left, may then show up on the **Deleted from phone** page, like any photo
+  the phone no longer has.
+- Who owns a shared album is not recorded.
+- This is still plain USB access to files on the phone: no iCloud sign-in and
+  no network. It has **not yet been tested on a real iPhone**.
+
 ---
 
 ## Previewing phone space reclamation
@@ -377,11 +459,37 @@ iBackup imports the same cached, low-resolution JPEG preview that iOS itself
 shows in Photos, clearly named with an " (offloaded preview)" suffix, so the
 album is still complete instead of missing that photo entirely. To get the
 full-resolution original instead, select **Download and Keep Originals** in
-the iPhone's Photos/iCloud settings, let it finish downloading with enough
-free storage, then import again — this adds the full-resolution copy
-alongside the existing preview (the archive is append-only and does not
-delete or replace the preview automatically). iBackup does not fetch
-originals from iCloud itself.
+the iPhone's Photos/iCloud settings (or open the photo in Photos so the phone
+downloads it), let it finish downloading with enough free storage, then
+import again. The next import recognizes the original at the same phone path
+and **upgrades the preview in place**: the low-resolution file is deleted and
+replaced by the full-resolution copy in the same album folders, keeping the
+photo's marks and album links, and the summary counts it as `upgraded`.
+iBackup does not fetch originals from iCloud itself; USB/AFC offers no way to
+ask for that.
+
+**Does it use the internet?**
+Only for the map. Backing up, verifying, browsing and every other operation
+work fully offline. When you open a **Map**, the app downloads map tiles from
+OpenStreetMap's public tile server (`tile.openstreetmap.org`), which therefore
+sees your IP address and the map areas you view. Your photos and the list of
+photo locations stay on your computer; the map page is built locally. Tiles
+are cached on disk (up to 200 MB) in a separate Qt WebEngine profile named
+`ibackup-map-tiles`. Map data © OpenStreetMap contributors. If you do not
+want this, simply do not open the map.
+
+**Where do the location and camera details come from?**
+The location comes from the phone's photo database; if it has none, from the
+GPS block in the photo's own EXIF. Camera, lens, ISO, aperture and focal
+length come from the archived file's EXIF. Videos and files without EXIF
+simply have none. Photos archived before these were recorded get them filled
+in on the next import; values already recorded are never overwritten.
+
+**Can it back up iCloud Shared Albums?**
+Yes, the photos and videos of a shared album that are already downloaded on
+the phone, read over USB without signing in to iCloud. Open the shared album
+in Photos first so the phone caches its contents. They land in
+`Photos\_Shared Albums\`; see [iCloud Shared Albums](#icloud-shared-albums).
 
 **Will it change or compress my photos?**
 No. Files are copied exactly as they are on the phone.

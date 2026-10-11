@@ -213,6 +213,7 @@ until a Windows run.
   Photos/
     <Album Name>/                 # one directory per phone album, real files
     _Unsorted/YYYY/MM/            # assets that belong to no album, by date
+    _Shared Albums/<Album Name>/  # iCloud Shared Albums (since 2026-10-11)
   Deleted/                        # recycle bin (items removed from Photos/)
     <Album Name>/                 #   original album subpath preserved
     _Unsorted/YYYY/MM/
@@ -279,7 +280,7 @@ tests/
 
 Implemented source CLI (not a shipped binary): `init`, `device-info`,
 `import [--album-link-mode ...]`, `verify`,
-`dedup`, `albums`, `list`, `stats`, `scan-phone`, `thumbnail`,
+`dedup`, `albums [--shared]`, `list`, `stats`, `scan-phone`, `thumbnail`,
 `move [--from-album ALBUM_ID] [--file FILE_ID ...]`,
 `reclaim [--asset ID ...] [--confirm]`,
 `deleted-on-phone list|to-deleted|restore|purge`, `clear-thumbnails`,
@@ -374,8 +375,15 @@ See `todos.md` for the full checklist with dependencies and status.
   fake-device behavior is not a real-phone or release qualification.
 - **UI sketch: approved 2026-09-11** (`docs/ui-sketch/`), including the Windows
   11 Fluent visual spec and clickable mock.
-- **Phase 2 (GUI): in progress.** Scaffold, theme and worker are implemented
-  offline; models are next. Live Windows Mica/chrome qualification is pending.
+- **Phase 2 (GUI): steps 1-12 done** (step 12 built and smoke-tested on
+  Windows 11). Live Windows Mica/chrome qualification is pending.
+- **Post-Phase-2 work (2026-09-16 – 2026-10-10):** exact-path album metadata,
+  offloaded-photo previews and their in-place upgrade, album reconciliation
+  with the phone, GPS/EXIF metadata with backfill, and the OpenStreetMap trip
+  map (the app's only network use). See `todos.md` §"Delivered after Phase 2".
+- **iCloud Shared Albums (2026-10-11):** imported from the phone's shared cache
+  into `Photos/_Shared Albums/`, listed separately in the GUI and CLI;
+  offline-tested only, real-iPhone validation pending.
 - **Windows hardware and release milestones pending.** Migrations and basic
   destructive guardrails are core hardening, not optional future work. Catalog
   rebuild, tamper-proof audit logging, dependency automation and HTML gallery

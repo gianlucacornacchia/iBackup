@@ -26,6 +26,11 @@ from .file_operations import file_operations_path, file_operations_publish
 
 LINK_MODE_COPY = "copy"
 LINK_MODE_HARDLINK = "hardlink"
+# iCloud Shared Albums live one level down, in their own folder beside
+# _Unsorted, so a shared album never merges with a same-named album of the
+# user's own and the archive still reads as plain folders in Explorer.
+SHARED_ALBUMS_DIR_NAME = "_Shared Albums"
+ALBUM_KIND_SHARED = "shared"
 placement_recorder: ContextVar[Callable[[Path], None] | None] = ContextVar(
     "placement_recorder", default=None
 )
@@ -74,18 +79,36 @@ class PlacedFile:
     link_mode: str
 
 
-def archive_layout_album_dir(paths: ArchivePaths, album_name: str | None) -> Path:
+def archive_layout_album_safe_name(album_name: str, kind: str = "user") -> str:
+    """Return the catalog ``safe_name`` (folder path under ``Photos/``) of an album.
+
+    album_name: the album's display name.
+    kind: ``user`` or ``shared``.
+    Returns one sanitized component for a user album, or
+    ``_Shared Albums/<component>`` for an iCloud Shared Album.
+    """
+    safe_album = name_safety.name_safety_sanitize_component(album_name, fallback="Album")
+    if kind == ALBUM_KIND_SHARED:
+        return f"{SHARED_ALBUMS_DIR_NAME}/{safe_album}"
+    return safe_album
+
+
+def archive_layout_album_dir(
+    paths: ArchivePaths, album_name: str | None, kind: str = "user"
+) -> Path:
     """Return the folder for an album, or the unsorted root when album-less.
 
     paths: resolved archive paths.
     album_name: the album's display name, or None for album-less assets.
+    kind: ``user`` or ``shared``; shared albums live under ``_Shared Albums``.
     Returns the directory that should contain the asset's file.
     """
     if album_name is None:
         result = paths.unsorted_dir
     else:
-        safe_album = name_safety.name_safety_sanitize_component(album_name, fallback="Album")
-        result = paths.photos_dir / safe_album
+        result = paths.photos_dir.joinpath(
+            *archive_layout_album_safe_name(album_name, kind).split("/")
+        )
     return result
 
 

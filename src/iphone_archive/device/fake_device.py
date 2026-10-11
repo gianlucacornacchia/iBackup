@@ -24,6 +24,7 @@ class FakeDevice:
         udid: str = "FAKE-UDID",
         album_map: dict[str, list[str]] | None = None,
         locations: dict[str, tuple[float, float]] | None = None,
+        shared_album_map: dict[str, list[str]] | None = None,
     ) -> None:
         """Create a fake device.
 
@@ -31,10 +32,12 @@ class FakeDevice:
         udid: the identifier reported for this device.
         album_map: optional mapping of phone path to album names.
         locations: optional mapping of phone path to ``(latitude, longitude)``.
+        shared_album_map: optional mapping of phone path to iCloud Shared Album names.
         """
         self.items: dict[str, bytes] = dict(items or {})
         self.udid = udid
         self.albums: dict[str, list[str]] = dict(album_map or {})
+        self.shared_albums: dict[str, list[str]] = dict(shared_album_map or {})
         self.locations: dict[str, tuple[float, float]] = dict(locations or {})
         self.deleted_paths: list[str] = []
         self.metadata: dict[str, dict[str, str]] = {}
@@ -58,6 +61,7 @@ class FakeDevice:
                 modified_at=extra.get("modified_at"),
                 captured_at=extra.get("captured_at"),
                 album_names=list(self.albums.get(phone_path, [])),
+                shared_album_names=list(self.shared_albums.get(phone_path, [])),
                 latitude=location[0] if location is not None else None,
                 longitude=location[1] if location is not None else None,
             )
@@ -74,6 +78,7 @@ class FakeDevice:
             raise DeviceError(f"no such item on device: {phone_path}")
         del self.items[phone_path]
         self.albums.pop(phone_path, None)
+        self.shared_albums.pop(phone_path, None)
         self.deleted_paths.append(phone_path)
 
     def device_album_map(self) -> dict[str, list[str]]:

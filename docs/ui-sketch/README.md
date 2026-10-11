@@ -193,6 +193,9 @@ Behaviour:
   counts right-aligned in `TextFillColorSecondary`. Collapses to a 40px icon
   rail via the hamburger, and auto-collapses below ~900px width.
   Backed by `app_service_list_albums` / `app_service_stats`.
+  _Implementation note (2026-10-11):_ iCloud Shared Albums are listed under a
+  separate **Shared albums** header after **Albums**, with a `shared-album`
+  glyph (album outline with a person badge); not drawn in the wireframe.
 - **Command bar** — the primary verbs as icon+label buttons on a card surface,
   with a `...` overflow for the rest. This replaces the old menu bar entirely.
   Buttons that need a phone are disabled with an explanatory tooltip when none
@@ -448,7 +451,7 @@ declaration it checks, so this table and the code cannot drift apart silently.
 | Import | `import [--device UDID]` | **Import** button + §2 for selected device | `app_service_import` |
 | Verify | `verify` | **Verify** button + §2 | `app_service_verify` |
 | Dedup report | `dedup` | **...** overflow ▸ Storage report | `app_service_dedup_report` |
-| Albums | `albums` | Left nav ALBUMS | `app_service_list_albums` |
+| Albums | `albums [--shared]` (shared albums tagged `(shared)`) | Left nav ALBUMS and SHARED ALBUMS sections | `app_service_list_albums` (`AlbumSummary.kind`) |
 | List assets/copies | `list [--files]` | Centre grid; selection retains aligned file IDs/paths from the current album/location | `app_service_list_assets` |
 | Unsorted | `list --unsorted` | Left nav ▸ Unsorted | `app_service_list_unsorted` |
 | Recycle bin | `list --recycled` | Left nav ▸ Recycle bin | `app_service_list_recycled` |

@@ -18,6 +18,7 @@ from typing import Any
 import typer
 from typer.core import TyperGroup
 
+from .core.albums import ALBUM_KIND_SHARED
 from .device.afc_device import AfcDevice
 from .device.fake_device import FakeDevice
 from .device.interface import DeviceError, MediaSource
@@ -269,14 +270,20 @@ def cli_dedup(archive: Path = ArchiveOption) -> None:
 
 
 @app.command("albums")
-def cli_albums(archive: Path = ArchiveOption) -> None:
-    """List albums and how many assets each one holds."""
+def cli_albums(
+    archive: Path = ArchiveOption,
+    shared: bool = typer.Option(False, "--shared", help="Only iCloud Shared Albums."),
+) -> None:
+    """List albums and how many assets each one holds; shared albums are tagged."""
     service = cli_open_service(archive)
     summaries = service.app_service_list_albums()
+    if shared:
+        summaries = [summary for summary in summaries if summary.kind == ALBUM_KIND_SHARED]
     if not summaries:
-        typer.echo("No albums yet.")
+        typer.echo("No shared albums yet." if shared else "No albums yet.")
     for summary in summaries:
-        typer.echo(f"{summary.album_id:>5}  {summary.asset_count:>6}  {summary.name}")
+        tag = "  (shared)" if summary.kind == ALBUM_KIND_SHARED else ""
+        typer.echo(f"{summary.album_id:>5}  {summary.asset_count:>6}  {summary.name}{tag}")
 
 
 @app.command("list")

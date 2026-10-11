@@ -25,9 +25,11 @@ from uuid import uuid4
 
 from ..catalog.models import PhoneItem
 from ..core.albums import (
+    SHARED_MEDIA_ROOT,
     albums_asset_key_sql,
     albums_parse_location_data,
     albums_parse_photos_database,
+    albums_parse_shared_albums,
 )
 from .interface import DeviceError
 
@@ -130,6 +132,9 @@ class AfcDevice:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.streams: set[AfcReadStream] = set()
         self.album_cache: dict[str, list[str]] = {}
+        # Filled by afc_device_photo_metadata from the same Photos.sqlite copy,
+        # so iCloud Shared Albums never cost a second 1 GB database transfer.
+        self.shared_album_membership: dict[str, list[str]] = {}
         self.preview_cache: dict[str, Any] | None = None
         self.preview_cache_dirty = False
         self.owner_lock = Lock()
@@ -245,7 +250,11 @@ class AfcDevice:
         """Yield metadata for every media file without reading its contents."""
         client = self.afc_device_require_client()
         items = [item for root in MEDIA_ROOTS for item in self.afc_device_walk(client, root)]
+        self.shared_album_membership = {}
         albums, capture_times, locations = self.afc_device_photo_metadata()
+        shared_items = self.afc_device_shared_items(
+            client, self.shared_album_membership, capture_times, locations
+        )
         counts = Counter(item.original_name for item in items)
 
         self.album_cache = {}
@@ -301,6 +310,54 @@ class AfcDevice:
             yield item
         for preview in previews:
             yield preview
+        yield from shared_items
+
+    def afc_device_shared_items(
+        self,
+        client: Any,
+        membership: dict[str, list[str]],
+        capture_times: dict[str, str],
+        locations: dict[str, tuple[float, float]],
+    ) -> list[PhoneItem]:
+        """Enumerate the phone's cached copies of iCloud Shared Album media.
+
+        client: the live AFC client.
+        membership: AFC path to shared-album names, from Photos.sqlite.
+        capture_times: AFC path to ISO capture time.
+        locations: AFC path to ``(latitude, longitude)``.
+        Returns one ``PhoneItem`` per shared-album file that is cached on the
+        phone. Only files Photos.sqlite names as shared-album members are
+        returned, so the cache's internal files are never imported and an
+        unreadable database imports no shared media at all rather than
+        dumping it into _Unsorted. Never raises: shared albums are a bonus and
+        must not break enumeration of the user's own media.
+        """
+        if not membership:
+            return []
+        try:
+            found = list(self.afc_device_walk(client, SHARED_MEDIA_ROOT))
+        except DeviceError as error:
+            logger.warning("shared albums unavailable; continuing without them: %s", error)
+            return []
+        shared: list[PhoneItem] = []
+        for item in found:
+            names = membership.get(item.phone_path)
+            if not names:
+                continue
+            item.shared_album_names = list(names)
+            item.captured_at = capture_times.get(item.phone_path)
+            location = locations.get(item.phone_path)
+            if location is not None:
+                item.latitude, item.longitude = location
+            shared.append(item)
+        missing = len(membership) - len(shared)
+        if missing:
+            logger.info(
+                "%d shared-album items are not cached on the phone and were skipped; "
+                "open the shared album in Photos to download them, then import again.",
+                missing,
+            )
+        return shared
 
     def afc_device_preview_cache_path(self) -> Path:
         """Return the on-disk location of the resolved-thumbnail cache."""
@@ -516,6 +573,7 @@ class AfcDevice:
                     if not suffix:
                         raise
             membership = albums_parse_photos_database(database_path)
+            self.shared_album_membership = albums_parse_shared_albums(database_path)
             locations = albums_parse_location_data(database_path)
             connection = sqlite3.connect(database_path)
             try:

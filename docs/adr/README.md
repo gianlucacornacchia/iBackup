@@ -16,14 +16,14 @@ consequences.
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-windows-only-target.md) | Target Windows only (drop Linux) | Accepted |
 | [0003](0003-python-pyside6-stack.md) | Python core + PySide6 GUI | Accepted; addendum 0011 |
-| [0004](0004-plain-album-folders.md) | Plain album folders of real files, no symlinks | Accepted |
+| [0004](0004-plain-album-folders.md) | Plain album folders of real files, no symlinks | Accepted; note in 0011 (2026-10-11) |
 | [0005](0005-sqlite-catalog-plus-sidecars.md) | SQLite catalog + per-asset JSON sidecars | Accepted |
 | [0006](0006-sha256-integrity-and-dedup.md) | SHA-256 for integrity and dedup | Accepted |
-| [0007](0007-append-only-with-recycle-bin.md) | Append-only archive with a `Deleted/` recycle bin | Accepted |
-| [0008](0008-pymobiledevice3-device-access.md) | Device access via `pymobiledevice3` (AFC) | Accepted |
+| [0007](0007-append-only-with-recycle-bin.md) | Append-only archive with a `Deleted/` recycle bin | Accepted; note in 0011 (2026-10-11) |
+| [0008](0008-pymobiledevice3-device-access.md) | Device access via `pymobiledevice3` (AFC) | Accepted; shared-albums addendum (2026-10-11) |
 | [0009](0009-headless-service-layer.md) | Headless `service/` layer shared by CLI and GUI | Accepted; addendum 0011 |
 | [0010](0010-windows11-fluent-look.md) | Windows 11 Fluent look without a GPL widget library | Accepted; corrections in 0011 |
-| [0011](0011-licensing-and-gui-contract-addendum.md) | Licensing, interop, observable fallback and worker ownership | Accepted addendum |
+| [0011](0011-licensing-and-gui-contract-addendum.md) | Licensing, interop, observable fallback and worker ownership; 2026-10-11 notes on the map (network, Leaflet, Qt WebEngine, OSM) and album reconciliation | Accepted addendum |
 
 ## Conventions
 

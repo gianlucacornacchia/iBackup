@@ -66,7 +66,12 @@ def selection_move_to_album(
         return SelectionResult()
     safe_name = name_safety.name_safety_sanitize_component(album_name, fallback="Album")
     albums = repository.repository_list_albums(connection)
-    target_album = next((album for album in albums if album.name == album_name), None)
+    # A user album wins over an iCloud Shared Album of the same name, so a move
+    # never silently files photos into the shared-albums folder.
+    target_album = next(
+        (album for album in albums if album.name == album_name and album.kind == "user"),
+        next((album for album in albums if album.name == album_name), None),
+    )
     if target_album is None:
         taken = {album.safe_name.lower() for album in albums}
         taken.update(entry.name.lower() for entry in paths.photos_dir.iterdir())

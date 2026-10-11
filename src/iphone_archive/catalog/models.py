@@ -116,6 +116,9 @@ class PhoneItem:
     modified_at: str | None = None
     captured_at: str | None = None
     album_names: list[str] = field(default_factory=list)
+    # iCloud Shared Albums this item belongs to. Kept apart from album_names so
+    # a shared album never merges with a same-named album of the user's own.
+    shared_album_names: list[str] = field(default_factory=list)
     is_offloaded_preview: bool = False
     offloaded_original_path: str | None = None
     latitude: float | None = None

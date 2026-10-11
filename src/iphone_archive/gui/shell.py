@@ -544,7 +544,8 @@ class ArchiveShell(QWidget):
                 self.shell_track(albums.pending_request, "albums")
         else:
             self.navigation.navigation_set_albums(
-                [(row.album_id, row.name, row.asset_count) for row in albums.rows]
+                [(row.album_id, row.name, row.asset_count) for row in albums.rows],
+                shared_album_ids=[row.album_id for row in albums.rows if row.kind == "shared"],
             )
             self.shell_apply_state()
 
