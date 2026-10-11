@@ -1,6 +1,7 @@
 # iPhone Archive — Project Structure
 
-Status: current core/CLI and GUI shell/theme/worker/models map plus planned GUI contracts.
+Status: current core/CLI and GUI module map (Phase 2 steps 1-12 plus the
+later album/preview/location/map work, checked against HEAD on 2026-10-11).
 Implementation presence does not establish hardware or crash-safety validation;
 see [progress](progress.md) and [test plan](unit-tests.md).
 
@@ -67,7 +68,7 @@ Repository metadata/tool configuration is in `pyproject.toml`, `.github/`, and
 ## 2. Layering and data flow
 
 ```text
-CLI / GUI worker (operation views pending)
+CLI / GUI worker
               |
         service/AppService
               |
@@ -78,14 +79,22 @@ CLI / GUI worker (operation views pending)
        AfcDevice / FakeDevice
 ```
 
+The trip map is the one GUI path outside this stack's locality: its data
+comes through the worker like any listing, but `gui/mapview.py` then fetches
+OpenStreetMap tiles directly from the GUI process via Qt WebEngine.
+
 The service owns the archive session and connection. Frontends translate input
 and render results; persistence and destructive eligibility stay below them.
 Settings are outside the archive; media, catalog, sidecars and recovery data
 travel together. Plain media remains viewable without SQLite or this app.
 
-Import: enumerate device metadata → device-scoped fast-skip checks → stream
-new/changed bytes into archive staging while hashing → verify/place each copy
-→ persist sidecar/catalog/session state. Album growth is append-only.
+Import: enumerate device metadata (plus offloaded-preview stand-ins) →
+device-scoped fast-skip checks (backfill missing GPS/camera metadata,
+reconcile album copies) → upgrade a matching offloaded preview in place, or
+stream new/changed bytes into archive staging while hashing → verify/place
+each copy, read EXIF → persist sidecar/catalog/session state. Album placement
+of already-archived assets follows the phone's current membership: missing
+album copies are added first, then stale `Photos/` copies are removed.
 Fast-skip is not evidence that a current phone file still has identical bytes.
 
 Reclaim: obtain current device inventory → restrict to requested asset IDs if
@@ -176,10 +185,10 @@ affinity. Missing/inaccessible media directories are errors, not a valid empty
 inventory. Source verification and per-device scan publication are separate;
 only a complete successful scan publishes absence.
 
-## 4. GUI execution contract — implementation in progress
+## 4. GUI execution contract
 
-The sketch was approved on 2026-09-11. The shell, theme, worker and paged models
-exist. Later operation views must preserve the following:
+The sketch was approved on 2026-09-11. Every Phase 2 step is implemented; the
+views must keep preserving the following:
 
 - Create/open/use/close `AppService` and its SQLite connection **in the worker
   thread that owns them**. Never share a service/connection between QThreads,
@@ -222,8 +231,9 @@ exist. Later operation views must preserve the following:
   `commands.py`, `icons.py`, `shell.py`, `gallery.py`, `viewer.py`,
   `operations.py`, `dialogs.py`, `confirm.py`, `review.py`, `reclaim.py`,
   `settings_dialog.py` and `parity.py`, delivered by steps 1-11 of
-  `plan.md` §2b. `parity.py` holds no widgets: it declares which surface reaches
-  each service operation, so `tests/test_gui_parity.py` can fail when a
+  `plan.md` §2b, plus `mapview.py` and its vendored `webassets/leaflet/`
+  (added 2026-10-10). `parity.py` holds no widgets: it declares which surface
+  reaches each service operation, so `tests/test_gui_parity.py` can fail when a
   capability exists only in the CLI. The earlier
   planned names (`navigation_pane.py`, `command_bar.py`, `picture_grid_view.py`,
   `thumbnail_loader.py`, `operations_controller.py`) map onto those files.
@@ -252,12 +262,18 @@ deleted-on-phone default as soon as they are saved; `reopen_last_archive`
 reopens the last archive at startup only when that folder is still an archive.
 `app_service_reset_settings` / `config reset` can recover invalid configuration.
 
-`pymobiledevice3`, Typer, Pillow/pillow-heif and SQLite support the current CLI.
-PySide6 and pytest-qt support the GUI shell/theme/worker/models layer (`darkdetect` remains
-reserved; Qt/Win32 currently supply native appearance). Actual version and
+`pymobiledevice3`, Typer, Pillow/pillow-heif (thumbnails and EXIF), PyAV
+(video poster frames) and SQLite support the current CLI/core.
+PySide6 and pytest-qt support the GUI (`darkdetect` remains
+reserved; Qt/Win32 currently supply native appearance). The trip map uses
+PySide6's `QtWebEngineCore`/`QtWebEngineWidgets` and vendored Leaflet, read
+from disk at runtime (package data, and an explicit PyInstaller `datas`
+entry). Actual version and
 optional-extra declarations live in `pyproject.toml`.
 PyInstaller Windows packaging lives in `packaging/` (spec, entry-point shim,
 self-drawn icon, version resource and an artifact smoke test); a signed,
 released binary is still a separate milestone.
 Qt/icon notices and replacement/relinking obligations must be checked before
-distribution; see [ADR-0011](adr/0011-licensing-and-gui-contract-addendum.md).
+distribution; see [ADR-0011](adr/0011-licensing-and-gui-contract-addendum.md)
+and its 2026-10-11 note (Leaflet notice, Qt WebEngine/Chromium notices,
+OpenStreetMap attribution and tile policy).

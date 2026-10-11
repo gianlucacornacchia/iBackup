@@ -8,7 +8,7 @@ release milestone (`windows-cli-release` in `docs/todos.md`).
 
 | File | Purpose |
 |---|---|
-| `ibackup.spec` | PyInstaller build spec. One-directory (**not** `--onefile`) windowed build of `run_gui.py`. |
+| `ibackup.spec` | PyInstaller build spec. One-directory (**not** `--onefile`) windowed build of `run_gui.py`. Declares `pymobiledevice3` as a hidden import and lists `src/iphone_archive/gui/webassets/` (vendored Leaflet for the trip map) as `datas`, because it is read from disk at runtime rather than imported. |
 | `run_gui.py` | Entry-point shim for PyInstaller's import analysis; calls the same `application_main()` as the installed `ibackup-gui` script. |
 | `make_icon.py` | Regenerates `icon.ico` from the GUI's own drawn glyph. Run only when the glyph changes. |
 | `icon.ico` | Committed multi-resolution app icon (16-256 px). |
@@ -48,10 +48,29 @@ and the smoke test's own logic, not the (minutes-long) build.
   sync; `tests/test_packaging.py` fails if the two drift apart.
 - **Do not fork the entry point.** `run_gui.py` must stay a one-line call into
   `iphone_archive.gui.application:application_main`.
+- **Keep `gui/webassets/` in `datas`.** Without it the frozen app starts and
+  passes the smoke test, but opening a map fails because `leaflet.js`/
+  `leaflet.css` are missing. Keep Leaflet's `LICENSE` alongside it.
+
+## Qt WebEngine (trip map)
+
+The map (`gui/mapview.py`) uses `QtWebEngineWidgets`, so the build includes
+Qt WebEngine via PyInstaller's PySide6 hooks: Chromium binaries,
+`QtWebEngineProcess.exe` and its resources/locales. Expect a much larger
+`dist\ibackup-gui\` than before 2026-10-10. Qt WebEngine is LGPL like the rest
+of Qt but bundles Chromium's third-party licenses, which the release notice
+set must include (ADR-0011, 2026-10-11 note).
+
+No rebuild and smoke test after the map change is recorded in
+`docs/progress.md`. `smoke_test.py` does not open a map, so after rebuilding,
+also open **Map** on an album in the built app to confirm WebEngine and the
+web assets load (tiles need network access).
 
 ## Not covered yet
 
-Code signing, an installer, license/notice bundling and a clean-machine
+Code signing, an installer, license/notice bundling (Qt, Qt WebEngine/
+Chromium, Leaflet, OpenStreetMap attribution) and a clean-machine
 (no-Python) install test belong to the release milestone, not to this step. The
 artifact produced here is unsigned, so Windows SmartScreen will warn on first
-run.
+run. `tests/test_packaging.py` does not yet assert the `webassets` `datas`
+entry.

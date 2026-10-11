@@ -471,6 +471,7 @@ declaration it checks, so this table and the code cannot drift apart silently.
 | Reset settings | `config reset` | §7b **Reset settings** | `app_service_reset_settings` |
 | Settings location | `config path` | §7b **Show settings file** | `app_service_settings_path` |
 | Forget recent archive | `config forget <path>` | §7b **Forget** | `app_service_forget_archive` |
+| Trip map | — (GUI only) | Page header **Map** on gallery-backed views | `app_service_list_locations` |
 
 Two capabilities are reached indirectly rather than by their own button, and
 `gui/parity.py` records the reason beside each: `config set` is served by the

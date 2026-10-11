@@ -222,6 +222,8 @@ until a Windows run.
 - **Real files only** (no symlinks) so the archive stays valid on any disk.
 - Multi-album assets are placed in **each** album folder (self-contained
   browsing); `--album-link-mode copy|hardlink` (auto-fallback to copy).
+  Since 2026-10-10 each import reconciles an asset's `Photos/` copies with
+  its current phone albums (stale copies removed after new ones exist).
 - **Windows-safe names** (reserved chars/names, trailing dots/spaces,
   case-insensitive collisions, <260-char paths).
 - Import uses per-item recovery journals (stage → hash-verify → exclusive
@@ -243,9 +245,9 @@ src/iphone_archive/
   catalog/              # database, models, repository, sidecar
   core/                 # hashing, name_safety, archive_layout, importer,
                         #   dedup, verifier, albums, reclaim,
-                        #   phone_diff, recycle, file_operations
+                        #   phone_diff, recycle, file_operations, exif
   browse/               # gallery (read models only) + thumbnails (cache)
-  gui/                  # PySide6 (built only after UI sketch approval)
+  gui/                  # PySide6; mapview.py + webassets/leaflet/ for the map
 tests/
 ```
 
@@ -268,6 +270,10 @@ tests/
   source identities; newer unsupported schema versions fail closed.
 - `asset_albums` reflects active copies; deleted copies retain album IDs in
   `asset_files`. Any active copy keeps its asset active.
+- Schemas v3-v6 (current `SCHEMA_VERSION = 6`) add `assets` columns:
+  `is_offloaded_preview`, `offloaded_original_path`, `latitude`, `longitude`,
+  `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`. See
+  `specifications.md` §8.
 
 ## 6. CLI commands (first release)
 
@@ -346,8 +352,8 @@ See `todos.md` for the full checklist with dependencies and status.
 - pytest suite (with `pytest-qt` for the GUI) runs offline with a fake device and
   temporary archives. Coverage: hashing, name-safety, archive layout, catalog,
   sidecar, importer (incl. fast-skip), dedup, verifier, albums, reclaim,
-  phone_diff, recycle, thumbnails, service, marks, selection, cli; GUI coverage
-  is planned, not implemented. See
+  phone_diff, recycle, thumbnails, service, marks, selection, cli, exif; GUI
+  tests (`test_gui_*.py`, including parity and the map) run offscreen. See
   `unit-tests.md`.
 
 ## 10. Performance & scalability (see `specifications.md` §19)
@@ -358,7 +364,8 @@ See `todos.md` for the full checklist with dependencies and status.
 - Fast-skip can avoid transfers for trusted unchanged device identities; stale
   or migrated identities and missing copies require revalidation.
 - Chunked file reads bound media buffers, not total library metadata memory.
-  GUI virtualization, pagination and bounded thumbnail queues remain planned.
+  The GUI grid is paged and delegate-painted with bounded preview queues;
+  behaviour at scale on Windows is still unmeasured.
 
 ## 11. Progress
 

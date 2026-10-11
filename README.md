@@ -1,13 +1,16 @@
 # iPhone Archive (`ibackup`)
 
-A **Windows-targeted** photo archive project (CLI implemented; GUI in progress) that creates a permanent,
+A **Windows-targeted** photo archive project (CLI and GUI implemented from
+source; no release yet) that creates a permanent,
 **append-only** archive of photos and videos from a USB-connected iPhone. Media
 is stored as **plain files in album folders**, browsable in File Explorer
 without the app. The archive — not the phone — is the source of truth.
 
-> Status: **offline core-hardening complete**. Core and CLI implementations have
-> offline fake-device tests; that is not real-iPhone or Windows release
-> validation. The GUI sketch was approved on 2026-09-11; `ibackup-gui` opens a
+> Status: **offline core-hardening complete; Phase 2 GUI steps 1-12 done**.
+> Core and CLI implementations have offline fake-device tests; the read/import
+> path has also been exercised against a real iPhone 12 (iOS 26.4) on Windows
+> 11, which is not Windows release validation. The GUI sketch was approved on
+> 2026-09-11; `ibackup-gui` opens a
 > themed window with navigation, a command bar, live counts, a thumbnail grid
 > with multi-select and a full-size viewer, and it can now open an archive and
 > run every archive operation, including recycling, restoring, purging, marking
@@ -74,8 +77,10 @@ See [`docs/readme-user.md`](docs/readme-user.md) for the full command reference.
 
 ## Tech stack
 
-- Python 3.11+ · Typer (CLI) · PySide6 (GUI, in progress) · `pymobiledevice3`
-  (iPhone/AFC) · SQLite · Pillow + `pillow-heif` (HEIC thumbnails) ·
+- Python 3.11+ · Typer (CLI) · PySide6 (GUI, including Qt WebEngine for the
+  map) · `pymobiledevice3` (iPhone/AFC) · SQLite · Pillow + `pillow-heif`
+  (HEIC thumbnails, EXIF) · PyAV (video poster frames) · vendored Leaflet
+  (BSD-2-Clause, `src/iphone_archive/gui/webassets/leaflet/`) ·
   pytest / hypothesis / pytest-qt · ruff · mypy · PyInstaller.
 
 ## License
@@ -84,4 +89,5 @@ MIT.
 
 Bundled dependencies retain their own licenses. A future Qt/icon distribution
 must satisfy the notice and redistribution obligations in
-[`ADR-0011`](docs/adr/0011-licensing-and-gui-contract-addendum.md).
+[`ADR-0011`](docs/adr/0011-licensing-and-gui-contract-addendum.md), including
+its 2026-10-11 note on Leaflet, Qt WebEngine and OpenStreetMap tiles.

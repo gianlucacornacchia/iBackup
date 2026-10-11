@@ -1,9 +1,10 @@
 # iPhone Archive (`ibackup`) — Specifications
 
 Status: living requirements, not an implementation/compliance report.
-Core/CLI hardening is complete offline. GUI work (including the
-Mica probe) is blocked on explicit sketch approval; packaging and Windows/
-iPhone validation are pending. See `progress.md` for executed evidence.
+Core/CLI hardening is complete offline. The UI sketch was approved on
+2026-09-11 and the GUI (Phase 2 steps 1-12, including a PyInstaller build
+recipe) is implemented; the Mica probe, Windows release and destructive
+Windows/iPhone validation are pending. See `progress.md` for executed evidence.
 
 ## 1. Purpose
 
@@ -24,7 +25,9 @@ is the long-term source of truth.
 7. Verify the integrity of every imported asset.
 8. Preserve album information whenever available.
 9. Provide safe workflows for freeing storage space on the phone.
-10. Operate entirely locally, without mandatory cloud services.
+10. Operate entirely locally, without mandatory cloud services. The single
+    exception is the optional GUI trip map (§16.4), which downloads
+    OpenStreetMap tiles while open; no archive operation needs the network.
 11. Store media as **plain files in plain directories organized by album**, so
     the archive is fully browsable and viewable in **Windows File Explorer**
     **without this application**.
@@ -46,7 +49,9 @@ is the long-term source of truth.
   archive.
 - The archive is the source of truth.
 - Integrity and verification take priority over speed.
-- All operations are local and privacy-preserving.
+- All archive operations are local and privacy-preserving. Media and catalog
+  data are never uploaded; the only network traffic is the optional map's
+  tile requests (§16.4), which reveal the viewed map area to the tile server.
 - Stored media must remain usable with **no dependency on this application**.
 
 ## 5. System Overview
@@ -54,7 +59,8 @@ is the long-term source of truth.
 - **Target platform:** Windows 10/11 (64-bit).
 - **Language / runtime:** Python 3.11+.
 - **Interface:** a **command-line interface (CLI)** and a **graphical interface
-  (GUI)**, both first-class in the target product; only the CLI exists today.
+  (GUI)**, both first-class and both implemented from source; parity is
+  enforced by `tests/test_gui_parity.py`.
 - **GUI framework:** **PySide6 (Qt for Python, LGPL)** — with efficient
   thumbnail grids (`QListView` icon mode), built-in multi-selection, context
   menus/drag-and-drop, and `QThread`/`QProgressDialog` for progress and
@@ -100,7 +106,8 @@ Rules:
   an exFAT/FAT drive.
 - **Album folders are self-contained.** An asset that belongs to one or more
   albums is placed as a real file inside **each** of its album folders. An
-  asset with no album is placed under `_Unsorted/YYYY/MM/`.
+  asset with no album is placed under `_Unsorted/YYYY/MM/`. For assets still
+  on the phone, placement follows the phone's *current* membership (§12).
 - **Multi-album duplication is intentional.** A photo in N albums exists as N
   files so each album folder can be browsed independently. On-phone duplicate
   detection still prevents re-importing the same asset.
@@ -158,6 +165,18 @@ reusing an existing catalog.
   phone_asset_id, phone_size, phone_modified_at, present, last_seen_at)`, keyed
   by device/path/asset, and `import_commits(journal_id)`. Edit commit markers
   live in `meta`. Legacy asset phone fields are not trusted device provenance.
+- Schemas v3-v6 add nullable/defaulted `assets` columns; the current
+  `SCHEMA_VERSION` is **6**. Each migration is forward-only, idempotent against
+  a column that already exists, and leaves existing rows' new columns empty:
+  - v3 `is_offloaded_preview` (0/1): the copy is the phone's cached
+    low-resolution thumbnail of an offloaded original, not the original.
+  - v4 `offloaded_original_path`: the album-member phone path a preview stands
+    in for; cleared when the preview is upgraded (§9).
+  - v5 `latitude`, `longitude` (REAL): from the phone's `Photos.sqlite`, with
+    the file's EXIF GPS as fallback.
+  - v6 `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`:
+    from the archived file's EXIF.
+  These facts live only in the catalog; sidecars do not carry them yet.
 - Indexes on `assets.sha256`, `assets.present_on_phone`, `asset_albums.album_id`,
   `asset_files.path`, `deletion_marks.committed_at`.
 - Location is also tracked per copy: an asset with both active and recycled
@@ -278,8 +297,9 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 
 ## 16. Frontend Architecture (CLI + GUI)
 
-The target application specifies **two first-class frontends** over one
-headless core; full parity is an acceptance requirement, not current GUI status:
+The application specifies **two first-class frontends** over one
+headless core; full parity is an acceptance requirement, enforced by
+`tests/test_gui_parity.py` against `gui/parity.py`:
 
 - A headless **service/application layer** exposes every capability (import,
   verify, dedup, album browsing/query, selection, move, delete, mark-for-delete,
@@ -301,10 +321,11 @@ headless core; full parity is an acceptance requirement, not current GUI status:
   Python core, including `pymobiledevice3` device access. WinUI/C# could bridge
   Python via IPC/embedding, but adds a second runtime/toolchain; no rewrite is
   inherently required. See ADR-0011.)
-- **Packaging target:** a future distribution provides `ibackup` and, after GUI
-  approval/implementation, `ibackup-gui`. PyInstaller Windows builds and an
-  optional later installer require a scheduled release validation milestone.
-  Source installation currently provides only the CLI; no release is available.
+- **Packaging target:** a future distribution provides `ibackup` and
+  `ibackup-gui`. `packaging/ibackup.spec` freezes the GUI (one-directory,
+  including the vendored Leaflet `webassets/`); a CLI recipe, signing, an
+  installer and release validation remain a scheduled milestone. Source
+  installation provides both entry points; no release is available.
 - **GUI keeps no business logic:** all actions call `service/`; the GUI only
   binds widgets, renders result DTOs, and forwards progress/cancel.
 - **Worker ownership:** create/open/use/close each service and SQLite connection
@@ -327,6 +348,7 @@ headless core; full parity is an acceptance requirement, not current GUI status:
 - **Review assets that were deleted from the phone** and decide, per item, to
   purge them from the archive or move them to the `Deleted/` folder (see §18).
 - Run import/verify/dedup with visible progress and cancellation.
+- Show a trip map of the located photos of any gallery view (§16.4).
 
 ### 16.3 UI sketch approval gate (required before building the GUI)
 
@@ -334,7 +356,8 @@ Before any GUI code is written, a **UI sketch / wireframe** of the main window
 and key views (album navigation, picture grid with multi-select, deleted-on-phone
 review, reclaim, progress dialog) is produced and saved under `docs/ui-sketch/`.
 Implementation of the PySide6 GUI **must not begin until the user explicitly
-approves the sketch**. This is a hard gate in the build plan.
+approves the sketch**. This is a hard gate in the build plan. _(Passed
+2026-09-11.)_
 
 The sketch also fixes the **visual language: a modern Windows 11 Fluent
 application** — Qt's native `windows11` style, DWM Mica backdrop, rounded
@@ -344,10 +367,35 @@ No GPL widget dependency is selected for this distribution. DWM failures must
 be logged and fall back to solid colors. The Windows Mica probe is unperformed
 and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
 
+### 16.4 Trip map (GUI only)
+
+- `app_service_list_locations(album_id=None, only_unsorted=False,
+  include_deleted=False)` → `gallery_list_located()` returns `AssetView`s with
+  non-null `latitude`/`longitude` for one scope (album, unsorted, recycled or
+  all active), ordered by `captured_at` (oldest first), then name and id.
+- `gui/mapview.py` `MapDialog`/`WebMapWidget` embed a `QWebEngineView` whose
+  page is generated locally: vendored Leaflet (`gui/webassets/leaflet/`,
+  BSD-2-Clause) and the point list are inlined, labels escaped so they
+  cannot close the script tag. The page draws a polyline in capture order,
+  circle markers (start green, end red) with file-name popups, a metric/
+  imperial scale and fits the bounds; with no points it shows a world view.
+- Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (max zoom
+  19, © OpenStreetMap contributors attribution) through one named, persistent
+  `QWebEngineProfile` `ibackup-map-tiles` with a 200 MB disk HTTP cache and a
+  descriptive User-Agent. This is the app's only network use. Offline, the
+  map controls, markers and line still work without imagery.
+- The **Map** button is shown on gallery-backed pages only (All photos,
+  Unsorted, Recycle bin, each album) while an archive is open; the Marked and
+  Deleted-from-phone review pages have none. There is no CLI equivalent; the
+  operation is declared in `gui/parity.py`.
+- "Trip" means located photos in capture order; there is no automatic
+  segmentation into separate trips.
+
 ## 17. Archive Editing: Move, Delete, and Mark-for-Delete
 
 These are **explicit, user-initiated** operations, distinct from the append-only
-*automatic* guarantee (the app never deletes on its own):
+*automatic* guarantee (the app never deletes an asset on its own; import's
+album reconciliation in §12 only removes redundant placement copies):
 
 - **Mark-for-delete:** the user may mark individual pictures or whole albums for
   deletion. Marks are staged in `deletion_marks` and change nothing on disk until
@@ -364,7 +412,8 @@ These are **explicit, user-initiated** operations, distinct from the append-only
   membership / folder placement). Moves preserve bytes and require recoverable
   per-asset placement/catalog changes; do not imply whole-batch atomicity.
   CLI moves default to all active copies of selected assets; `--from-album`
-  limits changes to one source album.
+  limits changes to one source album. A move of an asset still on the phone
+  lasts only until the next import if the phone's albums differ (§12).
 - **Exact copy selection:** move/recycle/restore/purge service calls accept
   `file_ids`; corresponding CLI commands accept repeated `--file <id>` and
   still require positional asset IDs. IDs must match the requested assets and
@@ -497,6 +546,11 @@ Two consequences worth designing around:
   read album membership, and it is paid even when nothing needs importing. For
   frequent incremental runs this is the dominant cost, not the media transfer.
   Caching or conditionally skipping that copy is the highest-value optimisation.
+- Offloaded-preview lookups cost two AFC round-trips (`listdir` + `stat`) per
+  album path missing from `/DCIM`; with 5,263 such paths (2026-10-09 run) that
+  is ~10,500 calls. Resolved paths are therefore cached per device
+  (§9 step 2), so only never-resolved paths cost AFC calls on later imports.
+  The `Photos.sqlite` copy is still uncached.
 
 ### 19.3 Incremental-run behaviour (confirmed)
 
@@ -521,15 +575,20 @@ Two consequences worth designing around:
   independent of library size. Measure peak RSS on a representative library.
 - **Deleted-from-phone detection** (§18) is a set-difference between the phone
   inventory and the catalog — metadata only, no content reads.
+- **Metadata backfill** (§9 step 3) reads one archived copy's EXIF locally for
+  each enumerated asset whose `camera_model` is still empty, on every import.
+  Once filled it costs nothing, but assets with no EXIF camera data (e.g.
+  videos, screenshots) are re-read on each import.
 
 ### 19.5 GUI at scale
 
-- The planned picture grid must use virtualized/lazy rendering and pagination;
-  smooth scrolling at scale needs measurement after GUI approval.
+- The picture grid uses delegate-painted, lazily paged rendering (128-row
+  pages); smooth scrolling at scale still needs measurement on Windows.
 - Thumbnails are **generated once and cached** under `.ibackup/thumbnails/`
   (HEIC decoded via `pillow-heif`), so browsing does not re-decode originals.
-- Planned background generation must bound pending queues, worker count and
-  decoded caches, discard stale requests and support cancellation.
+- Background generation bounds pending queues, worker count and decoded
+  caches, discards stale requests and supports cancellation
+  (`gui/previews.py`).
 
 ### 19.6 Tunables
 

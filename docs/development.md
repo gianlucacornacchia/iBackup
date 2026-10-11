@@ -5,10 +5,11 @@ tests. **Keep this document up to date as the code evolves.**
 
 Target platform: **Windows 10/11 (64-bit)**, Python **3.11+**.
 
-Current evidence is offline core/CLI testing, not a validated Windows/iPhone
-release. The GUI sketch was approved on 2026-09-11; the shell, theme and worker
-are implemented offline. Live Windows Mica/chrome qualification is still
-pending. See `progress.md` for evidence and remaining gates.
+Current evidence is offline core/CLI/GUI testing plus a limited real-iPhone
+read/import check, not a validated Windows/iPhone release. The GUI sketch was
+approved on 2026-09-11 and all twelve Phase 2 steps are implemented; live
+Windows Mica/chrome qualification is still pending. See `progress.md` for
+evidence and remaining gates.
 
 ## 1. Prerequisites
 
@@ -53,12 +54,13 @@ pip install -e ".[dev]"          # editable install + dev extras
 
 | Library | Purpose |
 |---|---|
-| `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`). |
-| `PySide6` | GUI shell/theme layer. **6.7+ required** for native `windows11` style and palette accent; explicit native color-scheme hints are used where available (Qt 6.8+). |
+| `pymobiledevice3` | USB/AFC access to the iPhone (enumerate/pull/delete media, read `Photos.sqlite`, read cached `/PhotoData/Thumbnails/V2` previews). |
+| `PySide6` | GUI. **6.7+ required** for native `windows11` style and palette accent; explicit native color-scheme hints are used where available (Qt 6.8+). The trip map also uses its **Qt WebEngine** modules (`QtWebEngineCore`, `QtWebEngineWidgets`), which ship in the standard PySide6 wheels (via `PySide6-Addons`); a minimal `PySide6-Essentials` install cannot open the map, and `tests/test_gui_mapview.py` would fail to import. |
 | `darkdetect` | Reserved dependency; live theme detection currently uses Qt hints and Windows preferences, without a listener thread. |
-| `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`. |
+| `Pillow` + `pillow-heif` | Decode HEIC/HEIF and JPEG/PNG to generate the cached thumbnails in `.ibackup/thumbnails/`, and read EXIF camera/GPS facts (`core/exif.py`). |
 | `av` (PyAV) | Extract video poster frames for the thumbnail cache. Its wheels bundle FFmpeg, so **no system FFmpeg install is needed** on Windows. Imported lazily: if it is missing, videos fall back to a placeholder instead of breaking image thumbnails. |
 | `typer` | CLI argument parsing, subcommands, and help text. |
+| Leaflet (vendored, not pip) | `src/iphone_archive/gui/webassets/leaflet/` (`leaflet.js`, `leaflet.css`, BSD-2-Clause `LICENSE`), inlined into the map page. Declared as package data in `pyproject.toml`. Update by replacing the files and keeping `LICENSE`. |
 | (stdlib) `sqlite3`, `hashlib`, `pathlib`, `json` | Catalog, hashing, paths, sidecars. |
 
 ### Dev / test libraries
@@ -99,11 +101,16 @@ pytest --cov=iphone_archive         # optional coverage
 
 `tests/test_gui.py`, `tests/test_gui_theme.py`, `tests/test_gui_worker.py`,
 `tests/test_gui_models.py`, `tests/test_gui_previews.py`,
-`tests/test_gui_shell.py`, `tests/test_gui_gallery.py` and
-`tests/test_gui_operations.py`
+`tests/test_gui_shell.py`, `tests/test_gui_gallery.py`,
+`tests/test_gui_operations.py`, `tests/test_gui_destructive.py`,
+`tests/test_gui_settings.py`, `tests/test_gui_parity.py` and
+`tests/test_gui_mapview.py`
 run headless: they set `QT_QPA_PLATFORM=offscreen` on import, so GUI tests need
 no display and are part of the normal `pytest` run.
 They skip automatically if PySide6 or pytest-qt is missing.
+`tests/test_gui_mapview.py` builds a real `QWebEngineView` and the persistent
+tile profile but asserts nothing about tiles, so it does not depend on the
+network.
 `tests/test_win32_effects.py` tests the guarded native API with mocks on any
 host; this is not evidence of Windows rendering.
 
@@ -167,10 +174,10 @@ ibackup-gui                         # GUI (gui-scripts entry point)
 python -m iphone_archive.gui.application
 ```
 
-It is being built in the twelve steps listed in `plan.md` §2b, so it currently
-opens the window shell without archive features wired up yet.
-The worker backbone is installed but lazy: launching the shell does not start
-archive work, select an archive or connect a phone.
+All twelve steps listed in `plan.md` §2b are implemented: the window opens or
+creates an archive and runs every operation.
+The worker backbone is lazy: launching the window does not start archive work
+or connect a phone; only `reopen_last_archive` may reopen the last archive.
 
 Set `ibackup config set theme system` (or `light` / `dark`) before launching.
 The GUI reads this preference at startup; system theme/accent changes are
@@ -503,6 +510,32 @@ true, so a new capability is not finished until it is reachable on screen.
 pytest tests/test_gui_parity.py
 ```
 
+### Working on the trip map
+
+`main_window_map_action` turns a page key into `app_service_list_locations`
+parameters and opens `MapDialog` from the quiet-reply path; the dialog only
+renders. Rules worth keeping:
+
+- **It is the only network user.** Keep any new network access out of the
+  map unless it is equally explicit and documented (`readme-user.md` FAQ,
+  `specifications.md` §16.4, ADR-0011 note). Archive operations must stay
+  offline.
+- **Respect the OpenStreetMap tile usage policy:** keep the descriptive
+  `USER_AGENT`, the visible attribution, the disk cache and no bulk/prefetch
+  downloading. Heavy use needs a different tile provider.
+- **Vendored files are read from disk at runtime.** If you add a file under
+  `gui/webassets/`, list it in `[tool.setuptools.package-data]` and keep the
+  `datas` entry in `packaging/ibackup.spec`, or installs and the frozen build
+  lose it silently (`tests/test_packaging.py` does not check this).
+- **Inline, do not link.** The page embeds Leaflet and the points JSON;
+  escape anything that could close a `<script>` (`mapview_points_json`).
+- A new service operation still needs a `gui/parity.py` entry and an
+  `operations.py` title/summary.
+
+```powershell
+pytest tests/test_gui_mapview.py tests/test_gallery.py tests/test_service.py tests/test_gui_parity.py
+```
+
 ### Running the Windows Mica probe
 
 Normal launches retain opaque client painting. On Windows 11 22H2+ only:
@@ -550,6 +583,14 @@ and there is no CLI executable, installer or bundled notice set yet; a
 clean-machine (no-Python) launch test, dependency/license notices, Qt LGPL
 replacement/relinking obligations and icon notices (ADR-0011) and MSIX/signing
 remain release-milestone work before advertising a download.
+
+Since the map (2026-10-10) the build also bundles `gui/webassets/` via the
+spec's `datas` and pulls in Qt WebEngine (Chromium, including
+`QtWebEngineProcess.exe`), which makes the output much larger. No rebuild of
+the `.exe` after that change is recorded in `progress.md`, and the smoke test
+only launches the window: it never opens a map, so a missing WebEngine
+component or web asset would not fail it. Open a map in the built app by
+hand after rebuilding.
 
 ## 8. Conventions
 

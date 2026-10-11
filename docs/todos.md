@@ -9,6 +9,10 @@ Tracked todos with dependencies. Legend: [x] done · [~] in progress ·
 >   until its targeted tests pass (full suite before completing a phase).
 > - **Keep docs up to date while coding:** `development.md`, `readme-user.md`,
 >   `structure.md`, `unit-tests.md`, root `README.md`, and any other affected doc.
+> - **Docs before commit (mandatory):** never commit a code change without the
+>   docs it affects in the same commit. Before committing, check which docs are
+>   stale (`git log -1 --format=%ad -- <doc>` vs. the code commits since) and
+>   update them; see the checklist in the root `AGENTS.md`.
 > - **Update `progress.md`** whenever a todo changes state (resume point).
 > - **Commit incrementally** with clear messages so the project story is
 >   readable in git history — one logical commit per step, not one dump at the
@@ -52,7 +56,8 @@ hardening and Windows validation gates that follow.
 - [x] **sidecar** — per-asset JSON sidecar read/write. _Depends on:
   catalog-schema._
 - [x] **importer** — incremental import (copy→verify→place→sidecar→commit),
-  append-only album growth. _Depends on: catalog-schema, device-access,
+  append-only album growth (superseded 2026-10-10 by **album-reconcile**
+  below). _Depends on: catalog-schema, device-access,
   hashing-layout, sidecar._
 - [x] **dedup** — duplicate detection + report. _Depends on: catalog-schema,
   hashing-layout._
@@ -243,8 +248,8 @@ never starts before the layer beneath it is proven. Descriptions live in
   _Depends on: archive-edit, dedup, gui-frontend, hashing-layout, importer,
   name-safety, phone-diff, recycle-bin, service-layer, thumbnails, verifier._
   Status: offline core/CLI and recovery regressions pass; see `progress.md`.
-  GUI foundation/model tests exist; full GUI parity and Windows/hardware
-  qualification remain separate future gates.
+  GUI tests (including parity) exist and run offscreen; Windows/hardware
+  qualification remains a separate future gate.
 
 ## Scheduled release milestone
 

@@ -58,3 +58,38 @@ No platform, visual layout or archive-preservation requirement changes. The
 GUI remains blocked, real-phone destructive reclaim has a separate hardware
 gate, and Windows packaging has a scheduled validation milestone. Release
 notices/compliance and Windows behavior require evidence before distribution.
+
+## Note (2026-10-11): trip map, Leaflet, Qt WebEngine and OpenStreetMap
+
+Recorded after the fact; the decision above is unchanged. Commit `aa0086b`
+(2026-10-10) added a zoomable trip map at the user's explicit request:
+
+- **Network use.** `gui/mapview.py` loads OpenStreetMap tiles from
+  `tile.openstreetmap.org`. This is the app's only network access and an
+  explicit exception to the local-only principle (ADR-0008 rationale,
+  `specifications.md` §2/§4, US-F1). Archive operations remain offline.
+- **Leaflet** is vendored under `gui/webassets/leaflet/` with its
+  BSD-2-Clause `LICENSE`; that copyright/permission notice must ship with
+  any distribution, as item 4 requires for other copied assets.
+- **Qt WebEngine** joins the bundled Qt modules for item 3's inventory. It is
+  available under LGPL, but it bundles Chromium and its third-party
+  components; their notices must be included and no GPL-only component may
+  be shipped inadvertently.
+- **OpenStreetMap data** is ODbL; the map shows the required
+  "© OpenStreetMap contributors" attribution. Use of the public tile server
+  is subject to the OSMF tile usage policy (identifying User-Agent, caching,
+  no bulk download); a distributed release with many users may need a
+  different tile provider.
+
+## Note (2026-10-11): album reconciliation versus ADR-0004/ADR-0007
+
+Commit `d7eea11` (2026-10-10) changed import from append-only album growth to
+reconciling `Photos/` placement with the phone's current album membership: a
+copy in an album the phone no longer reports (or a stale `_Unsorted` copy) is
+removed automatically after any needed new copy exists. ADR-0007's guarantee
+is read at the **asset** level: no asset loses its last copy, `Deleted/` is
+never touched, and deleting a photo on the phone still removes nothing. Album
+folder *placement*, however, now follows the phone, so ADR-0004's album
+folders are a mirror of current membership for assets still on the phone.
+See `specifications.md` §12, including the known limitation when
+`Photos.sqlite` cannot be read.

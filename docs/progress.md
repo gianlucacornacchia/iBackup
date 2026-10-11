@@ -80,9 +80,11 @@ zoom)._
 - **Album correction:** earlier filename fallback assigned offloaded photos'
   albums to unrelated local files. The current adapter uses exact paths for
   modern Photos databases; older filename-only schemas require uniqueness
-  across the whole database and USB inventory. Existing wrong archive copies
-  are **not** automatically removed. Preserve existing archives and validate
-  corrected imports in a separate new archive.
+  across the whole database and USB inventory. Since album reconciliation
+  (`d7eea11`), reimporting removes existing wrong album copies of photos still
+  on the phone (they move to their real album or `_Unsorted`); photos no
+  longer on the phone keep their old placement. Back up existing archives
+  before that reimport.
 - **Phase:** Phase 2 — building the GUI. Phase 1 (core engine + full CLI) and
   the core-hardening checkpoint are complete offline.
 - **State:** the UI-sketch gate **passed on 2026-09-11**; the sketch and its
@@ -338,6 +340,32 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-11 — **Docs reconciled with commits since 2026-09-16** (`7c7b477`
+  through `aa0086b`), checked against the source at HEAD; documentation only,
+  no code or tests changed. Updated: root `README.md` (status, post-Phase-2
+  features, network note, tech stack), `docs/readme-user.md` (GUI status, map,
+  camera details, upgraded previews, album reconciliation section, internet
+  FAQ, stale settings/GUI text), `docs/specifications.md` (local-only
+  exception, layout/immutability, schema v3-v6, import workflow, §12 album
+  reconciliation replacing "never moved or deleted automatically", new §16.4
+  trip map, constraints, performance notes), `docs/structure.md` (module map
+  incl. `core/exif.py`, `gui/mapview.py`, `gui/webassets/`, `gui/review.py`,
+  `service/marks.py`), `docs/development.md` (Qt WebEngine, vendored Leaflet,
+  map rules, packaging caveat), `docs/unit-tests.md` (inventory incl.
+  `test_core_exif.py`, `test_gui_mapview.py`, `test_gui_settings.py`),
+  `docs/todos.md` (delivered items and follow-ups), `docs/plan.md`,
+  `docs/user-stories.md` (US-D1, US-F1, new US-G9), `packaging/README.md`
+  (webassets `datas`, Qt WebEngine) and a dated note in ADR-0011 (map network
+  use and notices; album reconciliation vs ADR-0004/0007) with the ADR index;
+  here, the "Album correction" status bullet no longer claims wrong copies
+  are never removed.
+  Found, not resolved: an unreadable `Photos.sqlite` makes reconciliation move
+  album copies of still-present assets into `_Unsorted`; no post-map `.exe`
+  rebuild is recorded and the smoke test never opens a map;
+  `tests/test_packaging.py` does not check the `webassets` entry; the
+  offloaded-preview cache lives under the process working directory; assets
+  without EXIF camera data are re-read on every import. The 2026-10-12/13
+  entries below postdate their commits (2026-10-10).
 - 2026-10-13 — **Fixed: every map reported "no location" — existing assets
   were never backfilled with GPS/camera metadata.** The prior GPS/map and
   EXIF features only wrote `latitude`/`longitude`/camera fields onto

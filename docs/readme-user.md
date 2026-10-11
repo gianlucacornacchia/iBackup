@@ -1,9 +1,10 @@
 # iPhone Archive — User Guide
 
-> **Source CLI / core-hardening preview, not a validated Windows release.**
-> Offline fake-device tests do not establish real-iPhone compatibility.
-> The source GUI is a themed window shell only; archive operations still use
-> the CLI. There is no installer or published portable build.
+> **Source CLI/GUI preview, not a validated Windows release.**
+> Offline fake-device tests and a limited real-iPhone read/import check do not
+> establish general real-iPhone compatibility. The source GUI (`ibackup-gui`)
+> runs every archive operation; a Windows build recipe exists, but there is no
+> installer or published portable build.
 > See [progress](progress.md) and the [hardware gate](unit-tests.md#4-windowsiphone-validation-gate)
 > before using a real phone. Keep an independent backup.
 
@@ -37,7 +38,9 @@ Explorer** and any photo viewer, **without needing this app**.
 - It is **not** a sync tool and does **not** mirror deletions from the phone.
 - It does **not** edit or re-encode your media.
 - It does **not** replace Apple Photos.
-- It does **not** require any cloud service.
+- It does **not** require any cloud service, and it never uploads your photos.
+  (Viewing the map does tell the OpenStreetMap tile server which map area you
+  are looking at; see the FAQ.)
 
 ---
 
@@ -78,8 +81,23 @@ shows you a checked, re-verified list first; that preview deletes nothing. Note
 that device-side deletion is still disabled pending hardware validation, so
 reclamation cannot yet free space on a real iPhone.
 
-Settings still have no dialog; use `ibackup config` for now. Choose the
-appearance before launching:
+**Map.** Every photo view (All photos, Unsorted, Recycle bin and each album)
+has a **Map** button in its header. It opens a zoomable OpenStreetMap map of
+the photos in that view that have a location, joined by a line in the order
+they were taken; the first is green, the last red, and clicking a dot shows
+the file name. The Marked and Deleted-from-phone pages have no map. The map
+needs an internet connection for the map imagery; without one, the dots, line
+and zoom still work over a blank background. Viewed map tiles are cached
+(up to 200 MB) so revisiting an area needs no new downloads.
+
+**Camera details** (camera, lens, ISO, aperture, focal length) are read from
+each photo's own EXIF when it is archived and stored in the archive index.
+They are not shown in the interface yet, and they are not added to the photo
+files or sidecars (your files are never modified).
+
+**Settings** has its own dialog (the **Settings** button at the bottom of the
+navigation pane); every preference below can be edited there, or with
+`ibackup config`. Choose the appearance from the dialog or before launching:
 
 ```powershell
 ibackup config set theme dark       # light or system are also accepted
@@ -123,7 +141,11 @@ ibackup import --archive D:\iphone-archive
 ```
 
 This copies new photos and videos, verifies each one, and organizes them into
-album folders. Running it again later only copies **new** items.
+album folders. Running it again later only copies **new** items, keeps album
+folders in step with the phone, and fills in location/camera details for
+photos archived before those were recorded. The summary line reports
+`Added`, `skipped`, `duplicates`, `upgraded` (offloaded previews replaced by
+their full-resolution original) and `errors`.
 
 ### 3. Browse your archive (no app needed)
 
@@ -204,13 +226,13 @@ archive, so the archive folder stays portable.
 | Setting | Default | Meaning |
 |---|---|---|
 | `default_archive` | *(first archive created)* | Archive used when `--archive` is omitted. |
-| `reopen_last_archive` | `true` | Stored preference for the future GUI; no current GUI startup behavior. |
+| `reopen_last_archive` | `true` | Reopen the last archive when the GUI starts, if that folder is still an archive. |
 | `recent_archives` | *(managed)* | Recently opened archives; set automatically. |
 | `album_link_mode` | `copy` | `copy` or `hardlink` for photos in several albums. |
 | `scan_phone_after_import` | `true` | Refresh the deleted-on-phone list after each import. |
 | `thumbnail_size` | `256` | Preview size: 128, 256 or 512 px. |
 | `confirm_word_required` | `true` | Require typing `DELETE` for permanent deletion. **Cannot be turned off.** |
-| `default_deleted_action` | `recycle` | Stored preference for the future GUI review; does not select a CLI action. |
+| `default_deleted_action` | `recycle` | Which button the GUI's deleted-from-phone review suggests; it never acts on its own and does not select a CLI action. |
 | `log_level` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`; applied to the CLI rotating archive log. |
 | `theme` | `system` | GUI appearance: `system`, `light` or `dark`; applied at startup, with live system appearance updates. |
 
@@ -338,8 +360,8 @@ For the ones you select, choose either:
 
   This permanently removes those photos from the archive after you confirm.
 
-The planned GUI will provide the same review as a multi-select thumbnail list.
-It is not implemented and remains blocked on explicit sketch approval.
+The desktop interface provides the same review on its **Deleted from phone**
+page, as a multi-select thumbnail list with the same two actions.
 
 ---
 
@@ -367,6 +389,10 @@ No. Files are copied exactly as they are on the phone.
 **If I delete a photo on my phone, does it disappear from the archive?**
 No. The archive is append-only and keeps it.
 
+**If I move a photo to another album on my phone, do I get two copies?**
+No. The next import moves its archive copy to match; see
+[Albums that change on the phone](#albums-that-change-on-the-phone).
+
 **Why do some photos appear in more than one folder?**
 If a photo is in several albums, a copy is placed in each album folder so every
 folder is complete on its own. Use `dedup` to see the storage impact,
@@ -377,9 +403,9 @@ Yes. The photos are plain files in plain folders with Windows-safe names, so you
 can browse and view them without this app.
 
 **Is there a graphical interface?**
-Not yet. A PySide6 interface with full CLI parity is specified in
-[`ui-sketch/README.md`](ui-sketch/README.md), but all GUI code and its entry
-point remain blocked on explicit approval. Use CLI listings or File Explorer.
+Yes: run `ibackup-gui` (see [Desktop interface preview](#desktop-interface-preview)).
+It covers every CLI operation; a test fails the build if one is missing. It
+is run from a source installation; there is no downloadable build yet.
 
 ---
 
@@ -403,10 +429,12 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
   are matched by directory **and** filename, never by a reused filename alone.
 - **Wrong albums from earlier builds:** the old filename fallback could attach
   an offloaded photo's albums to an unrelated local photo. The corrected
-  importer prevents this for new imports, but the archive is append-only:
-  reimporting does **not** remove old wrong album copies. Preserve the existing
-  archive and use a separate, new archive to check corrected placement before
-  making any deliberate archive edits. Restart the GUI after updating.
+  importer prevents this for new imports, and because imports now reconcile
+  album folders with the phone, reimporting removes those wrong album copies
+  for photos that are still on the phone (placing them in their real albums or
+  `_Unsorted`). Photos no longer on the phone keep their old placement. As a
+  precaution, back up the existing archive before that reimport. Restart the
+  GUI after updating.
 - **Permission errors on an external drive:** make sure you can write to the
   drive, and prefer NTFS or exFAT for large drives.
 - **A second/later import is slow, or I only want new photos:** just click
@@ -419,8 +447,10 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
   not with how many are new. If the phone has offloaded ("Optimize iPhone
   Storage") albums, resolving their low-resolution previews used to repeat an
   AFC lookup for every offloaded photo on every import; those lookups are now
-  cached on disk per device, so only the first import after this update pays
-  that cost again.
+  cached on disk per device (`.ibackup-device-cache\offloaded-preview-cache.json`
+  in the folder the app was started from, not in the archive), so only the
+  first import after this update pays that cost again. The file is safe to
+  delete; it is rebuilt on the next import.
 
 ### Recovery and safety
 
@@ -460,7 +490,10 @@ point remain blocked on explicit approval. Use CLI listings or File Explorer.
   Check the selected device identity; an identical path on another phone is
   not the same source. Schema-v2 migration preserves legacy content but does
   not trust old unscoped identities; rerun import/content validation for the
-  selected device before relying on incremental matching.
+  selected device before relying on incremental matching. Later migrations
+  (v3-v6: offloaded-preview flags, location, camera details) only add empty
+  columns, run automatically when the archive is opened, and cannot be undone;
+  an older build refuses to open an upgraded archive.
 - A fresh integrity error or missing copy blocks destructive work. Restore
   from an independent backup rather than overwriting a known-good original.
 - An OS-exclusive lock allows only one open service session per archive,

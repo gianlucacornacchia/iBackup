@@ -185,8 +185,12 @@ Acceptance criteria:
 private.
 
 Acceptance criteria:
-- Given any command, then no network/cloud service is required or contacted.
+- Given any command or archive operation, then no network/cloud service is
+  required or contacted.
 - Given the phone has iCloud disabled, then import and all features still work.
+- Given I open the optional GUI trip map (US-G9), then only OpenStreetMap map
+  tiles are requested; no photo, catalog data or coordinate list is sent. This
+  is the one explicit exception, added 2026-10-10 at the user's request.
 
 ---
 
@@ -289,6 +293,22 @@ Acceptance criteria:
   shared across QThreads. Event cancellation and queued UI signals are used.
 - Given competing mutations or thumbnail requests, mutations serialize with an
   archive process lock and thumbnail queues/caches remain bounded.
+
+### US-G9 — See where photos were taken
+**As** a user, **I want** a map of an album's or library's photos **so that** I
+can see the places and the route of a trip.
+
+Acceptance criteria:
+- Given a gallery view (All photos, Unsorted, Recycle bin or an album), when I
+  press **Map**, then its photos with a location are plotted on a zoomable map,
+  joined in capture order with distinct start and end markers.
+- Given no photo in the view has a location, then the map says so.
+- Given the network is unavailable, then the map still opens with markers and
+  line, without imagery.
+- Given photos archived before locations were recorded, when I import again,
+  then their missing location (and EXIF camera details) are filled in without
+  overwriting existing values.
+_(Added 2026-10-10, `2237104`/`549556c`/`77ec30a`/`aa0086b`.)_
 
 ---
 

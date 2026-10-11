@@ -1,8 +1,8 @@
 # iPhone Archive — Tests and Validation Plan
 
 Status: offline core/CLI hardening and its regression checkpoint are complete.
-The GUI shell/theme/worker/models have offline coverage; live Windows appearance, full GUI
-operations and the Windows release are **not validated**.
+The GUI (all Phase 2 steps, plus the trip map) has offline coverage; live
+Windows appearance and the Windows release are **not validated**.
 Use the final validation report in [progress](progress.md), not stale copied
 test counts, for executed commands/results.
 
@@ -23,10 +23,14 @@ test base when the execution environment prohibits system temporary folders.
 GUI tests run headless: `tests/test_gui.py`, `tests/test_gui_theme.py`,
 `tests/test_gui_worker.py`, `tests/test_gui_models.py` and
 `tests/test_gui_previews.py`, `tests/test_gui_shell.py`, `tests/test_gui_gallery.py`,
-`tests/test_gui_operations.py` and `tests/test_gui_destructive.py` set
+`tests/test_gui_operations.py`, `tests/test_gui_destructive.py`,
+`tests/test_gui_settings.py`, `tests/test_gui_parity.py` and
+`tests/test_gui_mapview.py` set
 `QT_QPA_PLATFORM=offscreen`, so no display is
 needed and CI behaves like a developer machine. They
-skip cleanly when PySide6 or pytest-qt is unavailable.
+skip cleanly when PySide6 or pytest-qt is unavailable;
+`test_gui_mapview.py` additionally needs Qt WebEngine (PySide6-Addons) but
+no network.
 
 ## 2. Existing test inventory
 
@@ -36,7 +40,7 @@ scenario is covered or that the latest edited suite has passed.
 | File (`tests/`) | Area |
 |---|---|
 | `test_config.py` | Archive path initialization/resolution. |
-| `test_settings.py` | Settings persistence, defaults, validation, CLI config behavior. |
+| `test_settings.py` | Settings persistence, defaults, validation, CLI config behavior; a failed publication is reported and its unique staging file cleaned up. |
 | `test_logging_setup.py` | Logging configuration and operation output. |
 | `test_hashing.py` | Streaming hashes, known inputs and property checks. |
 | `test_name_safety.py` | Sanitization, reserved names, collisions and property checks. |
@@ -58,7 +62,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_selection.py` | Partial/batch moves, conflicts, preflight and interrupted-operation recovery, including subprocess exit/restart rollback. |
 | `test_recycle.py` | Partial recycle/restore/purge, invalid paths, missing copies, sidecar-failure recovery and committed-operation restart finalization. |
 | `test_cli.py` | Command parsing, errors, confirmation and service wiring. |
-| `test_e2e.py` | Offline pipeline and selected crash/resume scenarios. |
+| `test_e2e.py` | Offline pipeline and selected crash/resume scenarios; album reconciliation end to end (first album replaces the `_Unsorted` copy, multi-album growth keeps both copies, a phone-side move leaves no duplicate). |
 | `test_gui.py` | Offscreen window shell, entry point/style selection and Qt-free package/bootstrap imports in a fresh process. |
 | `test_gui_theme.py` | Exact color/alpha/type tokens, scoped QSS, persisted theme bootstrap, live system/accent changes, high-contrast precedence, Qt 6.7 fallback and rendered solid opacity. |
 | `test_gui_worker.py` | Real QThread service/device ownership, queued GUI delivery, archive-lock release, fake-device import/verify, detached request/result data, FIFO/overflow, coalesced progress, direct and queued cancellation, failure cleanup/restart without replay and window/application shutdown. |
