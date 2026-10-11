@@ -232,8 +232,11 @@ paths, locations, album IDs/names and link modes; older sidecars remain readable
    **Shared-album items** (§12.1) are enumerated last, from
    `/PhotoData/PhotoCloudSharingData`, and only when the same `Photos.sqlite`
    copy reported shared-album membership; they carry `shared_album_names`
-   plus capture time and GPS by exact path. They get no offloaded-preview
-   fallback.
+   plus capture time and GPS by exact path. Members not cached there fall
+   back to the same thumbnail-cache preview lookup as offloaded originals
+   (`/PhotoData/Thumbnails/V2/PhotoData/PhotoCloudSharingData/.../<file>/`),
+   with `offloaded_original_path` set to the shared path, so step 4b upgrades
+   them in place once the original is downloaded.
 3. **Fast skip pass (no data transfer):** for each enumerated item, look up its
    phone identity (`phone_asset_id`, or `phone_path`+`phone_size`+
    `phone_modified_at`) in the catalog. If it matches an already-imported asset
@@ -334,27 +337,45 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 
 ### 12.1 iCloud Shared Albums (2026-10-11)
 
-- **Source.** Albums with `ZGENERICALBUM.ZKIND = 1505`
-  (`core/albums.py` `SHARED_ALBUM_KIND`) are iCloud Shared Albums, whether
-  owned or subscribed. They are read through the same runtime-discovered
-  `Z_nnASSETS` join as user albums: `albums_membership_query(connection,
-  kind)` / `albums_parse_photos_database(path, kind)` take a `kind`
-  (`USER_ALBUM_KIND = 2` by default, unchanged), and
-  `albums_parse_shared_albums()` keeps only keys under
+- **Source (iOS 26+, hardware-validated 2026-10-11).** Shared albums are rows
+  of `ZSHARE` (Core Data entity `CollectionShare`, `Z_ENT` 67 and
+  `ZCOLLECTIONSHAREKIND = 2` on the test phone) with a `ZTITLE`; their media
+  link via `ZASSET.ZCOLLECTIONSHARE -> ZSHARE.Z_PK`, **not** through the
+  `Z_nnASSETS` album join. `ZSHARE.ZSCOPEIDENTIFIER` is the GUID folder name in
+  `/PhotoData/PhotoCloudSharingData/<personId>/<GUID>/100CLOUD/`.
+  `albums_collection_share_query()` requires `ZASSET.ZCOLLECTIONSHARE`,
+  `ZSHARE.ZTITLE` and `ZASSET.ZDIRECTORY`, and skips trashed shares and
+  trashed assets (`ZTRASHEDSTATE`).
+- **Source (older iOS, unvalidated fallback).** `ZGENERICALBUM` rows with
+  `ZKIND = 1505` (`SHARED_ALBUM_KIND`) read through the runtime-discovered
+  `Z_nnASSETS` join: `albums_membership_query(connection, kind)` /
+  `albums_parse_photos_database(path, kind)` take a `kind`
+  (`USER_ALBUM_KIND = 2` by default, unchanged); schemas without `ZKIND` yield
+  none. The iOS 26.4 phone has **no** `ZKIND = 1505` row (kinds seen: 2, 1506,
+  1510, 16xx, 35xx, 39xx, 400x), so this path found nothing there.
+- `albums_parse_shared_albums()` merges both sources and keeps only keys under
   `/PhotoData/PhotoCloudSharingData` (`SHARED_MEDIA_ROOT`,
-  `albums_is_shared_path`). Schemas without `ZKIND` yield no shared albums
-  rather than mislabelling every album as shared.
+  `albums_is_shared_path`).
 - **Device.** `AfcDevice` parses shared membership from the same
   `Photos.sqlite` copy (no second transfer) into `shared_album_membership`.
   `afc_device_shared_items()` walks `SHARED_MEDIA_ROOT` only when that
   membership is non-empty and yields only files the database names as
   shared-album members, so cache-internal files are never imported and an
   unreadable database imports no shared media (never `_Unsorted`). A walk
-  failure logs "shared albums unavailable" and enumeration continues. Members
-  not cached on the phone are skipped with an info log asking the user to open
-  the album in Photos and import again. Shared items are not part of
-  `device_album_map()`. `PhoneItem.shared_album_names` carries membership,
-  separate from `album_names`; `FakeDevice(shared_album_map=...)` mirrors it.
+  failure logs "shared albums unavailable" and yields no shared items (not
+  even previews); enumeration continues. Members not cached on the phone go
+  through `afc_device_offloaded_preview()`: the thumbnail under
+  `/PhotoData/Thumbnails/V2<shared path>/` (e.g. `5005.JPG`) becomes an item
+  with `is_offloaded_preview = True` and `offloaded_original_path` = the shared
+  path, named `<stem> (offloaded preview).<ext>`, using the on-disk preview
+  cache; it is upgraded in place (§9 step 4b) once the original is cached.
+  Every enumeration with shared membership logs a WARNING summary: "Shared
+  albums: N albums, M items; X full-resolution copies cached on the phone, Y
+  imported as low-resolution previews, Z unavailable. Open a shared album in
+  Photos to download its originals, then import again." Shared items are not
+  part of `device_album_map()`. `PhoneItem.shared_album_names` carries
+  membership, separate from `album_names`; `FakeDevice(shared_album_map=...)`
+  mirrors it.
 - **Placement.** `importer_album_targets(item)` returns `(name, kind)` pairs:
   user albums first (so the primary copy keeps its place), then shared
   albums, de-duplicated. The primary copy goes to the first target; extra
@@ -373,16 +394,20 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
   `ibackup albums --shared` lists only shared albums ("No shared albums
   yet." when none). The GUI lists them in a separate "Shared albums"
   navigation section (§16.2).
-- **Presence.** Shared-album items absent from an enumeration (no longer
-  cached, album left, or membership unreadable) count as not seen, like any
+- **Presence.** Shared-album items absent from an enumeration (no original
+  or thumbnail, album left, or membership unreadable) count as not seen, like any
   phone item, so they can appear in the deleted-from-phone review (§18).
-- **Not yet validated on hardware:** `ZKIND = 1505` and the
-  `PhotoCloudSharingData` `ZDIRECTORY` layout follow known iOS `Photos.sqlite`
-  conventions and the existing `tests/test_albums.py` regression docstring;
-  a real-iPhone check is pending. The album owner is not captured. Only media
-  iOS has already downloaded to the shared cache can be imported; access is
-  still local USB/AFC, with no iCloud login or network.
-
+- **Hardware validation (iPhone 12, iOS 26.4, 2026-10-11).** Diagnosed from a
+  copy of the phone's `Photos.sqlite`: 18 shared albums and 6,150 items are
+  found (e.g. "India 2024", 1,473 items). Only a small fraction is cached
+  (13 of 1,473 files in that album's `100CLOUD` folder), but 35 of 35 sampled
+  items had a thumbnail, so most shared media is imported as previews until
+  the user opens the album in Photos. Still unverified: a full end-to-end
+  import run, whether shared copies' bytes differ from the owner's DCIM
+  originals, and the older `ZKIND = 1505` schema. The album owner is not
+  captured (`ZSHARE` showed no owner-name column; possibly via
+  `ZSHAREPARTICIPANT`, unverified). Access is still local USB/AFC, with no
+  iCloud login or network.
 ## 13. Space Reclamation (Safety Model)
 
 - A phone-side file is eligible only with a freshly verified active archive
@@ -394,7 +419,9 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 - `reclaim_find_candidates` never offers files under
   `/PhotoData/PhotoCloudSharingData`: a shared-album copy is iCloud's cache,
   not the user's library, so deleting it frees nothing durable and would
-  alter the shared album.
+  alter the shared album. It also never offers low-resolution previews
+  (`is_offloaded_preview`, phone paths under `/PhotoData/Thumbnails/V2/`):
+  those are the phone's thumbnail cache, never the original.
 - `ibackup reclaim --confirm` requires interactive typed `DELETE`, with no
   automation bypass, and execution-time candidate revalidation.
 - Real AFC deletion stays disabled until the Windows/iPhone read, album,
@@ -422,8 +449,9 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
   Apple's iTunes or "Apple Devices" app).
 - Album extraction depends on AFC access to `Photos.sqlite`, which is not
   guaranteed on all iOS versions. Shared albums additionally depend on AFC
-  access to `/PhotoData/PhotoCloudSharingData` and on iOS having cached the
-  media; both are unverified on hardware (§12.1).
+  access to `/PhotoData/PhotoCloudSharingData` (full resolution) or to its
+  thumbnail mirror under `/PhotoData/Thumbnails/V2` (previews); both read
+  correctly on iOS 26.4 (§12.1).
 - GPS is read from `ZLATITUDE`/`ZLONGITUDE` on the `ZASSET`/`ZGENERICASSET`
   table only; an iOS version storing location elsewhere yields no phone GPS
   (EXIF GPS may still fill it). A backfill on one real iOS 26.4 archive found

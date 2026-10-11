@@ -312,12 +312,16 @@ Recorded in `progress.md`; docs reconciled 2026-10-11.
 - [x] **gui-sizing-review-pages** (`66420ac`, `9cc2bb1`, `3827515`) — larger
   tiles/buttons/icons; Marked and Deleted-from-phone pages laid out correctly
   with real thumbnails.
-- [x] **shared-albums** (2026-10-11) — iCloud
-  Shared Albums (`ZKIND = 1505`) imported from `/PhotoData/PhotoCloudSharingData`
-  into `Photos/_Shared Albums/<name>/` (`albums.kind = shared`, no schema
-  change); separate GUI "Shared albums" section, `ibackup albums --shared`,
-  `(shared)` tag; excluded from reclaim; `tests/test_shared_albums.py`.
-  Offline only.
+- [x] **shared-albums** (`0cf5b4f`, fixed 2026-10-11) — iCloud Shared Albums
+  imported into `Photos/_Shared Albums/<name>/` (`albums.kind = shared`, no
+  schema change); separate GUI "Shared albums" section,
+  `ibackup albums --shared`, `(shared)` tag; excluded from reclaim;
+  `tests/test_shared_albums.py`. The first version (`ZKIND = 1505` only) found
+  nothing on a real iOS 26.4 phone; iOS 26 stores them in `ZSHARE`, linked by
+  `ZASSET.ZCOLLECTIONSHARE`, now read first (`ZKIND = 1505` kept as a fallback).
+- [x] **shared-album-preview-fallback** (2026-10-11) — uncached shared-album
+  members are imported as thumbnail-cache previews and upgraded in place when
+  the original is downloaded; a WARNING summary reports the split.
 
 Follow-ups found while reconciling (not scheduled):
 
@@ -337,19 +341,22 @@ Follow-ups found while reconciling (not scheduled):
 - [ ] **preview-cache-location** — the offloaded-preview cache and the
   temporary `Photos.sqlite` copy live under the process working directory,
   not a per-user or per-archive location.
-- [ ] **shared-albums-hardware** — confirm on a real iPhone that shared albums
-  use `ZKIND = 1505`, that members sit under `PhotoCloudSharingData` with the
-  expected `ZDIRECTORY`, that AFC can read that cache, and that shared copies
-  differ in bytes from the DCIM originals (identical bytes would merge them
-  into one asset whose album copies the two phone items keep reconciling).
+- [~] **shared-albums-hardware** — partially done 2026-10-11 on an iPhone 12
+  (iOS 26.4): schema (`ZSHARE`), `PhotoCloudSharingData/<personId>/<GUID>/
+  100CLOUD` layout and AFC reads validated (18 albums, 6,150 items). Still to
+  check: a full end-to-end import run, and that shared copies differ in bytes
+  from the owner's DCIM originals (identical bytes would merge them into one
+  asset whose album copies the two phone items keep reconciling). The
+  `ZKIND = 1505` fallback for older iOS remains unvalidated.
 - [ ] **shared-album-owner** — record the shared album's owner/subscriber
-  status (not captured today).
-- [ ] **shared-album-preview-fallback** — uncached shared-album members are
-  skipped; consider a low-resolution fallback like offloaded previews, if iOS
-  keeps one.
-- [ ] **shared-album-absence** — uncached or left shared-album items count as
-  "not seen" and can appear in the deleted-from-phone review; decide whether
-  that is wanted.
+  status (not captured today). `ZSHARE` showed no owner-name column; possibly
+  available via `ZSHAREPARTICIPANT` (unverified).
+- [ ] **shared-album-absence** — shared-album items with neither an original
+  nor a thumbnail, or in albums the user left, count as "not seen" and can
+  appear in the deleted-from-phone review; decide whether that is wanted. Also
+  check what happens when a cached original is later evicted: the phone then
+  reports only a preview at a different (thumbnail) path, which is not
+  matched to the existing full-resolution asset.
 - [ ] **pre-existing-lint-type** — at HEAD, `ruff format --check` flags
   `gui/review.py`, `gui/shell.py` and `tests/test_importer.py`, and
   `mypy --strict` reports 2 errors in `core/exif.py`; two

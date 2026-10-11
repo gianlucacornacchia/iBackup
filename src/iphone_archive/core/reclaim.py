@@ -75,9 +75,10 @@ def reclaim_find_candidates(
         if handle.progress_is_cancelled():
             break
         handle.progress_report(OPERATION_NAME, index, total, item.original_name)
-        if albums_is_shared_path(item.phone_path):
+        if albums_is_shared_path(item.phone_path) or item.is_offloaded_preview:
             # A shared-album copy is iCloud's cache, not the user's library:
             # deleting it frees nothing durable and would alter the shared album.
+            # A preview is the phone's own thumbnail cache, never the original.
             continue
 
         with source.device_open(item.phone_path) as stream:

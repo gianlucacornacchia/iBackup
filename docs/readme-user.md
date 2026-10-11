@@ -347,11 +347,20 @@ different arrangement, change the album on the phone as well.
 ### iCloud Shared Albums
 
 Shared albums (the ones under **Shared Albums** in the Photos app, whether you
-created them or someone invited you) are imported too, as long as their photos
-are **already downloaded on the phone**:
+created them or someone invited you) are imported too. If you imported before
+2026-10-11, **run Import again** to pick them up: earlier builds found none on
+iOS 26.
 
 - They are stored in `Photos\_Shared Albums\<album name>\`, so a shared album
   never mixes with one of your own albums that has the same name.
+- **Most photos arrive as low-resolution previews at first.** iOS downloads
+  only a small part of a shared album to the phone (on the test iPhone, 13 of
+  1,473 photos in one album), but it keeps a thumbnail of every photo. Photos
+  that are on the phone are imported at full resolution; the others are
+  imported from that thumbnail, named `<name> (offloaded preview).JPG`, exactly
+  like [offloaded originals](#frequently-asked-questions). Open the shared
+  album in Photos so the phone downloads the originals, then import again:
+  each preview is **upgraded in place** to the full-resolution copy.
 - In the desktop interface they appear in their own **Shared albums** section
   of the navigation pane, below **Albums**, with a "shared" icon; hovering
   shows "(iCloud Shared Album)". They open like any album (grid, viewer, Map,
@@ -360,30 +369,36 @@ are **already downloaded on the phone**:
 - In the CLI, `ibackup albums` tags them `(shared)` and
   `ibackup albums --shared` lists only them.
 - A photo you took that is also in a shared album is archived twice: your
-  original (in your album or `_Unsorted`) and the shared album's copy. iCloud
-  re-encodes shared photos, so the two are different files, not duplicates.
+  original (in your album or `_Unsorted`) and the shared album's copy, which
+  is expected to be a separate file because iCloud re-encodes shared photos
+  (not yet confirmed on a real phone).
 - They follow the same rules as [albums that change on the phone](#albums-that-change-on-the-phone):
   if you leave a shared album, or a photo is removed from it, the next import
   removes that shared-album copy (the photo keeps at least one copy).
 - **Phone-space reclamation never offers shared-album files**; they are
   iCloud's cache, and deleting them would free nothing lasting.
 
+Every import that finds shared albums logs a summary, for example:
+"Shared albums: 18 albums, 6150 items; X full-resolution copies cached on the
+phone, Y imported as low-resolution previews, Z unavailable. Open a shared
+album in Photos to download its originals, then import again."
+
 Limitations:
 
-- Only photos the phone has already cached can be imported. If the log says
-  "shared-album items are not cached on the phone and were skipped", open the
-  shared album in Photos so the phone downloads them, then import again. There
-  is no low-resolution preview fallback for shared albums.
+- Photos with neither a downloaded original nor a thumbnail on the phone are
+  counted as "unavailable" and not imported.
 - If the phone's shared-album folder cannot be read, the log says
-  "shared albums unavailable" and the rest of the import continues normally.
-  If the photo database cannot be read, no shared-album photos are imported
-  at all (they are never dumped into `_Unsorted`).
-- Shared-album photos that the phone no longer has cached, or albums you have
-  left, may then show up on the **Deleted from phone** page, like any photo
-  the phone no longer has.
+  "shared albums unavailable", no shared-album photos (not even previews) are
+  imported, and the rest of the import continues normally. If the photo
+  database cannot be read, no shared-album photos are imported at all (they
+  are never dumped into `_Unsorted`).
+- Shared-album photos that the phone no longer has, or albums you have left,
+  may then show up on the **Deleted from phone** page, like any photo the
+  phone no longer has.
 - Who owns a shared album is not recorded.
 - This is still plain USB access to files on the phone: no iCloud sign-in and
-  no network. It has **not yet been tested on a real iPhone**.
+  no network. Finding and reading shared albums was checked against a real
+  iPhone 12 on iOS 26.4; older iOS versions use a different, untested layout.
 
 ---
 
@@ -486,9 +501,11 @@ simply have none. Photos archived before these were recorded get them filled
 in on the next import; values already recorded are never overwritten.
 
 **Can it back up iCloud Shared Albums?**
-Yes, the photos and videos of a shared album that are already downloaded on
-the phone, read over USB without signing in to iCloud. Open the shared album
-in Photos first so the phone caches its contents. They land in
+Yes, read over USB without signing in to iCloud. Photos already downloaded on
+the phone are archived at full resolution; the rest (usually most of a shared
+album) as low-resolution previews from the phone's thumbnails. To get full
+resolution, open the shared album in Photos so the phone downloads it, then
+import again; the previews are upgraded in place. They land in
 `Photos\_Shared Albums\`; see [iCloud Shared Albums](#icloud-shared-albums).
 
 **Will it change or compress my photos?**

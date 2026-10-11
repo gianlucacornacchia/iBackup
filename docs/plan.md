@@ -382,8 +382,9 @@ See `todos.md` for the full checklist with dependencies and status.
   with the phone, GPS/EXIF metadata with backfill, and the OpenStreetMap trip
   map (the app's only network use). See `todos.md` §"Delivered after Phase 2".
 - **iCloud Shared Albums (2026-10-11):** imported from the phone's shared cache
-  into `Photos/_Shared Albums/`, listed separately in the GUI and CLI;
-  offline-tested only, real-iPhone validation pending.
+  (full resolution) or its thumbnails (previews) into `Photos/_Shared Albums/`,
+  listed separately in the GUI and CLI; discovery via iOS 26 `ZSHARE`
+  validated on an iPhone 12, end-to-end import run pending.
 - **Windows hardware and release milestones pending.** Migrations and basic
   destructive guardrails are core hardening, not optional future work. Catalog
   rebuild, tamper-proof audit logging, dependency automation and HTML gallery

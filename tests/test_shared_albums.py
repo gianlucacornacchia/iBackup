@@ -170,6 +170,30 @@ def test_reclaim_never_offers_shared_album_cache_files(archive):
     assert [candidate.phone_path for candidate in candidates] == ["/DCIM/A.HEIC"]
 
 
+def test_reclaim_never_offers_thumbnail_previews(archive):
+    """A low-resolution preview is the phone's thumbnail cache, never reclaimable."""
+    from iphone_archive.catalog.models import PhoneItem
+
+    paths, connection = archive
+    thumb = "/PhotoData/Thumbnails/V2/DCIM/100APPLE/A.HEIC/5005.JPG"
+
+    class PreviewDevice(FakeDevice):
+        def device_enumerate(self):
+            yield PhoneItem(
+                phone_path=thumb,
+                size=5,
+                original_name="A (offloaded preview).JPG",
+                media_type="image",
+                is_offloaded_preview=True,
+                offloaded_original_path="/DCIM/100APPLE/A.HEIC",
+            )
+
+    device = PreviewDevice({thumb: b"thumb"})
+    importer.importer_run(connection, paths, device)
+
+    assert reclaim.reclaim_find_candidates(connection, paths, device) == []
+
+
 def test_afc_enumerates_only_shared_album_members(tmp_path, monkeypatch):
     """Real SQLite parsing plus AFC walking of the shared-album cache."""
     database_path = tmp_path / "Photos.sqlite"
@@ -218,6 +242,110 @@ def test_afc_enumerates_only_shared_album_members(tmp_path, monkeypatch):
     ]
     assert items[0].album_names == []
     assert items[0].captured_at == "2001-01-01T00:00:00+00:00"
+
+
+def make_ios26_share_db(path, shares, assets):
+    """Build an iOS 26-style Photos.sqlite where shared albums live in ZSHARE.
+
+    shares: tuples of (share_pk, title, trashed_state).
+    assets: tuples of (asset_pk, directory, file_name, share_pk, trashed_state).
+    Mirrors what a real iPhone 12 on iOS 26.4 stores: no ZGENERICALBUM row per
+    shared album, only ``ZASSET.ZCOLLECTIONSHARE`` pointing at ``ZSHARE``.
+    """
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE ZGENERICALBUM (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZKIND INTEGER);
+        CREATE TABLE ZASSET (
+            Z_PK INTEGER PRIMARY KEY, ZDIRECTORY TEXT, ZFILENAME TEXT, ZDATECREATED REAL,
+            ZCOLLECTIONSHARE INTEGER, ZTRASHEDSTATE INTEGER
+        );
+        CREATE TABLE Z_33ASSETS (Z_33ALBUMS INTEGER, Z_3ASSETS INTEGER);
+        CREATE TABLE ZSHARE (
+            Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, ZTITLE TEXT, ZTRASHEDSTATE INTEGER
+        );
+        """
+    )
+    connection.executemany("INSERT INTO ZSHARE VALUES (?, 67, ?, ?)", shares)
+    connection.executemany("INSERT INTO ZASSET VALUES (?, ?, ?, 0, ?, ?)", assets)
+    connection.commit()
+    connection.close()
+
+
+def test_ios26_shared_albums_are_read_from_zshare(tmp_path):
+    """iOS 26 keeps shared albums in ZSHARE, linked by ZASSET.ZCOLLECTIONSHARE.
+
+    Regression from a real iPhone (iOS 26.4): there is no ZKIND 1505 album at
+    all, so the original query found none of the user's 18 shared albums.
+    """
+    database_path = tmp_path / "Photos.sqlite"
+    make_ios26_share_db(
+        database_path,
+        [(22, "India 2024", 0), (23, "Gone", 1)],
+        [
+            (1, SHARED_DIR, "IMG_0001.JPG", 22, 0),
+            (2, SHARED_DIR, "IMG_0002.HEIC", 22, 1),  # trashed asset
+            (3, SHARED_DIR, "IMG_0003.JPG", 23, 0),  # trashed share
+            (4, "DCIM/100APPLE", "IMG_0004.HEIC", None, 0),
+        ],
+    )
+
+    assert albums.albums_parse_shared_albums(database_path) == {SHARED_PATH: ["India 2024"]}
+    assert albums.albums_parse_photos_database(database_path) == {}
+
+
+def test_afc_uncached_shared_items_fall_back_to_thumbnails(tmp_path, monkeypatch, caplog):
+    """Shared media not downloaded to the phone is imported from its thumbnail."""
+    database_path = tmp_path / "Photos.sqlite"
+    make_ios26_share_db(
+        database_path,
+        [(22, "India 2024", 0)],
+        [(1, SHARED_DIR, "IMG_0001.JPG", 22, 0), (2, SHARED_DIR, "IMG_0002.HEIC", 22, 0)],
+    )
+    payload = database_path.read_bytes()
+    monkeypatch.chdir(tmp_path)
+    root = albums.SHARED_MEDIA_ROOT
+    thumb_dir = f"/PhotoData/Thumbnails/V2/{SHARED_DIR}/IMG_0002.HEIC"
+    tree = {
+        "/DCIM": [],
+        root: ["1234"],
+        f"{root}/1234": ["ABCD-GUID"],
+        f"{root}/1234/ABCD-GUID": ["100CLOUD"],
+        f"/{SHARED_DIR}": ["IMG_0001.JPG"],
+        thumb_dir: ["5005.JPG"],
+    }
+
+    class Client:
+        def listdir(self, path):
+            return tree[path]
+
+        def stat(self, path):
+            if path in tree:
+                return {"st_ifmt": "S_IFDIR"}
+            return {"st_ifmt": "S_IFREG", "st_size": 7}
+
+    def device_open(path):
+        if path == "/PhotoData/Photos.sqlite":
+            return io.BytesIO(payload)
+        raise DeviceError("no such file")
+
+    device = AfcDevice()
+    device.afc_client = Client()
+    monkeypatch.setattr(device, "device_open", device_open)
+    try:
+        items = list(device.device_enumerate())
+    finally:
+        device.device_close()
+
+    by_name = {item.phone_path: item for item in items}
+    assert by_name[SHARED_PATH].shared_album_names == ["India 2024"]
+    assert not by_name[SHARED_PATH].is_offloaded_preview
+    preview = by_name[f"{thumb_dir}/5005.JPG"]
+    assert preview.is_offloaded_preview
+    assert preview.offloaded_original_path == f"/{SHARED_DIR}/IMG_0002.HEIC"
+    assert preview.shared_album_names == ["India 2024"]
+    assert "Shared albums: 1 albums, 2 items; 1 full-resolution" in caplog.text
+    assert "1 imported as low-resolution previews, 0 unavailable" in caplog.text
 
 
 def test_afc_shared_walk_failure_does_not_break_enumeration(monkeypatch, caplog):

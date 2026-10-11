@@ -61,13 +61,15 @@ albums work; see `docs/progress.md`):
   the map is open. Everything else, including import, stays local.
 - **GUI fixes.** Larger tiles/buttons/navigation icons; the Marked and
   Deleted-from-phone pages now lay out correctly and show real thumbnails.
-- **iCloud Shared Albums (2026-10-11).** Shared albums (`Photos.sqlite`
-  `ZKIND = 1505`) are imported from the phone's local shared-album cache
-  (`/PhotoData/PhotoCloudSharingData`) over USB into
+- **iCloud Shared Albums (2026-10-11).** Shared albums (on iOS 26 the
+  `Photos.sqlite` `ZSHARE` table) are imported over USB into
   `Photos/_Shared Albums/<album>/`, listed separately in the GUI ("Shared
-  albums") and by `ibackup albums --shared`. Only media already downloaded to
-  the phone can be imported; no iCloud login or network is used. Not yet
-  validated on a real iPhone.
+  albums") and by `ibackup albums --shared`. Media cached on the phone
+  (`/PhotoData/PhotoCloudSharingData`) is imported at full resolution; the
+  rest, usually most of it, as low-resolution `(offloaded preview)` copies
+  from the phone's thumbnail cache, upgraded in place once downloaded. No
+  iCloud login or network is used. Album discovery and reading validated on
+  an iPhone 12 (iOS 26.4); a full end-to-end import is not yet recorded.
 
 ## Documentation
 

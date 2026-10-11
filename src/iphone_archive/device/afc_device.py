@@ -325,12 +325,15 @@ class AfcDevice:
         membership: AFC path to shared-album names, from Photos.sqlite.
         capture_times: AFC path to ISO capture time.
         locations: AFC path to ``(latitude, longitude)``.
-        Returns one ``PhoneItem`` per shared-album file that is cached on the
-        phone. Only files Photos.sqlite names as shared-album members are
-        returned, so the cache's internal files are never imported and an
-        unreadable database imports no shared media at all rather than
-        dumping it into _Unsorted. Never raises: shared albums are a bonus and
-        must not break enumeration of the user's own media.
+        Returns one ``PhoneItem`` per shared-album member: the cached original
+        when the phone holds one, otherwise a low-resolution preview built from
+        the phone's thumbnail cache (``is_offloaded_preview``), upgraded in
+        place once the original is downloaded. Only files Photos.sqlite names
+        as shared-album members are returned, so the cache's internal files
+        are never imported and an unreadable database imports no shared media
+        at all rather than dumping it into _Unsorted. Never raises: shared
+        albums are a bonus and must not break enumeration of the user's own
+        media.
         """
         if not membership:
             return []
@@ -350,13 +353,37 @@ class AfcDevice:
             if location is not None:
                 item.latitude, item.longitude = location
             shared.append(item)
-        missing = len(membership) - len(shared)
-        if missing:
-            logger.info(
-                "%d shared-album items are not cached on the phone and were skipped; "
-                "open the shared album in Photos to download them, then import again.",
-                missing,
-            )
+        cached = {item.phone_path for item in shared}
+        uncached = {path: names for path, names in membership.items() if path not in cached}
+        previews = 0
+        if uncached:
+            # Most shared-album media is never downloaded to the phone (iOS 26
+            # cached 13 of 1473 items of one real album), but iOS keeps a
+            # thumbnail for every one under THUMBNAIL_ROOT, exactly as for
+            # offloaded originals, so the same low-resolution fallback applies.
+            udid = self.device_udid() or "unknown"
+            for path, names in uncached.items():
+                preview = self.afc_device_offloaded_preview(client, path, udid)
+                if preview is None:
+                    continue
+                preview.shared_album_names = list(names)
+                preview.captured_at = capture_times.get(path)
+                location = locations.get(path)
+                if location is not None:
+                    preview.latitude, preview.longitude = location
+                shared.append(preview)
+                previews += 1
+            self.afc_device_save_preview_cache()
+        logger.warning(
+            "Shared albums: %d albums, %d items; %d full-resolution copies cached on the "
+            "phone, %d imported as low-resolution previews, %d unavailable. Open a shared "
+            "album in Photos to download its originals, then import again.",
+            len({name for names in membership.values() for name in names}),
+            len(membership),
+            len(shared) - previews,
+            previews,
+            len(uncached) - previews,
+        )
         return shared
 
     def afc_device_preview_cache_path(self) -> Path:

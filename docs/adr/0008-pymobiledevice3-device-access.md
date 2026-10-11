@@ -75,3 +75,19 @@ be imported. `reclaim` never offers files from that cache. **Not yet validated
 on hardware:** `ZKIND = 1505` and the `PhotoCloudSharingData` `ZDIRECTORY`
 layout follow known iOS conventions and need a real-iPhone check. See
 `specifications.md` §12.1.
+
+## Addendum (2026-10-11): hardware validation of shared albums
+
+Checked the same day against a copy of `Photos.sqlite` from the iPhone 12
+(iOS 26.4): the addendum above was **wrong for iOS 26**. No `ZGENERICALBUM`
+row has `ZKIND = 1505`; shared albums are `ZSHARE` rows (entity
+`CollectionShare`) whose media link via `ZASSET.ZCOLLECTIONSHARE`, not through
+the `Z_nnASSETS` join, and `ZSCOPEIDENTIFIER` names the
+`PhotoCloudSharingData/<personId>/<GUID>/100CLOUD` folder. The adapter now
+reads `ZSHARE` first and keeps `ZKIND = 1505` as an unvalidated fallback for
+older iOS; 18 albums and 6,150 items were found. Only a small fraction of
+shared media is cached (13 of 1,473 in one album), so uncached members are
+imported as low-resolution previews from `/PhotoData/Thumbnails/V2`, upgraded
+in place once downloaded. Still local USB/AFC. An end-to-end import run and
+the byte-difference between shared copies and DCIM originals remain
+unverified.

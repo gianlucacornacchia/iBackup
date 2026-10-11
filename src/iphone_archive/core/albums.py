@@ -226,16 +226,72 @@ def albums_parse_photos_database(
     return membership
 
 
+def albums_collection_share_query(connection: sqlite3.Connection) -> str | None:
+    """Build the iOS 26+ shared-album membership query, when that schema exists.
+
+    connection: an open photo-database connection.
+    Returns SQL yielding ``album_name``/``asset_path`` rows, or None when the
+    schema has no ``ZSHARE`` table or no ``ZASSET.ZCOLLECTIONSHARE`` link.
+    Validated on an iPhone 12 running iOS 26.4: shared albums are no longer
+    ``ZGENERICALBUM`` rows there; each is a ``ZSHARE`` row (entity
+    ``CollectionShare``) and its media point at it through
+    ``ZASSET.ZCOLLECTIONSHARE``. Trashed shares and trashed assets are skipped.
+    """
+    asset_table = albums_asset_table(connection)
+    if asset_table is None:
+        return None
+    asset_columns = albums_table_columns(connection, asset_table)
+    share_columns = albums_table_columns(connection, "ZSHARE")
+    if "ZCOLLECTIONSHARE" not in asset_columns or "ZTITLE" not in share_columns:
+        return None
+    if "ZDIRECTORY" not in asset_columns:
+        return None
+    path_expr = albums_asset_key_sql(connection, asset_table)
+    filters = ""
+    if "ZTRASHEDSTATE" in share_columns:
+        filters += " AND COALESCE(share.ZTRASHEDSTATE, 0) = 0"
+    if "ZTRASHEDSTATE" in asset_columns:
+        filters += " AND COALESCE(asset.ZTRASHEDSTATE, 0) = 0"
+    return f"""
+        SELECT share.ZTITLE AS album_name, {path_expr} AS asset_path
+        FROM "{asset_table}" AS asset
+        JOIN ZSHARE AS share ON share.Z_PK = asset.ZCOLLECTIONSHARE
+        WHERE share.ZTITLE IS NOT NULL AND TRIM(share.ZTITLE) <> ''
+          AND ({path_expr}) IS NOT NULL AND TRIM(asset.ZFILENAME) <> ''
+          {filters}
+    """
+
+
 def albums_parse_shared_albums(database_path: Path) -> dict[str, list[str]]:
     """Extract iCloud Shared Album membership from a phone ``Photos.sqlite``.
 
     database_path: path to a copy of the phone's photo database.
-    Returns a mapping of AFC path to shared-album names. Only paths inside
-    ``SHARED_MEDIA_ROOT`` are kept: those are the files the phone actually
-    caches for a shared album, and any other key could never be enumerated.
-    Empty when the database is missing, unreadable or predates ZKIND.
+    Returns a mapping of AFC path to shared-album names, merged from both known
+    schemas: iOS 26+ ``ZSHARE``/``ZCOLLECTIONSHARE`` and older
+    ``ZGENERICALBUM`` rows with ``ZKIND = 1505``. Only paths inside
+    ``SHARED_MEDIA_ROOT`` are kept: those are where the phone stores a shared
+    album's media (or, for uncached items, mirrors their thumbnails). Empty
+    when the database is missing or unreadable.
     """
     membership = albums_parse_photos_database(database_path, SHARED_ALBUM_KIND)
+    if database_path.is_file():
+        try:
+            connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+        except sqlite3.Error:
+            connection = None
+        if connection is not None:
+            try:
+                connection.row_factory = sqlite3.Row
+                query = albums_collection_share_query(connection)
+                rows = connection.execute(query).fetchall() if query is not None else []
+                for row in rows:
+                    names = membership.setdefault(str(row["asset_path"]), [])
+                    if str(row["album_name"]) not in names:
+                        names.append(str(row["album_name"]))
+            except sqlite3.Error as error:
+                logger.warning("shared album query failed: %s", error)
+            finally:
+                connection.close()
     return {path: names for path, names in membership.items() if albums_is_shared_path(path)}
 
 

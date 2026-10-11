@@ -12,11 +12,15 @@ zoom)._
 
 ## Current status
 
-- **iCloud Shared Albums (2026-10-11):** imported from the phone's local
-  shared cache into `Photos/_Shared Albums/<name>/`, listed separately in the
-  GUI and by `ibackup albums --shared`, excluded from reclaim. Offline tests
-  only; a real-iPhone check of `ZKIND = 1505` and the `PhotoCloudSharingData`
-  layout is the next validation step.
+- **iCloud Shared Albums (2026-10-11):** imported into
+  `Photos/_Shared Albums/<name>/`, listed separately in the GUI and by
+  `ibackup albums --shared`, excluded from reclaim. The first version
+  (`ZKIND = 1505`) found nothing on the user's iPhone 12 (iOS 26.4); fixed to
+  read iOS 26 `ZSHARE` rows (18 albums, 6,150 items found from a database
+  copy). Most shared media is not cached on the phone, so it is imported as
+  low-resolution previews from the thumbnail cache until the user opens the
+  album in Photos and imports again. **The user must re-run Import** to get
+  their shared albums. Next: a full end-to-end import run on the phone.
 
 - **Map is now a real, zoomable OpenStreetMap view:** `gui/mapview.py` embeds
   a `QWebEngineView` running a self-contained Leaflet.js page (vendored at
@@ -345,6 +349,44 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-11 — **Fixed: shared albums not found on a real iPhone (iOS 26.4).**
+  Testing `0cf5b4f` on the user's iPhone 12 imported no shared albums. A copy
+  of its `Photos.sqlite` showed no `ZGENERICALBUM` row with `ZKIND = 1505`
+  (kinds present: 2 ×71, 1506 ×9, 1510 ×8, 16xx, 35xx, 39xx, 400x). On iOS 26
+  shared albums are `ZSHARE` rows (entity `CollectionShare`, `Z_ENT` 67,
+  `ZCOLLECTIONSHAREKIND` 2) with `ZTITLE` (e.g. "India 2024") and
+  `ZSCOPEIDENTIFIER` = the GUID folder under
+  `/PhotoData/PhotoCloudSharingData/<personId>/<GUID>/100CLOUD`; assets link
+  via `ZASSET.ZCOLLECTIONSHARE -> ZSHARE.Z_PK`, not the `Z_33ASSETS` join.
+  New `albums_collection_share_query()` (requires `ZASSET.ZCOLLECTIONSHARE`,
+  `ZSHARE.ZTITLE` and `ZDIRECTORY`; skips trashed shares/assets via
+  `ZTRASHEDSTATE`); `albums_parse_shared_albums()` merges it with the
+  `ZKIND = 1505` path (kept as an unvalidated older-iOS fallback), still
+  limited to `PhotoCloudSharingData`. Result: 18 shared albums, 6,150 items
+  (India 2024 = 1,473). Only a small fraction is cached (India 2024: 13 of
+  1,473 files in its `100CLOUD`), but iOS keeps a thumbnail for every item
+  under `/PhotoData/Thumbnails/V2/PhotoData/PhotoCloudSharingData/.../<file>/
+  5005.JPG` (35/35 sampled). `afc_device_shared_items()` therefore falls back
+  to `afc_device_offloaded_preview()` for uncached members
+  (`is_offloaded_preview`, `offloaded_original_path` = the shared path, on-disk
+  preview cache), so they upgrade in place once downloaded; the old info log
+  is replaced by an always-emitted WARNING summary ("Shared albums: N albums,
+  M items; X full-resolution copies cached on the phone, Y imported as
+  low-resolution previews, Z unavailable. …"). New tests
+  `test_ios26_shared_albums_are_read_from_zshare` and
+  `test_afc_uncached_shared_items_fall_back_to_thumbnails` (13 in
+  `tests/test_shared_albums.py`). Reclaim now also skips every
+  `is_offloaded_preview` item (a thumbnail is never the original; new
+  `test_reclaim_never_offers_thumbnail_previews`, 14 tests in the file).
+  User-visible: re-run Import; shared albums
+  appear mostly as `(offloaded preview)` copies until opened in Photos.
+  Still unverified: a full end-to-end import run on the phone, whether shared
+  copies' bytes differ from the owner's DCIM originals, owner name (no column
+  in `ZSHARE`; maybe `ZSHAREPARTICIPANT`). Docs updated: `README.md`,
+  `readme-user.md`, `specifications.md` (§9, §12.1, §13, §15),
+  `structure.md`, `unit-tests.md`, `user-stories.md` (US-D1b), `todos.md`,
+  `plan.md`, ADR-0008 (new hardware-validation addendum) and the ADR index.
 
 - 2026-10-11 — **iCloud Shared Albums.** `Photos.sqlite` albums with
   `ZKIND = 1505` (`core/albums.py` `SHARED_ALBUM_KIND`) are read through the

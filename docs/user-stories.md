@@ -141,9 +141,16 @@ Acceptance criteria:
   recorded with kind `shared`, never merged with a same-named album of mine.
 - Given a photo of mine that is also in a shared album, then I keep my
   original and the shared album's copy as separate files.
-- Given a member that is not cached on the phone, then it is skipped and the
-  log tells me to open the album in Photos and import again; nothing is
-  imported from the shared cache that the photo database does not name.
+- Given iOS 26, where shared albums are stored in `ZSHARE` rather than as
+  albums, then they are still found (validated on an iPhone 12, iOS 26.4:
+  18 albums, 6,150 items).
+- Given a member that is not cached on the phone but has a thumbnail, then it
+  is imported as a low-resolution `(offloaded preview)` copy in its shared
+  album, and a later import after I open the album in Photos upgrades it in
+  place to full resolution.
+- Given any import that finds shared albums, then the log summarizes how many
+  items were full resolution, previews and unavailable; nothing is imported
+  that the photo database does not name as a shared-album member.
 - Given the shared-album cache or photo database cannot be read, then the rest
   of the import succeeds and no shared media lands in `_Unsorted`.
 - Given shared albums exist, then the GUI lists them in a separate "Shared
@@ -152,7 +159,8 @@ Acceptance criteria:
 - Given a reclaim run, then shared-album cache files are never offered for
   deletion from the phone.
 - Given any of this, then no iCloud sign-in or network access is used.
-_(Added 2026-10-11; pending real-iPhone validation.)_
+_(Added 2026-10-11; discovery and reading validated on iOS 26.4 the same day;
+end-to-end import run pending.)_
 
 ### US-D2 — Browse by album without the app
 **As** a user, **I want** to open album folders directly **so that** I don't
