@@ -12,6 +12,15 @@ zoom)._
 
 ## Current status
 
+- **Open quality items (2026-10-12):** `ruff format --check` flags only
+  `tests/test_importer.py` (`gui/review.py`/`gui/shell.py` resolved);
+  `mypy --strict` reports 2 errors in `core/exif.py`; two
+  `test_gui_settings.py` Windows path-separator failures; flaky
+  `test_recycle.py::test_restart_finalizes_catalog_committed_before_cleanup[restore]`
+  and `test_gui_worker.py::test_close_then_open_serializes_archive_switches`.
+- **Trip-map travel modes (2026-10-12):** legs can be tagged with how the
+  user travelled; stored per view in `trip_segments` (schema v7).
+
 - **iCloud Shared Albums (2026-10-11):** imported into
   `Photos/_Shared Albums/<name>/`, listed separately in the GUI and by
   `ibackup albums --shared`, excluded from reclaim. The first version
@@ -349,6 +358,57 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-12 — **Trip map: travel modes between pins.** New `core/trip.py`:
+  `TRIP_MODES` (`car`, `plane`, `foot`, `bike`, `tuktuk`, `bus`, `taxi`,
+  `boat`), `TripSegment(from_asset_id, to_asset_id, mode)`,
+  `trip_reconcile(connection, scope, asset_ids)` and
+  `trip_set_mode(connection, scope, from, to, mode | None)`, validating scope
+  (non-empty, ≤ 64), distinct positive ids, a known mode and that both assets
+  exist. **Schema v7**: table `trip_segments(scope, from_asset_id,
+  to_asset_id, mode, PK(scope, from, to))`, both asset FKs `ON DELETE
+  CASCADE`; the v6→v7 migration is the `CREATE TABLE IF NOT EXISTS`, no
+  column changes. Scope is the map's navigation key (`all`, `unsorted`,
+  `recycled`, `album:<id>`), so modes are per view. Reconciliation runs each
+  time a map opens against the plotted capture-ordered ids and is committed:
+  consecutive pairs keep their mode; a pair split by inserted photos is
+  deleted and every leg it spans inherits its mode unless already tagged; a
+  pair with a missing photo (removed, recycled, moved out, no location) or
+  reversed order is deleted, and its mode does not return. Service:
+  `app_service_trip_modes` / `app_service_set_trip_mode` (commit, rollback on
+  error), GUI-only, declared in `gui/parity.py`; titles "Reading travel
+  modes"/"Saving travel mode", summaries "Map ready: N legs have a travel
+  mode." / "Travel mode saved." / "Travel mode cleared.". `main_window`: Map
+  → `app_service_list_locations` → (≥ 2 located) `app_service_trip_modes` →
+  new `main_window_open_map()` → `MapDialog(segments=…, on_mode_changed=…)`;
+  a failed or cancelled mode read still opens the map without modes.
+  `mapview`: `MODE_STYLES` (Car 🚗, Plane ✈️ dashed, On foot 🚶 dotted, Bike
+  🚲, Tuk-tuk 🛺, Bus 🚌, Taxi 🚕 dashed, Boat ⛴️ dashed); one polyline per
+  leg styled by mode (untagged blue solid), arrows in the mode colour with an
+  emoji badge, a wide invisible twin line for clicking, tooltip "<emoji>
+  <label> · Click to set how you travelled", popup "How did you travel from
+  photo n to n+1?" with a 3-column mode grid plus Clear; edits log
+  `ibackup-mode:<leg>:<mode|none>`, parsed by `mapview_parse_mode_change`
+  (known modes, legs 0..count-2) and emitted as
+  `WebMapWidget.mode_changed(from_asset_id, to_asset_id, mode)`. Zero-length
+  legs cannot be tagged. `MapPoint.mode`; `mapview_points(assets, segments)`;
+  Leaflet `preferCanvas`. Caption ends "Click a point to see its photo, or a
+  line to set how you travelled." Tests: new `tests/test_trip.py` (14 cases),
+  `test_gui_mapview.py` now 20 tests (incl. a real WebEngine tag/clear round
+  trip), `test_gui_parity.py::test_the_map_saves_and_restores_travel_modes`
+  with a `located=True` fixture option. Coverage 90%, `core/trip.py` 100%.
+  Full suite: the two pre-existing `test_gui_settings.py` failures; **flaky:**
+  `test_gui_worker.py::test_close_then_open_serializes_archive_switches`
+  failed once with Windows "Access is denied" renaming the `settings.json`
+  staging file, passed on 3 reruns (open item `flaky-worker-archive-switch`,
+  alongside `flaky-recycle-restart`). Also: `ruff format` reformatted
+  `gui/review.py` and `gui/shell.py` (no behaviour change), **resolving that
+  part of the earlier formatting open item**; still open:
+  `tests/test_importer.py` formatting and 2 `mypy --strict` errors in
+  `core/exif.py`. Docs updated: `README.md`, `readme-user.md`,
+  `specifications.md` (§8 schema v7, §16.4), `plan.md`, `structure.md`,
+  `development.md`, `unit-tests.md`, `user-stories.md` (new US-G10),
+  `todos.md`, `ui-sketch/README.md` §8.
 
 - 2026-10-12 — **Trip map: Start/End pins, direction arrows and photo
   popups.** `gui/mapview.py`: labelled Leaflet `divIcon` pins — "Start"

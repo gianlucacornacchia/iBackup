@@ -57,7 +57,9 @@ albums work; see `docs/progress.md`):
 - **Trip map.** Every gallery view (All photos, Unsorted, Recycle bin, each
   album) has a **Map** button opening a zoomable Leaflet/OpenStreetMap map of
   its located photos in capture order, with Start/End labels, direction
-  arrows and a photo popup (rendered from the archive) on every point. **This
+  arrows and a photo popup (rendered from the archive) on every point. Click a
+  leg to record how you travelled (car, plane, on foot, bike, tuk-tuk, bus,
+  taxi, boat); modes are saved per view in the catalog (schema v7). **This
   is the only feature that uses
   the network:** it downloads map tiles from `tile.openstreetmap.org` while
   the map is open. Everything else, including import, stays local.

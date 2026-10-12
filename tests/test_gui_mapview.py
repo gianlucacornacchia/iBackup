@@ -13,12 +13,15 @@ pytest.importorskip("pytestqt")
 from PySide6.QtWebEngineCore import QWebEngineProfile  # noqa: E402
 
 from iphone_archive.browse.gallery import AssetView  # noqa: E402
+from iphone_archive.core.trip import TRIP_MODES, TripSegment  # noqa: E402
 from iphone_archive.gui.mapview import (  # noqa: E402
+    MODE_STYLES,
     MapDialog,
     MapPage,
     MapPoint,
     WebMapWidget,
     mapview_build_html,
+    mapview_parse_mode_change,
     mapview_parse_request,
     mapview_points,
     mapview_render_photo,
@@ -83,6 +86,75 @@ def test_build_html_marks_start_end_and_draws_direction_arrows():
     assert "trip-arrow" in html and "Math.atan2" in html
     assert "mapUpdateArrows" in html
     assert "ibackup-photo:" in html
+
+
+def test_parse_mode_change_accepts_only_known_modes_on_real_legs():
+    """Legs run 0..count-2; only listed modes or "none" are accepted."""
+    assert mapview_parse_mode_change("ibackup-mode:0:car", 3) == (0, "car")
+    assert mapview_parse_mode_change("ibackup-mode:1:none", 3) == (1, None)
+    assert mapview_parse_mode_change("ibackup-mode:2:car", 3) is None
+    assert mapview_parse_mode_change("ibackup-mode:0:rocket", 3) is None
+    assert mapview_parse_mode_change("ibackup-mode:x:car", 3) is None
+    assert mapview_parse_mode_change("ibackup-photo:0", 3) is None
+
+
+def test_points_carry_the_saved_mode_of_the_leg_they_start():
+    """A saved mode applies only to the exact consecutive pair it was saved for."""
+    assets = [
+        make_asset_view(asset_id=index, latitude=float(index), longitude=1.0) for index in (1, 2, 3)
+    ]
+    segments = [TripSegment(1, 2, "plane"), TripSegment(1, 3, "car")]
+    assert [point.mode for point in mapview_points(assets, segments)] == ["plane", None, None]
+    assert '"mode": "plane"' in mapview_build_html(mapview_points(assets, segments))
+
+
+def test_every_trip_mode_has_a_map_style():
+    assert tuple(MODE_STYLES) == TRIP_MODES
+    assert all(style["emoji"] and style["label"] for style in MODE_STYLES.values())
+
+
+def test_mode_edit_in_the_page_is_saved_with_the_leg_asset_ids(qapp, qtbot):
+    """Picking a mode on a leg reports the two photos' ids and redraws the leg."""
+    saved = []
+    assets = [
+        make_asset_view(asset_id=11, original_name="A", latitude=45.0, longitude=7.0),
+        make_asset_view(asset_id=12, original_name="B", latitude=46.0, longitude=8.0),
+        make_asset_view(asset_id=13, original_name="C", latitude=47.0, longitude=7.0),
+    ]
+    dialog = MapDialog(
+        "Trip",
+        assets,
+        segments=[TripSegment(11, 12, "plane")],
+        on_mode_changed=lambda *change: saved.append(change),
+    )
+    qtbot.addWidget(dialog)
+    page = dialog.widget.page
+    with qtbot.waitSignal(dialog.widget.view.loadFinished, timeout=20000):
+        dialog.widget.mapview_set_assets(assets, [TripSegment(11, 12, "plane")])
+    state = []
+    page.runJavaScript(
+        "JSON.stringify(segments.map(function (s) { return s.mode; }))", 0, state.append
+    )
+    qtbot.waitUntil(lambda: bool(state), timeout=10000)
+    assert state[0] == '["plane",null]'
+
+    page.runJavaScript(
+        "segments[1].hit.fire('click', {latlng: segments[1].to});"
+        "map._popup.getElement().querySelector('.trip-mode-button[data-mode=\"tuktuk\"]').click();"
+    )
+    qtbot.waitUntil(lambda: saved == [(12, 13, "tuktuk")], timeout=10000)
+    state.clear()
+    page.runJavaScript(
+        "JSON.stringify([segments[1].mode, segments[1].line.options.color])", 0, state.append
+    )
+    qtbot.waitUntil(lambda: bool(state), timeout=10000)
+    assert state[0] == f'["tuktuk","{MODE_STYLES["tuktuk"]["color"]}"]'
+
+    page.runJavaScript(
+        "segments[0].hit.fire('click', {latlng: segments[0].to});"
+        "map._popup.getElement().querySelector('.trip-mode-button[data-mode=\"none\"]').click();"
+    )
+    qtbot.waitUntil(lambda: saved[-1] == (11, 12, None), timeout=10000)
 
 
 def test_parse_request_accepts_only_in_range_photo_indices():

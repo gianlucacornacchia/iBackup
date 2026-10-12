@@ -100,6 +100,8 @@ OPERATION_TITLES = {
     "app_service_reset_settings": "Resetting settings",
     "app_service_forget_archive": "Forgetting an archive",
     "app_service_list_locations": "Finding located photos",
+    "app_service_trip_modes": "Reading travel modes",
+    "app_service_set_trip_mode": "Saving travel mode",
 }
 
 
@@ -362,6 +364,12 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     "app_service_reclaim": operations_reclaim_summary,
     "app_service_list_marks": operations_marks_summary,
     "app_service_list_locations": operations_locations_summary,
+    "app_service_trip_modes": lambda value: (
+        f"Map ready: {len(value) if isinstance(value, list) else 0} legs have a travel mode."
+    ),
+    "app_service_set_trip_mode": lambda value: (
+        "Travel mode saved." if value is not None else "Travel mode cleared."
+    ),
     "app_service_mark": lambda value: "Marked for delete. Nothing has been deleted.",
     "app_service_mark_many": lambda value: (
         f"Marked {len(value) if isinstance(value, list) else 0} items. Nothing has been deleted."

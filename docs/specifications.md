@@ -129,7 +129,7 @@ Rules:
   row has `albums.kind = 'shared'` and `safe_name = '_Shared Albums/<name>'`;
   albums are upserted by `safe_name`, which keeps the two apart. No schema
   change: `albums.kind` already existed (default `'user'`), and
-  `SCHEMA_VERSION` stays 6.
+  `SCHEMA_VERSION` was 6 at the time (now 7, §8).
 - **`Deleted/` recycle bin.** The `Deleted/` tree holds items the user removed
   from `Photos/` via the "deleted from phone" review (§18). It mirrors the album
   subpath, retains the original bytes, and is excluded from normal album
@@ -181,9 +181,10 @@ reusing an existing catalog.
   phone_asset_id, phone_size, phone_modified_at, present, last_seen_at)`, keyed
   by device/path/asset, and `import_commits(journal_id)`. Edit commit markers
   live in `meta`. Legacy asset phone fields are not trusted device provenance.
-- Schemas v3-v6 add nullable/defaulted `assets` columns; the current
-  `SCHEMA_VERSION` is **6**. Each migration is forward-only, idempotent against
-  a column that already exists, and leaves existing rows' new columns empty:
+- Schemas v3-v6 add nullable/defaulted `assets` columns and v7 adds a table;
+  the current `SCHEMA_VERSION` is **7**. Each migration is forward-only,
+  idempotent against a column that already exists, and leaves existing rows'
+  new columns empty:
   - v3 `is_offloaded_preview` (0/1): the copy is the phone's cached
     low-resolution thumbnail of an offloaded original, not the original.
   - v4 `offloaded_original_path`: the album-member phone path a preview stands
@@ -193,6 +194,12 @@ reusing an existing catalog.
   - v6 `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`:
     from the archived file's EXIF.
   These facts live only in the catalog; sidecars do not carry them yet.
+- Schema v7 adds `trip_segments(scope, from_asset_id, to_asset_id, mode,
+  PRIMARY KEY(scope, from_asset_id, to_asset_id))`; both asset columns
+  reference `assets(id) ON DELETE CASCADE` (connections enable
+  `PRAGMA foreign_keys`). The migration from v6 is the `CREATE TABLE IF NOT
+  EXISTS` in the schema statements; no column changes. Travel modes for the
+  trip map (§16.4).
 - Indexes on `assets.sha256`, `assets.present_on_phone`, `asset_albums.album_id`,
   `asset_files.path`, `deletion_marks.committed_at`.
 - Location is also tracked per copy: an asset with both active and recycled
@@ -550,9 +557,11 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   BSD-2-Clause) and the point list (label, capture time, note) are inlined,
   escaped so they cannot close the script tag; with no points it shows a
   world view. With points the page draws (enhanced 2026-10-12):
-  - a polyline in capture order (oldest first, from `gallery_list_located`),
-    circle markers (first green, last red, larger) and a metric/imperial
-    scale, fitted to the bounds;
+  - the trip in capture order (oldest first, from `gallery_list_located`),
+    drawn since the travel-mode change as one polyline per leg styled by its
+    mode (untagged: blue solid), on a Leaflet canvas renderer
+    (`preferCanvas`) so thousands of legs stay fast; circle markers (first
+    green, last red, larger) and a metric/imperial scale, fitted to the bounds;
   - labelled `divIcon` pins: **Start** (green, above its point) and **End**
     (red, below it, so a round trip shows both); a single point shows
     **Start / End**. Clicking a pin opens its point's popup;
@@ -561,7 +570,7 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
     (`EPSG:3857`), which is conformal, so it holds at every zoom level.
     Zero-length segments (consecutive photos at the same spot) get none;
     arrows are shown only for segments ≥ 40 px on screen and refreshed on
-    `zoomend`;
+    `zoomend`. An arrow takes its leg's mode colour and an emoji badge;
   - a popup per point: picture, file name, capture time (`YYYY-MM-DD HH:MM`,
     the first 16 characters of the stored `captured_at`, no time-zone
     conversion), "n of N", and a note: "Low-resolution preview (original not
@@ -584,8 +593,55 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   render failure "No preview available (…)".
 - `MapDialog` opens at 900×640, deletes itself on close and waits for
   in-flight renders (`mapview_shutdown`). Caption: "N located photos, plotted
-  in capture order from Start to End. Click a point to see its photo." The
-  window passes `archive_root` from the worker; no new service operation.
+  in capture order from Start to End. Click a point to see its photo, or a
+  line to set how you travelled." The window passes `archive_root` from the
+  worker.
+- **Travel modes (2026-10-12).** The user can tag each leg (two consecutive
+  plotted photos) with one of `core/trip.py` `TRIP_MODES`: `car`, `plane`,
+  `foot`, `bike`, `tuktuk`, `bus`, `taxi`, `boat`. `mapview.MODE_STYLES` gives
+  each a label, emoji, colour and dash: Car 🚗, Plane ✈️ (dashed), On foot 🚶
+  (dotted), Bike 🚲, Tuk-tuk 🛺, Bus 🚌, Taxi 🚕 (dashed), Boat ⛴️ (dashed).
+  - **Editing.** A wide invisible twin line makes each leg easy to click; its
+    hover tooltip is "<emoji> <label> · Click to set how you travelled".
+    Clicking opens "How did you travel from photo n to n+1?" with a 3-column
+    grid of mode buttons plus **Clear**, the current mode highlighted.
+    Choosing restyles the leg at once and logs the console message
+    `ibackup-mode:<leg>:<mode|none>`; `MapPage` forwards it,
+    `mapview_parse_mode_change` accepts only known modes and legs
+    `0..count-2`, and `WebMapWidget.mode_changed(from_asset_id, to_asset_id,
+    mode)` reaches `MapDialog`'s `on_mode_changed`, which the window wires to
+    `app_service_set_trip_mode`. Zero-length legs are not drawn and cannot be
+    tagged. `mapview_points(assets, segments)` sets `MapPoint.mode` (the mode
+    of the leg starting at that point) only for the exact consecutive pair.
+  - **Storage.** Catalog table `trip_segments` (§8), one row per
+    `(scope, from_asset_id, to_asset_id)`. `scope` is the map's navigation
+    view key — `all`, `unsorted`, `recycled` or `album:<id>` — so modes are
+    per view: the same pair can differ between albums. `trip_set_mode`
+    validates the scope (non-empty, ≤ 64 characters), distinct positive ids,
+    a known mode and that both assets exist; it does not check that the pair
+    is currently consecutive. `None` deletes the row.
+  - **Reconciliation** (`trip_reconcile`, run every time a map with ≥ 2
+    located photos opens, against the exact plotted capture-ordered asset
+    ids, then committed; rolled back on error): a stored pair still
+    consecutive keeps its mode; a stored pair whose photos are both still
+    present and in order but no longer adjacent (photos inserted between) is
+    deleted, and every leg it now spans inherits its mode unless that leg
+    already has its own; a pair with a photo gone (purged, recycled, moved
+    out of the album, lost its location) or in reversed order is deleted, so
+    the joined leg starts untagged and the mode does not return if the photo
+    comes back. Purging an asset also deletes its rows by `ON DELETE
+    CASCADE`. An offloaded preview upgraded in place keeps its asset id and
+    therefore its modes.
+  - **Service.** `app_service_trip_modes(scope, asset_ids)` →
+    `list[TripSegment]` and `app_service_set_trip_mode(scope, from_asset_id,
+    to_asset_id, mode | None)` → `TripSegment | None`, both committing and
+    rolling back on error. GUI-only (no CLI command), declared in
+    `gui/parity.py`. Window flow: **Map** → `app_service_list_locations` →
+    (≥ 2 located) `app_service_trip_modes` → `MapDialog(segments=…,
+    on_mode_changed=…)`; if reading modes fails or is cancelled, the map
+    opens without them. Status lines: "Map ready: N legs have a travel
+    mode.", "Travel mode saved.", "Travel mode cleared.".
+  - Travel modes live only in the catalog; sidecars do not carry them.
 - Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (max zoom
   19, © OpenStreetMap contributors attribution) through one named, persistent
   `QWebEngineProfile` `ibackup-map-tiles` with a 200 MB disk HTTP cache and a

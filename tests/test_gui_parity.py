@@ -248,12 +248,20 @@ def window(qapp, qtbot, tmp_path, monkeypatch):
     """Build a real window on a fake phone and shut it down afterwards."""
     created = []
 
-    def create(count=4):
+    def create(count=4, located=False):
         files = {
             f"/DCIM/IMG_{number:04d}.png": helper_photo_bytes(number) for number in range(count)
         }
         albums = {path: ["Trip"] for index, path in enumerate(files) if index % 2 == 0}
-        device = FakeDevice(files, album_map=albums)
+        locations = (
+            {path: (45.0 + index, 7.0 + index) for index, path in enumerate(files)}
+            if located
+            else None
+        )
+        device = FakeDevice(files, album_map=albums, locations=locations)
+        if located:
+            for index, path in enumerate(files):
+                device.metadata[path] = {"captured_at": f"2024-01-{index + 1:02d}T10:00:00"}
 
         @contextmanager
         def source_factory(udid):
@@ -500,3 +508,35 @@ def test_a_whole_deletion_journey_runs_from_the_gui_alone(window, qtbot):
 
     assert list(paths.deleted_dir.rglob("*.png")) == []
     assert sorted(path.name for path in paths.photos_dir.rglob("*.png")) == before
+
+
+def test_the_map_saves_and_restores_travel_modes(window, qtbot, monkeypatch):
+    """Map button -> locations -> saved modes -> dialog; an edit is stored for next time."""
+    opened = []
+
+    class RecordingMap:
+        def __init__(self, title, assets, parent=None, **options):
+            opened.append((assets, options))
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr(main_window_module, "MapDialog", RecordingMap)
+    main, root = window(count=3, located=True)
+    helper_import(main, qtbot)
+    helper_idle(main, qtbot)
+
+    main.main_window_map_action("all")
+    qtbot.waitUntil(lambda: len(opened) == 1, timeout=15000)
+    assets, options = opened[0]
+    assert options["segments"] == []
+    first, second = assets[0].asset_id, assets[1].asset_id
+    options["on_mode_changed"](first, second, "tuktuk")
+    helper_idle(main, qtbot)
+
+    main.main_window_map_action("all")
+    qtbot.waitUntil(lambda: len(opened) == 2, timeout=15000)
+    segments = opened[1][1]["segments"]
+    assert [(item.from_asset_id, item.to_asset_id, item.mode) for item in segments] == [
+        (first, second, "tuktuk")
+    ]

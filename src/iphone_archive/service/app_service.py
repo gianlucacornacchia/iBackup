@@ -18,7 +18,17 @@ from threading import get_ident
 from ..browse import gallery, thumbnails
 from ..catalog import database, repository
 from ..config import ArchivePaths, config_initialize_archive, config_is_archive
-from ..core import albums, dedup, file_operations, importer, phone_diff, reclaim, recycle, verifier
+from ..core import (
+    albums,
+    dedup,
+    file_operations,
+    importer,
+    phone_diff,
+    reclaim,
+    recycle,
+    trip,
+    verifier,
+)
 from ..device.fake_device import FakeDevice
 from ..device.interface import MediaSource
 from ..settings import (
@@ -249,6 +259,45 @@ class AppService:
         """
         connection, _ = self.app_service_require()
         return gallery.gallery_list_located(connection, album_id, only_unsorted, include_deleted)
+
+    def app_service_trip_modes(self, scope: str, asset_ids: list[int]) -> list[trip.TripSegment]:
+        """Reconcile and return how the user travelled along one view's trip.
+
+        scope: the map's view key (``all``, ``unsorted``, ``recycled`` or
+            ``album:<id>``).
+        asset_ids: the plotted photos, in capture order.
+        Returns the travel modes of the current segments that have one. Modes
+        of photos no longer in the view are dropped, and a segment split by a
+        newly inserted photo passes its mode to both halves (see ``core.trip``).
+        """
+        connection, _ = self.app_service_require()
+        try:
+            segments = trip.trip_reconcile(connection, scope, list(asset_ids))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        return segments
+
+    def app_service_set_trip_mode(
+        self, scope: str, from_asset_id: int, to_asset_id: int, mode: str | None
+    ) -> trip.TripSegment | None:
+        """Save how the user travelled between two consecutive photos.
+
+        scope: the map's view key.
+        from_asset_id: the earlier photo of the segment.
+        to_asset_id: the later photo.
+        mode: one of ``trip.TRIP_MODES``, or None to clear the segment.
+        Returns the stored segment, or None when it was cleared.
+        """
+        connection, _ = self.app_service_require()
+        try:
+            segment = trip.trip_set_mode(connection, scope, from_asset_id, to_asset_id, mode)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        return segment
 
     def app_service_scan_phone(self, source: MediaSource) -> None:
         """Refresh present-on-phone state from a metadata-only device scan.

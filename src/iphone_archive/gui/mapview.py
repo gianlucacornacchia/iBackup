@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
 from ..browse import thumbnails
 from ..browse.gallery import AssetView
 from ..config import ArchivePaths
+from ..core.trip import TRIP_MODES, TripSegment
 from ..device.afc_device import PREVIEW_NAME_MARKER
 from .previews import previews_check_hash, previews_check_relative
 from .theme import GROUP_GAP, PAGE_MARGIN, theme_font
@@ -58,7 +60,22 @@ TILE_ATTRIBUTION = (
 USER_AGENT = "ibackup-photo-archive/1.0 (personal desktop app; non-commercial)"
 # Console messages with this prefix are photo requests from the page.
 PHOTO_REQUEST_PREFIX = "ibackup-photo:"
+# Console messages with this prefix are travel-mode edits: ``<leg>:<mode|none>``.
+MODE_CHANGE_PREFIX = "ibackup-mode:"
 POPUP_PHOTO_SIZE = 320
+# How each travel mode is drawn: the leg's colour and dash pattern, plus a badge.
+# Plane and boat legs are dashed because the straight line is not the route.
+MODE_STYLES: dict[str, dict[str, str | None]] = {
+    "car": {"label": "Car", "emoji": "\U0001f697", "color": "#d9822b", "dash": None},
+    "plane": {"label": "Plane", "emoji": "\u2708\ufe0f", "color": "#7b4fd6", "dash": "8 8"},
+    "foot": {"label": "On foot", "emoji": "\U0001f6b6", "color": "#2e9e4a", "dash": "2 6"},
+    "bike": {"label": "Bike", "emoji": "\U0001f6b2", "color": "#1a9bb0", "dash": None},
+    "tuktuk": {"label": "Tuk-tuk", "emoji": "\U0001f6fa", "color": "#c9a000", "dash": None},
+    "bus": {"label": "Bus", "emoji": "\U0001f68c", "color": "#c83c3c", "dash": None},
+    "taxi": {"label": "Taxi", "emoji": "\U0001f695", "color": "#8a6d00", "dash": "12 4"},
+    "boat": {"label": "Boat", "emoji": "\u26f4\ufe0f", "color": "#1f6fd1", "dash": "10 5"},
+}
+assert tuple(MODE_STYLES) == TRIP_MODES, "every travel mode needs a map style"
 
 
 @dataclass(frozen=True)
@@ -70,6 +87,8 @@ class MapPoint:
     label: str
     captured_at: str | None = None
     note: str | None = None
+    # How the user travelled from this point to the next one, when known.
+    mode: str | None = None
 
 
 def mapview_note(asset: AssetView) -> str | None:
@@ -90,19 +109,31 @@ def mapview_located(assets: list[AssetView]) -> list[AssetView]:
     return [asset for asset in assets if asset.latitude is not None and asset.longitude is not None]
 
 
-def mapview_points(assets: list[AssetView]) -> list[MapPoint]:
+def mapview_points(
+    assets: list[AssetView], segments: list[TripSegment] | None = None
+) -> list[MapPoint]:
     """Extract plottable points from asset views, preserving their order.
 
     assets: ``AssetView`` rows, expected ordered oldest capture first.
+    segments: stored travel modes; a mode applies only to the exact
+        consecutive pair it was saved for.
     Returns one ``MapPoint`` per asset that actually carries coordinates.
     """
+    modes = {(item.from_asset_id, item.to_asset_id): item.mode for item in segments or []}
+    located = mapview_located(assets)
     points: list[MapPoint] = []
-    for asset in mapview_located(assets):
+    for index, asset in enumerate(located):
         assert asset.latitude is not None and asset.longitude is not None
         when = asset.captured_at[:16].replace("T", " ") if asset.captured_at else None
+        following = located[index + 1].asset_id if index + 1 < len(located) else None
         points.append(
             MapPoint(
-                asset.latitude, asset.longitude, asset.original_name, when, mapview_note(asset)
+                asset.latitude,
+                asset.longitude,
+                asset.original_name,
+                when,
+                mapview_note(asset),
+                modes.get((asset.asset_id, following)) if following is not None else None,
             )
         )
     return points
@@ -135,6 +166,7 @@ def mapview_points_json(points: list[MapPoint]) -> str:
             "label": point.label,
             "when": point.captured_at,
             "note": point.note,
+            "mode": point.mode,
         }
         for point in points
     ]
@@ -153,6 +185,20 @@ MAP_CSS = """
   .trip-pin.end div { background: #c83c3c; }
   .trip-arrow { background: transparent; border: none; pointer-events: none; }
   .trip-arrow svg { display: block; filter: drop-shadow(0 0 1px #fff); }
+  .trip-mode {
+    position: absolute; left: 14px; top: -14px; font-size: 16px; line-height: 1;
+    background: #fff; border-radius: 9px; padding: 1px 2px; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  .trip-legs { font: 12px "Segoe UI", sans-serif; }
+  .trip-mode-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px;
+  }
+  .trip-mode-button {
+    font: 12px "Segoe UI", sans-serif; padding: 4px 6px; border: 1px solid #ccc;
+    border-radius: 4px; background: #fafafa; cursor: pointer; text-align: left;
+  }
+  .trip-mode-button:hover { background: #eef3fb; }
+  .trip-mode-button.selected { border-color: #1f4f9c; background: #dde8f8; font-weight: 600; }
   .trip-popup { width: 320px; font: 12px "Segoe UI", sans-serif; }
   .trip-photo {
     min-height: 120px; display: flex; align-items: center; justify-content: center;
@@ -166,7 +212,7 @@ MAP_CSS = """
 # The page script. Plain string (not an f-string) so the JavaScript braces stay
 # readable; the points array is spliced in where ``__POINTS__`` appears.
 MAP_SCRIPT = """
-  var map = L.map('map');
+  var map = L.map('map', {preferCanvas: true});
   L.tileLayer(__TILE_URL__, {maxZoom: 19, attribution: __ATTRIBUTION__}).addTo(map);
   L.control.scale({metric: true, imperial: true}).addTo(map);
   var points = __POINTS__;
@@ -226,14 +272,72 @@ MAP_SCRIPT = """
   var markers = [];
   var segments = [];
   var arrowLayer = L.layerGroup().addTo(map);
+  var modes = __MODES__;
 
-  function mapArrowIcon(angle) {
+  function mapLineStyle(mode) {
+    var style = mode ? modes[mode] : null;
+    if (!style) { return {color: '#5a8cdc', weight: 3, dashArray: null}; }
+    return {color: style.color, weight: 4, dashArray: style.dash};
+  }
+
+  function mapArrowIcon(angle, mode) {
+    var style = mode ? modes[mode] : null;
+    var color = style ? style.color : '#1f4f9c';
+    var badge = style ? '<span class="trip-mode">' + style.emoji + '</span>' : '';
     return L.divIcon({
       className: 'trip-arrow',
       iconSize: [16, 16],
       iconAnchor: [8, 8],
-      html: '<svg width="16" height="16" viewBox="0 0 16 16" style="transform: rotate(' +
-        angle + 'deg)"><path d="M3 2 L14 8 L3 14 L6 8 Z" fill="#1f4f9c"/></svg>'
+      html: badge + '<svg width="16" height="16" viewBox="0 0 16 16" style="transform: rotate(' +
+        angle + 'deg)"><path d="M3 2 L14 8 L3 14 L6 8 Z" fill="' + color + '"/></svg>'
+    });
+  }
+
+  // Applies a mode locally; ``report`` tells Python to save it.
+  function mapSetMode(leg, mode, report) {
+    leg.mode = mode;
+    leg.line.setStyle(mapLineStyle(mode));
+    leg.marker.setIcon(mapArrowIcon(leg.angle, mode));
+    leg.hit.setTooltipContent(mapLegTooltip(leg));
+    if (report) { console.log(__MODE_PREFIX__ + leg.index + ':' + (mode || 'none')); }
+  }
+
+  function mapLegTooltip(leg) {
+    var style = leg.mode ? modes[leg.mode] : null;
+    return (style ? style.emoji + ' ' + style.label + ' \u00b7 ' : '') +
+      'Click to set how you travelled';
+  }
+
+  function mapLegPopup(leg) {
+    var box = document.createElement('div');
+    box.className = 'trip-legs';
+    var title = document.createElement('div');
+    title.className = 'trip-name';
+    title.textContent = 'How did you travel from photo ' + (leg.index + 1) + ' to ' +
+      (leg.index + 2) + '?';
+    box.appendChild(title);
+    var grid = document.createElement('div');
+    grid.className = 'trip-mode-grid';
+    Object.keys(modes).concat([null]).forEach(function (mode) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'trip-mode-button' + (mode === leg.mode ? ' selected' : '');
+      button.dataset.mode = mode || 'none';
+      button.textContent = mode ? modes[mode].emoji + ' ' + modes[mode].label : 'Clear';
+      button.onclick = function () {
+        mapSetMode(leg, mode, true);
+        map.closePopup();
+      };
+      grid.appendChild(button);
+    });
+    box.appendChild(grid);
+    return box;
+  }
+
+  function mapBindLeg(leg) {
+    leg.hit.bindTooltip(mapLegTooltip(leg), {sticky: true});
+    leg.hit.on('click', function (event) {
+      L.popup({minWidth: 260}).setLatLng(event.latlng).setContent(mapLegPopup(leg)).openOn(map);
     });
   }
 
@@ -264,20 +368,27 @@ MAP_SCRIPT = """
 
   if (points.length > 0) {
     var latlngs = points.map(function (p) { return L.latLng(p.lat, p.lon); });
-    L.polyline(latlngs, {color: '#5a8cdc', weight: 3}).addTo(map);
     var crs = L.CRS.EPSG3857;
     for (var s = 1; s < latlngs.length; s++) {
       var pa = crs.latLngToPoint(latlngs[s - 1], 0);
       var pb = crs.latLngToPoint(latlngs[s], 0);
+      // Consecutive photos at the same spot have no leg to draw or tag.
       if (pa.distanceTo(pb) === 0) { continue; }
       // Web Mercator is conformal, so the on-screen angle is the same at every
       // zoom level and can be computed once.
       var angle = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
       var mid = crs.pointToLatLng(pa.add(pb).divideBy(2), 0);
-      segments.push({
-        from: latlngs[s - 1], to: latlngs[s],
-        marker: L.marker(mid, {icon: mapArrowIcon(angle), interactive: false, keyboard: false})
-      });
+      var leg = {
+        index: s - 1, from: latlngs[s - 1], to: latlngs[s], angle: angle,
+        mode: points[s - 1].mode || null
+      };
+      leg.line = L.polyline([leg.from, leg.to], mapLineStyle(leg.mode)).addTo(map);
+      leg.marker = L.marker(mid, {icon: mapArrowIcon(angle, leg.mode), interactive: false,
+                                  keyboard: false});
+      // A wide invisible twin makes a thin leg easy to click.
+      leg.hit = L.polyline([leg.from, leg.to], {weight: 16, opacity: 0}).addTo(map);
+      mapBindLeg(leg);
+      segments.push(leg);
     }
     points.forEach(function (p, i) {
       var isStart = i === 0;
@@ -327,6 +438,8 @@ def mapview_build_html(points: list[MapPoint]) -> str:
         MAP_SCRIPT.replace("__TILE_URL__", json.dumps(TILE_URL_TEMPLATE))
         .replace("__ATTRIBUTION__", json.dumps(TILE_ATTRIBUTION).replace("</", "<\\/"))
         .replace("__PREFIX__", json.dumps(PHOTO_REQUEST_PREFIX))
+        .replace("__MODE_PREFIX__", json.dumps(MODE_CHANGE_PREFIX))
+        .replace("__MODES__", json.dumps(MODE_STYLES))
         .replace("__POINTS__", mapview_points_json(points))
     )
     return f"""<!DOCTYPE html>
@@ -366,6 +479,26 @@ def mapview_parse_request(message: str, count: int) -> int | None:
         return None
     index = int(suffix)
     return index if index < count else None
+
+
+def mapview_parse_mode_change(message: str, count: int) -> tuple[int, str | None] | None:
+    """Decode a travel-mode edit logged by the page.
+
+    message: one JavaScript console message, ``ibackup-mode:<leg>:<mode|none>``.
+    count: how many points the page plots (legs are ``0 .. count - 2``).
+    Returns ``(leg, mode)`` with ``mode`` None for "clear", or None for any
+    other message, an unknown mode or an out-of-range leg.
+    """
+    if not message.startswith(MODE_CHANGE_PREFIX):
+        return None
+    leg_text, _, mode_text = message[len(MODE_CHANGE_PREFIX) :].partition(":")
+    if not leg_text.isdigit() or int(leg_text) >= count - 1:
+        return None
+    if mode_text == "none":
+        return int(leg_text), None
+    if mode_text not in TRIP_MODES:
+        return None
+    return int(leg_text), mode_text
 
 
 def mapview_render_photo(archive_root: Path, asset: AssetView, size: int) -> tuple[str | None, str]:
@@ -428,6 +561,7 @@ class MapPage(QWebEnginePage):
     """Web page that turns the map's photo-request console messages into a signal."""
 
     photo_requested = Signal(str)
+    mode_changed = Signal(str)
 
     def javaScriptConsoleMessage(
         self,
@@ -436,9 +570,11 @@ class MapPage(QWebEnginePage):
         line_number: int,
         source_id: str,
     ) -> None:
-        """Forward photo requests; ignore every other console message."""
+        """Forward photo requests and travel-mode edits; ignore other messages."""
         if message.startswith(PHOTO_REQUEST_PREFIX):
             self.photo_requested.emit(message)
+        elif message.startswith(MODE_CHANGE_PREFIX):
+            self.mode_changed.emit(message)
 
 
 @lru_cache(maxsize=1)
@@ -460,6 +596,9 @@ def mapview_tile_profile() -> QWebEngineProfile:
 class WebMapWidget(QWidget):
     """A caption plus an interactive, zoomable Leaflet map."""
 
+    # A leg's travel mode was edited: (from_asset_id, to_asset_id, mode or None).
+    mode_changed = Signal(int, int, object)
+
     def __init__(self, parent: QWidget | None = None, archive_root: Path | None = None) -> None:
         """Build the caption label above the embedded map view.
 
@@ -480,6 +619,7 @@ class WebMapWidget(QWidget):
         self.view = QWebEngineView(self)
         self.page = MapPage(mapview_tile_profile(), self.view)
         self.page.photo_requested.connect(self.mapview_photo_requested)
+        self.page.mode_changed.connect(self.mapview_mode_message)
         self.view.setPage(self.page)
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumSize(320, 240)
@@ -490,15 +630,18 @@ class WebMapWidget(QWidget):
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(2)
 
-    def mapview_set_assets(self, assets: list[AssetView]) -> None:
+    def mapview_set_assets(
+        self, assets: list[AssetView], segments: list[TripSegment] | None = None
+    ) -> None:
         """Plot every located asset, oldest first, as the trip path.
 
         assets: ``AssetView`` rows, already ordered by capture time.
+        segments: saved travel modes for the legs between them.
         Returns None.
         """
         self.located = mapview_located(assets)
         self.requested.clear()
-        points = mapview_points(assets)
+        points = mapview_points(assets, segments)
         if not points:
             self.caption.setText("No photos in this view have location data.")
         elif len(points) == 1:
@@ -506,7 +649,7 @@ class WebMapWidget(QWidget):
         else:
             self.caption.setText(
                 f"{len(points)} located photos, plotted in capture order from Start to End. "
-                "Click a point to see its photo."
+                "Click a point to see its photo, or a line to set how you travelled."
             )
         self.view.setHtml(mapview_build_html(points), QUrl("https://tile.openstreetmap.org/"))
 
@@ -540,6 +683,19 @@ class WebMapWidget(QWidget):
             f"mapShowPhoto({int(index)}, {json.dumps(uri)}, {json.dumps(message)});"
         )
 
+    @Slot(str)
+    def mapview_mode_message(self, message: str) -> None:
+        """Turn a page edit into ``mode_changed`` with the leg's two asset ids.
+
+        message: the page's ``ibackup-mode:<leg>:<mode|none>`` console message.
+        Returns None. Malformed or out-of-range edits are ignored.
+        """
+        change = mapview_parse_mode_change(message, len(self.located))
+        if change is None:
+            return
+        leg, mode = change
+        self.mode_changed.emit(self.located[leg].asset_id, self.located[leg + 1].asset_id, mode)
+
     def mapview_shutdown(self, timeout_ms: int = 5000) -> None:
         """Wait for in-flight renders so none reports into a destroyed bridge."""
         self.pool.clear()
@@ -555,6 +711,8 @@ class MapDialog(QDialog):
         assets: list[AssetView],
         parent: QWidget | None = None,
         archive_root: Path | None = None,
+        segments: list[TripSegment] | None = None,
+        on_mode_changed: Callable[[int, int, str | None], None] | None = None,
     ) -> None:
         """Build the dialog and plot ``assets`` immediately.
 
@@ -562,6 +720,9 @@ class MapDialog(QDialog):
         assets: the located assets to plot, already ordered by capture time.
         parent: optional parent widget.
         archive_root: the open archive popup pictures are rendered from.
+        segments: saved travel modes for the legs between the assets.
+        on_mode_changed: called with ``(from_asset_id, to_asset_id, mode)``
+            whenever the user sets or clears a leg's travel mode, to save it.
         """
         super().__init__(parent)
         self.setWindowTitle(f"Map — {title}")
@@ -571,7 +732,9 @@ class MapDialog(QDialog):
         layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
         layout.setSpacing(GROUP_GAP)
         self.widget = WebMapWidget(self, archive_root)
-        self.widget.mapview_set_assets(assets)
+        if on_mode_changed is not None:
+            self.widget.mode_changed.connect(on_mode_changed)
+        self.widget.mapview_set_assets(assets, segments)
         layout.addWidget(self.widget, 1)
         close_button = QPushButton("Close", self)
         close_button.clicked.connect(self.close)

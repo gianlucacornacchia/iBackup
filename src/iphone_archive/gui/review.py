@@ -51,7 +51,6 @@ MAX_REVIEW_ROWS = 500
 class ReviewRow:
     """One reviewable row: an identifier and the text describing it."""
 
-
     identifier: int
     label: str
     detail: str = ""
@@ -113,9 +112,7 @@ def review_mark_rows(marks: object) -> list[ReviewRow]:
         label = f"{mark.target_type.capitalize()} {mark.target_id}"
         parts = [part for part in (mark.reason, mark.marked_at) if part]
         rows.append(
-            ReviewRow(
-                mark.mark_id, label, " - ".join(parts), mark.sha256, mark.relative_path
-            )
+            ReviewRow(mark.mark_id, label, " - ".join(parts), mark.sha256, mark.relative_path)
         )
     return rows
 

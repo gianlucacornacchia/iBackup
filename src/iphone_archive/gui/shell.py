@@ -269,8 +269,10 @@ class ArchiveShell(QWidget):
                 # isn't already the page - pre-parenting it to `page` would
                 # make that check a no-op, so the widget would never actually
                 # be inserted into the page's layout.
-                review = DeletedPhonePage(previews) if view.key == "deleted-phone" else (
-                    MarksPage(previews)
+                review = (
+                    DeletedPhonePage(previews)
+                    if view.key == "deleted-phone"
+                    else (MarksPage(previews))
                 )
                 # The page already draws the heading, so the review widget keeps
                 # only its caption and list.

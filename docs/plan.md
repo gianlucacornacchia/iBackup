@@ -246,7 +246,7 @@ src/iphone_archive/
   catalog/              # database, models, repository, sidecar
   core/                 # hashing, name_safety, archive_layout, importer,
                         #   dedup, verifier, albums, reclaim,
-                        #   phone_diff, recycle, file_operations, exif
+                        #   phone_diff, recycle, file_operations, exif, trip
   browse/               # gallery (read models only) + thumbnails (cache)
   gui/                  # PySide6; mapview.py + webassets/leaflet/ for the map
 tests/
@@ -271,10 +271,12 @@ tests/
   source identities; newer unsupported schema versions fail closed.
 - `asset_albums` reflects active copies; deleted copies retain album IDs in
   `asset_files`. Any active copy keeps its asset active.
-- Schemas v3-v6 (current `SCHEMA_VERSION = 6`) add `assets` columns:
+- Schemas v3-v6 add `assets` columns:
   `is_offloaded_preview`, `offloaded_original_path`, `latitude`, `longitude`,
-  `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`. See
-  `specifications.md` §8.
+  `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`. Schema v7
+  (current `SCHEMA_VERSION = 7`) adds `trip_segments(scope, from_asset_id,
+  to_asset_id, mode)` for trip-map travel modes, cascading on asset delete.
+  See `specifications.md` §8.
 
 ## 6. CLI commands (first release)
 

@@ -55,6 +55,8 @@ ACTION_SURFACES = {
         'Page header "Map" button, on every gallery-backed view (All photos, '
         "Unsorted, Recycle bin, and each album)"
     ),
+    "app_service_trip_modes": "Map: travel modes drawn on the trip when the map opens",
+    "app_service_set_trip_mode": 'Map: click a leg of the trip and pick "Car", "Plane", ...',
 }
 
 # Capabilities the GUI covers by another route than calling the method. Each one

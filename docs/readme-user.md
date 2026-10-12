@@ -111,7 +111,23 @@ Deleted-from-phone pages have no map. How to read it:
   the phone)"; videos show a poster frame. The picture is made from the copy
   in your archive, never fetched from the phone or the internet, and is
   remembered while the map stays open.
-
+- **How you travelled.** Click a line between two photos (hovering shows "Click
+  to set how you travelled") and pick **Car**, **Plane**, **On foot**,
+  **Bike**, **Tuk-tuk**, **Bus**, **Taxi** or **Boat**; **Clear** removes it.
+  The leg is redrawn at once in that mode's colour and line style (plane,
+  boat and taxi dashed, on foot dotted) with an emoji on its arrow, and the
+  choice is saved in the archive, so it is there next time you open the map.
+  Untagged legs stay blue. Two photos taken at the same spot have no line to
+  click.
+  - Modes are saved **per view**: the same two photos can be "Bus" on the
+    All photos map and "Taxi" in an album's map.
+  - **Adding photos** between two tagged photos (for example importing more
+    of the trip) splits that leg, and every new piece keeps its mode, unless
+    you had already set one of them yourself.
+  - **Removing a photo** from the view (recycling it, moving it out of the
+    album, deleting it, or its location going away) forgets the modes of the
+    legs touching it; the new leg joining its neighbours starts untagged, and
+    the old modes do not come back if the photo returns.
 The map needs an internet connection for the map imagery; without one, the
 dots, line, labels, arrows and photo popups still work over a blank
 background. Viewed map tiles are cached (up to 200 MB) so revisiting an area
@@ -634,8 +650,8 @@ is run from a source installation; there is no downloadable build yet.
   not the same source. Schema-v2 migration preserves legacy content but does
   not trust old unscoped identities; rerun import/content validation for the
   selected device before relying on incremental matching. Later migrations
-  (v3-v6: offloaded-preview flags, location, camera details) only add empty
-  columns, run automatically when the archive is opened, and cannot be undone;
+  (v3-v6: offloaded-preview flags, location, camera details; v7: map travel
+  modes) only add empty columns or tables, run automatically when the archive is opened, and cannot be undone;
   an older build refuses to open an upgraded archive.
 - A fresh integrity error or missing copy blocks destructive work. Restore
   from an independent backup rather than overwriting a known-good original.

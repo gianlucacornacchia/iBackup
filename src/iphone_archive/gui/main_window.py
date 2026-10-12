@@ -28,9 +28,11 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QStatusBar, QWidget
 
 from .. import __version__
+from ..browse.gallery import AssetView
 from ..browse.thumbnails import DEFAULT_THUMBNAIL_SIZE
 from ..config import config_is_archive, config_resolve_paths
 from ..core.reclaim import ReclaimResult
+from ..core.trip import TripSegment
 from ..logging_setup import logging_setup_configure
 from ..settings import Settings, settings_load
 from .commands import COMMANDS_BY_KEY
@@ -50,7 +52,7 @@ from .dialogs import (
     ReportDialog,
     dialogs_dedup_lines,
 )
-from .mapview import MapDialog
+from .mapview import MapDialog, mapview_located
 from .models import ArchiveModels, AssetSelection
 from .navigation import navigation_album_id
 from .operations import OperationDialog, operations_summary, operations_title
@@ -134,6 +136,10 @@ class MainWindow(QMainWindow):
         # The title a map request's own dialog should use, since the generic
         # quiet-reply path only carries the operation name and its result.
         self.map_titles: dict[int, str] = {}
+        # The view key travel modes are stored under, per location request, and
+        # the map waiting for its travel modes, per trip-modes request.
+        self.map_scopes: dict[int, str] = {}
+        self.map_pending: dict[int, tuple[str, str | None, list[AssetView]]] = {}
         # Preference reads and writes are routed separately: they are the only
         # operations that work with no archive open, and their replies drive the
         # settings dialog rather than the status bar alone.
@@ -457,6 +463,7 @@ class MainWindow(QMainWindow):
         request_id = self.main_window_start_quiet("app_service_list_locations", parameters)
         if request_id is not None:
             self.map_titles[request_id] = title
+            self.map_scopes[request_id] = key
 
     def main_window_confirm_selection(self, key: str, selection: object) -> None:
         """Describe a destructive selection action and ask for confirmation.
@@ -1103,6 +1110,11 @@ class MainWindow(QMainWindow):
         """
         operation = self.quiet_requests.pop(reply.request_id, None)
         map_title = self.map_titles.pop(reply.request_id, None)
+        pending_map = self.map_pending.pop(reply.request_id, None)
+        if pending_map is not None and (isinstance(reply, WorkerFailure) or reply.cancelled):
+            # The travel modes could not be read; the map is still useful.
+            self.main_window_open_map(*pending_map, [])
+            return
         if operation is None or isinstance(reply, WorkerFailure):
             return
         if reply.cancelled:
@@ -1111,14 +1123,58 @@ class MainWindow(QMainWindow):
         self.main_window_show_status(operations_summary(operation, reply.value))
         if operation == "app_service_list_locations":
             assets = reply.value if isinstance(reply.value, list) else []
-            MapDialog(
-                map_title or operations_title(operation),
-                assets,
-                self,
-                archive_root=self.worker.archive_root,
-            ).show()
+            title = map_title or operations_title(operation)
+            scope = self.map_scopes.pop(reply.request_id, None)
+            located = mapview_located(assets)
+            request_id = None
+            if scope is not None and len(located) > 1:
+                request_id = self.main_window_start_quiet(
+                    "app_service_trip_modes",
+                    {"scope": scope, "asset_ids": [asset.asset_id for asset in located]},
+                )
+            if request_id is None:
+                self.main_window_open_map(title, scope, assets, [])
+            else:
+                self.map_pending[request_id] = (title, scope, assets)
+            return
+        if operation == "app_service_trip_modes" and pending_map is not None:
+            segments = reply.value if isinstance(reply.value, list) else []
+            self.main_window_open_map(*pending_map, segments)
             return
         self.main_window_completed(operation, reply.value)
+
+    def main_window_open_map(
+        self, title: str, scope: str | None, assets: list[AssetView], segments: list[object]
+    ) -> None:
+        """Open one view's trip map, wired to save travel-mode edits.
+
+        title: the dialog title.
+        scope: the view key travel modes are stored under, or None.
+        assets: the located assets, oldest first.
+        segments: the reconciled ``TripSegment`` rows for those assets.
+        Returns None.
+        """
+
+        def save_mode(from_asset_id: int, to_asset_id: int, mode: str | None) -> None:
+            if scope is not None:
+                self.main_window_start_quiet(
+                    "app_service_set_trip_mode",
+                    {
+                        "scope": scope,
+                        "from_asset_id": from_asset_id,
+                        "to_asset_id": to_asset_id,
+                        "mode": mode,
+                    },
+                )
+
+        MapDialog(
+            title,
+            assets,
+            self,
+            archive_root=self.worker.archive_root,
+            segments=[segment for segment in segments if isinstance(segment, TripSegment)],
+            on_mode_changed=save_mode if scope is not None else None,
+        ).show()
 
     @Slot(str, object)
     def main_window_completed(self, operation: str, value: object) -> None:

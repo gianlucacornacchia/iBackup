@@ -550,8 +550,23 @@ renders. Rules worth keeping:
   outlives the bridge swallows the `RuntimeError` rather than crashing.
 - Arrow angles are computed once at zoom 0 in `EPSG:3857`; only their
   visibility (≥ 40 px on screen) is recomputed on `zoomend`.
-```powershell
-pytest tests/test_gui_mapview.py tests/test_gallery.py tests/test_service.py tests/test_gui_parity.py
+- **Travel modes use the same console bridge.** A leg edit logs
+  `ibackup-mode:<leg>:<mode|none>`; `MapPage` forwards that prefix,
+  `mapview_parse_mode_change` accepts only a mode from `TRIP_MODES` (or
+  `none`) and a leg index `0..count-2`, and the widget maps the leg to its two
+  asset ids before emitting `mode_changed`. The page never learns asset ids.
+  Saving goes through the window (`main_window_open_map`'s callback →
+  `app_service_set_trip_mode` on the worker), never from the dialog directly.
+- **Adding a mode** means adding it to `core.trip.TRIP_MODES` *and*
+  `mapview.MODE_STYLES` in the same order; an import-time assert and a test
+  fail otherwise. Stored values are the keys (`foot`, `tuktuk`), not labels.
+- **Reconciliation is the source of truth for what a stored pair means.**
+  `trip_reconcile` runs on every open against the exact plotted ids; keep
+  the scope equal to the navigation key (`all`, `unsorted`, `recycled`,
+  `album:<id>`) or saved modes will silently stop matching.
+- Many legs are drawn per trip, so the map uses `preferCanvas: true`; keep
+  new per-leg layers canvas-friendly.```powershell
+pytest tests/test_gui_mapview.py tests/test_trip.py tests/test_gallery.py tests/test_service.py tests/test_gui_parity.py
 ```
 
 ### Running the Windows Mica probe

@@ -312,7 +312,11 @@ Recorded in `progress.md`; docs reconciled 2026-10-11.
   zoom) and a photo popup per point (picture rendered from the archived copy
   as a `data:` URI off the GUI thread, file name, capture time, "n of N",
   preview/video note); `MapDialog` 900×640, delete-on-close.
-- [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
+- [x] **map-travel-modes** (2026-10-12) — click a trip leg to tag it Car /
+  Plane / On foot / Bike / Tuk-tuk / Bus / Taxi / Boat (or clear it); styled
+  per mode, stored per view in `trip_segments` (schema v7, cascade on asset
+  delete) and reconciled on every map open (`core/trip.py`); service
+  `app_service_trip_modes` / `app_service_set_trip_mode`; GUI-only.- [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
   ISO/aperture/focal length from EXIF; backfill onto existing assets.
 - [x] **gui-sizing-review-pages** (`66420ac`, `9cc2bb1`, `3827515`) — larger
   tiles/buttons/icons; Marked and Deleted-from-phone pages laid out correctly
@@ -362,15 +366,25 @@ Follow-ups found while reconciling (not scheduled):
   check what happens when a cached original is later evicted: the phone then
   reports only a preview at a different (thumbnail) path, which is not
   matched to the existing full-resolution asset.
-- [ ] **pre-existing-lint-type** — at HEAD, `ruff format --check` flags
-  `gui/review.py`, `gui/shell.py` and `tests/test_importer.py`, and
-  `mypy --strict` reports 2 errors in `core/exif.py`; two
-  `tests/test_gui_settings.py` path-separator tests fail on Windows.
+- [ ] **pre-existing-lint-type** — `ruff format --check` still flags
+  `tests/test_importer.py` (`gui/review.py` and `gui/shell.py` were
+  reformatted 2026-10-12, no behaviour change), and `mypy --strict` reports 2
+  errors in `core/exif.py`; two `tests/test_gui_settings.py` path-separator
+  tests fail on Windows.
 - [ ] **flaky-recycle-restart** — `tests/test_recycle.py::
   test_restart_finalizes_catalog_committed_before_cleanup[restore]` failed
   once in a full run on 2026-10-12, then passed on 3 reruns and at HEAD;
   investigate (likely order/timing dependent on Windows).
-- [ ] **map-popup-timezone** — popup capture times are the stored
+- [ ] **flaky-worker-archive-switch** — `tests/test_gui_worker.py::
+  test_close_then_open_serializes_archive_switches` failed once (2026-10-12)
+  with a Windows "Access is denied" renaming the `settings.json` staging file,
+  then passed on 3 reruns; likely another process/thread holding the target.
+- [ ] **travel-modes-cli-export** — travel modes are GUI-only and catalog-only:
+  no CLI command, no export (e.g. GPX/GeoJSON) and not in sidecars, so a
+  catalog rebuild from sidecars would lose them.
+- [ ] **travel-mode-pair-check** — `trip_set_mode` accepts any two existing
+  assets, not only a currently consecutive pair; the GUI only sends
+  consecutive pairs, and reconciliation drops stray rows on the next open.- [ ] **map-popup-timezone** — popup capture times are the stored
   `captured_at` truncated to minutes, with no local time-zone conversion.
 
 ## Future backlog (agreed, not scheduled)

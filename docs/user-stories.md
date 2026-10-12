@@ -366,6 +366,29 @@ Acceptance criteria:
 _(Added 2026-10-10, `2237104`/`549556c`/`77ec30a`/`aa0086b`; popups, pins and
 arrows 2026-10-12.)_
 
+### US-G10 — Record how I travelled
+**As** a user, **I want** to mark how I got from one photo to the next on the
+trip map **so that** the map tells the story of the trip, not just its places.
+
+Acceptance criteria:
+- Given a trip map with at least two photos at different places, when I click
+  the line between two of them, then I can choose Car, Plane, On foot, Bike,
+  Tuk-tuk, Bus, Taxi or Boat, or Clear, and the leg is redrawn at once in that
+  mode's colour, line style and emoji.
+- Given I close and reopen the map, or restart the app, then my choices are
+  still shown.
+- Given the same photos in two views (e.g. All photos and an album), then each
+  view keeps its own travel modes.
+- Given photos are added between two tagged photos, then every new leg between
+  them keeps that mode, except legs I tagged myself.
+- Given a photo leaves the view (recycled, deleted, moved out of the album or
+  no location), then the modes of the legs touching it are forgotten, the leg
+  that now joins its neighbours is untagged, and they do not come back if the
+  photo returns.
+- Given travel modes cannot be read, then the map still opens without them.
+- Given any of this, then no photo file and nothing outside the archive's
+  catalog is changed, and no network request is made beyond map tiles.
+_(Added 2026-10-12. GUI-only; there is no CLI command.)_
 ---
 
 ## Epic H — Review of Photos Deleted from the Phone
