@@ -56,7 +56,9 @@ albums work; see `docs/progress.md`):
   catalog (schema v6) and backfilled onto already-archived assets on reimport.
 - **Trip map.** Every gallery view (All photos, Unsorted, Recycle bin, each
   album) has a **Map** button opening a zoomable Leaflet/OpenStreetMap map of
-  its located photos in capture order. **This is the only feature that uses
+  its located photos in capture order, with Start/End labels, direction
+  arrows and a photo popup (rendered from the archive) on every point. **This
+  is the only feature that uses
   the network:** it downloads map tiles from `tile.openstreetmap.org` while
   the map is open. Everything else, including import, stays local.
 - **GUI fixes.** Larger tiles/buttons/navigation icons; the Marked and

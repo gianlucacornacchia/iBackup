@@ -531,7 +531,25 @@ renders. Rules worth keeping:
   escape anything that could close a `<script>` (`mapview_points_json`).
 - A new service operation still needs a `gui/parity.py` entry and an
   `operations.py` title/summary.
-
+- **Photo popups use a console-message bridge, never file access.** The page
+  logs `ibackup-photo:<index>`; `MapPage.javaScriptConsoleMessage` forwards
+  only that prefix and `mapview_parse_request` accepts only an in-range
+  numeric index, so page content cannot name a file or another asset. The
+  picture is rendered from the archived copy (`thumbnails_get`, 320 px) on the
+  widget's own 2-thread pool, which receives only the archive root and an
+  immutable `AssetView`, and is returned with `runJavaScript` as a
+  `data:image/jpeg;base64,…` URI. Do not add `file://` URLs, a local base URL,
+  `QWebChannel` or `LocalContentCanAccessFileUrls`-style settings instead.
+- **Build popup content once.** Leaflet re-runs a popup's content function on
+  every `update()` (e.g. when an image finishes loading), which would rebuild
+  the popup and drop the loaded picture (a bug found during the 2026-10-12
+  work, covered by a regression test). Keep the per-point
+  element cache (`boxes`) and the per-plot "requested" set.
+- **Shut the pool down before the widget dies.** `MapDialog` is
+  delete-on-close and calls `mapview_shutdown()` on `finished`; a task that
+  outlives the bridge swallows the `RuntimeError` rather than crashing.
+- Arrow angles are computed once at zoom 0 in `EPSG:3857`; only their
+  visibility (≥ 40 px on screen) is recomputed on `zoomend`.
 ```powershell
 pytest tests/test_gui_mapview.py tests/test_gallery.py tests/test_service.py tests/test_gui_parity.py
 ```

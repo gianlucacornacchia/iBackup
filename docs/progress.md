@@ -350,6 +350,42 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-12 — **Trip map: Start/End pins, direction arrows and photo
+  popups.** `gui/mapview.py`: labelled Leaflet `divIcon` pins — "Start"
+  (green, above its point) and "End" (red, below it, so a round trip shows
+  both), "Start / End" for a single point; clicking a pin opens that point's
+  popup. One direction arrow per segment at its midpoint, angle computed once
+  in Web Mercator (conformal, so valid at every zoom); zero-length segments get
+  none, and arrows show only for segments ≥ 40 px on screen, refreshed on
+  `zoomend`. Every point has a popup: picture, file name, capture time
+  (`YYYY-MM-DD HH:MM`), "n of N", and a note for previews ("Low-resolution
+  preview (original not on the phone)", detected by the
+  `" (offloaded preview)"` marker) or videos ("Video (poster frame)"). The
+  picture is rendered from the **archived** copy with `thumbnails_get` at
+  320 px on a 2-thread `QThreadPool` and pushed in as a `data:` URI; nothing
+  is fetched from the phone and the page gets no file access. Requests arrive
+  as console messages `ibackup-photo:<index>`, intercepted by `MapPage`;
+  `mapview_parse_request` accepts only in-range numeric indices; each point
+  renders at most once per plot. Messages: "No archive open", "No archived
+  copy", "No preview available (…)". Popup elements are cached per point
+  because Leaflet re-runs content functions on `update()` (bug found and
+  fixed during the work; regression test). `MapDialog` is 900×640,
+  delete-on-close and waits for in-flight renders (`mapview_shutdown`);
+  `main_window.py` passes the worker's `archive_root`. New caption: "N located
+  photos, plotted in capture order from Start to End. Click a point to see its
+  photo." No new service operation (parity map unchanged), no new
+  dependencies. `tests/test_gui_mapview.py` now has 16 tests, including real
+  WebEngine page execution (4 points → 4 markers, 2 arrow segments, 2 pins;
+  `openPopup` emits `ibackup-photo:1`) and an end-to-end popup-shows-the-
+  picture regression. Full suite: the same two pre-existing
+  `test_gui_settings.py` failures; **flaky:**
+  `test_recycle.py::test_restart_finalizes_catalog_committed_before_cleanup[restore]`
+  failed once in a full run, passed on 3 reruns and passes at HEAD (open item
+  `flaky-recycle-restart` in `todos.md`). Docs updated: `README.md`,
+  `readme-user.md` (how to read the map), `specifications.md` §16.4,
+  `structure.md`, `development.md` (bridge rules), `unit-tests.md`,
+  `user-stories.md` (US-G9), `todos.md`, `ui-sketch/README.md` §8.
+
 - 2026-10-11 — **Fixed: shared albums not found on a real iPhone (iOS 26.4).**
   Testing `0cf5b4f` on the user's iPhone 12 imported no shared albums. A copy
   of its `Photos.sqlite` showed no `ZGENERICALBUM` row with `ZKIND = 1505`

@@ -307,6 +307,11 @@ Recorded in `progress.md`; docs reconciled 2026-10-11.
 - [x] **gps-map** (`2237104`, `26b3d7c`, `aa0086b`) — schema v5 GPS,
   `app_service_list_locations`, per-view **Map** button; now a Leaflet/
   OpenStreetMap map via Qt WebEngine (the app's only network use).
+- [x] **map-trip-details** (2026-10-12) — Start/End pins, per-segment
+  direction arrows (Web Mercator angle, ≥ 40 px segments only, refreshed on
+  zoom) and a photo popup per point (picture rendered from the archived copy
+  as a `data:` URI off the GUI thread, file name, capture time, "n of N",
+  preview/video note); `MapDialog` 900×640, delete-on-close.
 - [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
   ISO/aperture/focal length from EXIF; backfill onto existing assets.
 - [x] **gui-sizing-review-pages** (`66420ac`, `9cc2bb1`, `3827515`) — larger
@@ -361,6 +366,12 @@ Follow-ups found while reconciling (not scheduled):
   `gui/review.py`, `gui/shell.py` and `tests/test_importer.py`, and
   `mypy --strict` reports 2 errors in `core/exif.py`; two
   `tests/test_gui_settings.py` path-separator tests fail on Windows.
+- [ ] **flaky-recycle-restart** — `tests/test_recycle.py::
+  test_restart_finalizes_catalog_committed_before_cleanup[restore]` failed
+  once in a full run on 2026-10-12, then passed on 3 reruns and at HEAD;
+  investigate (likely order/timing dependent on Windows).
+- [ ] **map-popup-timezone** — popup capture times are the stored
+  `captured_at` truncated to minutes, with no local time-zone conversion.
 
 ## Future backlog (agreed, not scheduled)
 

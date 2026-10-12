@@ -1111,7 +1111,12 @@ class MainWindow(QMainWindow):
         self.main_window_show_status(operations_summary(operation, reply.value))
         if operation == "app_service_list_locations":
             assets = reply.value if isinstance(reply.value, list) else []
-            MapDialog(map_title or operations_title(operation), assets, self).show()
+            MapDialog(
+                map_title or operations_title(operation),
+                assets,
+                self,
+                archive_root=self.worker.archive_root,
+            ).show()
             return
         self.main_window_completed(operation, reply.value)
 

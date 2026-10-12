@@ -93,12 +93,29 @@ reclamation cannot yet free space on a real iPhone.
 
 **Map.** Every photo view (All photos, Unsorted, Recycle bin and each album)
 has a **Map** button in its header. It opens a zoomable OpenStreetMap map of
-the photos in that view that have a location, joined by a line in the order
-they were taken; the first is green, the last red, and clicking a dot shows
-the file name. The Marked and Deleted-from-phone pages have no map. The map
-needs an internet connection for the map imagery; without one, the dots, line
-and zoom still work over a blank background. Viewed map tiles are cached
-(up to 200 MB) so revisiting an area needs no new downloads.
+the photos in that view that have a location. The Marked and
+Deleted-from-phone pages have no map. How to read it:
+
+- **The route.** A blue line joins the photos in the order they were taken,
+  oldest first. A green **Start** label sits above the first photo and a red
+  **End** label below the last, so a round trip that ends where it began
+  still shows both; a single photo is labelled **Start / End**.
+- **Direction arrows.** Each leg of the trip has an arrow at its middle
+  pointing the way you travelled. Legs that are short on screen have no arrow
+  so busy areas stay readable; zoom in to see more of them. Two photos taken
+  at the same spot get no arrow between them.
+- **Photo popups.** Click any dot (or the Start/End label) to see that photo,
+  its file name, when it was taken (`YYYY-MM-DD HH:MM`, as stored in the
+  archive) and its place in the trip ("3 of 42"). Previews of photos whose
+  original is not on the phone say "Low-resolution preview (original not on
+  the phone)"; videos show a poster frame. The picture is made from the copy
+  in your archive, never fetched from the phone or the internet, and is
+  remembered while the map stays open.
+
+The map needs an internet connection for the map imagery; without one, the
+dots, line, labels, arrows and photo popups still work over a blank
+background. Viewed map tiles are cached (up to 200 MB) so revisiting an area
+needs no new downloads.
 
 **Camera details** (camera, lens, ISO, aperture, focal length) are read from
 each photo's own EXIF when it is archived and stored in the archive index.
@@ -488,7 +505,8 @@ Only for the map. Backing up, verifying, browsing and every other operation
 work fully offline. When you open a **Map**, the app downloads map tiles from
 OpenStreetMap's public tile server (`tile.openstreetmap.org`), which therefore
 sees your IP address and the map areas you view. Your photos and the list of
-photo locations stay on your computer; the map page is built locally. Tiles
+photo locations stay on your computer; the map page and its photo popups are
+built locally from the archive. Tiles
 are cached on disk (up to 200 MB) in a separate Qt WebEngine profile named
 `ibackup-map-tiles`. Map data © OpenStreetMap contributors. If you do not
 want this, simply do not open the map.

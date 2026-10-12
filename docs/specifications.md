@@ -547,15 +547,51 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   all active), ordered by `captured_at` (oldest first), then name and id.
 - `gui/mapview.py` `MapDialog`/`WebMapWidget` embed a `QWebEngineView` whose
   page is generated locally: vendored Leaflet (`gui/webassets/leaflet/`,
-  BSD-2-Clause) and the point list are inlined, labels escaped so they
-  cannot close the script tag. The page draws a polyline in capture order,
-  circle markers (start green, end red) with file-name popups, a metric/
-  imperial scale and fits the bounds; with no points it shows a world view.
+  BSD-2-Clause) and the point list (label, capture time, note) are inlined,
+  escaped so they cannot close the script tag; with no points it shows a
+  world view. With points the page draws (enhanced 2026-10-12):
+  - a polyline in capture order (oldest first, from `gallery_list_located`),
+    circle markers (first green, last red, larger) and a metric/imperial
+    scale, fitted to the bounds;
+  - labelled `divIcon` pins: **Start** (green, above its point) and **End**
+    (red, below it, so a round trip shows both); a single point shows
+    **Start / End**. Clicking a pin opens its point's popup;
+  - one direction arrow per segment at the segment midpoint, rotated to the
+    travel direction. The angle is computed once in Web Mercator
+    (`EPSG:3857`), which is conformal, so it holds at every zoom level.
+    Zero-length segments (consecutive photos at the same spot) get none;
+    arrows are shown only for segments ≥ 40 px on screen and refreshed on
+    `zoomend`;
+  - a popup per point: picture, file name, capture time (`YYYY-MM-DD HH:MM`,
+    the first 16 characters of the stored `captured_at`, no time-zone
+    conversion), "n of N", and a note: "Low-resolution preview (original not
+    on the phone)" when the name carries the `" (offloaded preview)"` marker
+    (offloaded and shared-album previews), else "Video (poster frame)" for
+    videos. Popup elements are built once per point and cached, because
+    Leaflet re-runs content functions on `update()`.
+- **Popup pictures** are rendered from the asset's first **archived** copy
+  (for a preview that copy is the phone's own thumbnail) with
+  `browse.thumbnails.thumbnails_get` at 320 px, which also fills the normal
+  `.ibackup/thumbnails/` cache, on a 2-thread `QThreadPool` off the GUI
+  thread, and pushed into the page as a `data:image/jpeg;base64,…` URI via
+  `runJavaScript`. Nothing is fetched from the phone and the page gets no
+  file access. The request channel is a console message
+  `ibackup-photo:<index>`, intercepted by `MapPage`
+  (`QWebEnginePage.javaScriptConsoleMessage`); `mapview_parse_request`
+  accepts only in-range numeric indices, and each point is rendered at most
+  once per plot, then cached in the page. Without an open archive the popup
+  says "No archive open"; without a stored copy "No archived copy"; on a
+  render failure "No preview available (…)".
+- `MapDialog` opens at 900×640, deletes itself on close and waits for
+  in-flight renders (`mapview_shutdown`). Caption: "N located photos, plotted
+  in capture order from Start to End. Click a point to see its photo." The
+  window passes `archive_root` from the worker; no new service operation.
 - Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (max zoom
   19, © OpenStreetMap contributors attribution) through one named, persistent
   `QWebEngineProfile` `ibackup-map-tiles` with a 200 MB disk HTTP cache and a
   descriptive User-Agent. This is the app's only network use. Offline, the
-  map controls, markers and line still work without imagery.
+  map controls, markers, line, pins, arrows and photo popups still work
+  without imagery.
 - The **Map** button is shown on gallery-backed pages only (All photos,
   Unsorted, Recycle bin, each album) while an archive is open; the Marked and
   Deleted-from-phone review pages have none. There is no CLI equivalent; the

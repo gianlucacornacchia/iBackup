@@ -232,7 +232,8 @@ Acceptance criteria:
   required or contacted.
 - Given the phone has iCloud disabled, then import and all features still work.
 - Given I open the optional GUI trip map (US-G9), then only OpenStreetMap map
-  tiles are requested; no photo, catalog data or coordinate list is sent. This
+  tiles are requested; no photo, catalog data or coordinate list is sent (photo
+  popups are built locally from the archive). This
   is the one explicit exception, added 2026-10-10 at the user's request.
 
 ---
@@ -351,7 +352,19 @@ Acceptance criteria:
 - Given photos archived before locations were recorded, when I import again,
   then their missing location (and EXIF camera details) are filled in without
   overwriting existing values.
-_(Added 2026-10-10, `2237104`/`549556c`/`77ec30a`/`aa0086b`.)_
+- Given a trip of several photos, then the first is labelled **Start** and the
+  last **End** (both visible even when they coincide), and each leg long
+  enough on screen shows an arrow pointing in the direction of travel; zooming
+  in reveals arrows on shorter legs. _(2026-10-12)_
+- Given I click a point or a Start/End label, then a popup shows that photo,
+  its file name, capture time and position ("n of N"), noting when the
+  picture is only a low-resolution preview or a video poster frame. The
+  picture comes from the archive, never the phone or the network, and the page
+  gets no file access. _(2026-10-12)_
+- Given no archive is open or the photo has no archived copy, then the popup
+  says so instead of showing a picture. _(2026-10-12)_
+_(Added 2026-10-10, `2237104`/`549556c`/`77ec30a`/`aa0086b`; popups, pins and
+arrows 2026-10-12.)_
 
 ---
 
