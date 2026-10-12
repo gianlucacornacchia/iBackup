@@ -642,6 +642,21 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
     opens without them. Status lines: "Map ready: N legs have a travel
     mode.", "Travel mode saved.", "Travel mode cleared.".
   - Travel modes live only in the catalog; sidecars do not carry them.
+  - **Persistence across imports.** Rows are keyed by catalog `assets.id`,
+    and an asset is identified by the SHA-256 of its content (`assets.sha256`
+    UNIQUE): an import fast-skips a known phone identity or dedups by hash
+    onto the existing row, so re-importing the same photos (any device) never
+    creates new ids and every mode survives. An offloaded preview upgraded to
+    its original keeps its id (`importer_upgrade_offloaded_preview`); album
+    rows keep their id (upsert by `safe_name`), so `album:<id>` scopes are
+    stable. Newly imported photos inside a tagged leg split it (reconciliation
+    above). Identity is lost, and modes start empty, only when the bytes
+    differ: a phone-side edit that changes the file, or a shared-album
+    original evicted from the phone and re-imported as a thumbnail preview at
+    another path. The phone's own stable id (`Photos.sqlite` `ZASSET.ZUUID`)
+    is not captured; `assets.phone_asset_id` stays NULL. Covered by
+    `tests/test_trip.py` (re-import, insertion by import, preview upgrade,
+    album scope).
 - Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (max zoom
   19, © OpenStreetMap contributors attribution) through one named, persistent
   `QWebEngineProfile` `ibackup-map-tiles` with a 200 MB disk HTTP cache and a

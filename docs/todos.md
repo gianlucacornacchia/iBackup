@@ -384,7 +384,15 @@ Follow-ups found while reconciling (not scheduled):
   catalog rebuild from sidecars would lose them.
 - [ ] **travel-mode-pair-check** — `trip_set_mode` accepts any two existing
   assets, not only a currently consecutive pair; the GUI only sends
-  consecutive pairs, and reconciliation drops stray rows on the next open.- [ ] **map-popup-timezone** — popup capture times are the stored
+  consecutive pairs, and reconciliation drops stray rows on the next open.
+- [ ] **phone-asset-uuid** — capture `Photos.sqlite` `ZASSET.ZUUID` into
+  `assets.phone_asset_id` so a photo keeps one identity across byte-changing
+  edits and preview/original swaps at different paths (and travel modes
+  follow it). Caution: `repository_find_by_phone_identity` matches
+  `phone_asset_id IS ?`, so filling it would make every existing source miss
+  the fast-skip once and re-read the whole phone (hash dedup still prevents
+  duplicates); needs a migration that backfills it first.
+- [ ] **map-popup-timezone** — popup capture times are the stored
   `captured_at` truncated to minutes, with no local time-zone conversion.
 
 ## Future backlog (agreed, not scheduled)

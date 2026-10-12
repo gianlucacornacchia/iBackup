@@ -128,6 +128,13 @@ Deleted-from-phone pages have no map. How to read it:
     album, deleting it, or its location going away) forgets the modes of the
     legs touching it; the new leg joining its neighbours starts untagged, and
     the old modes do not come back if the photo returns.
+  - **Importing again keeps them.** A photo is recognised by its content (a
+    fingerprint of its bytes, SHA-256), not its file name, so re-importing
+    the same photos, from the same or another iPhone, keeps every mode. A
+    low-resolution preview that is later replaced by its full original is
+    the same photo too, and keeps its modes. A photo you edit so its bytes
+    change becomes a new photo in the archive (the old version stays) and
+    starts without modes.
 The map needs an internet connection for the map imagery; without one, the
 dots, line, labels, arrows and photo popups still work over a blank
 background. Viewed map tiles are cached (up to 200 MB) so revisiting an area

@@ -359,6 +359,20 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-12 — **Verified: travel modes persist across imports.** Question:
+  can a photo be uniquely identified so its modes survive re-import? Yes:
+  catalog assets are keyed by content SHA-256 (`assets.sha256` UNIQUE) and
+  `trip_segments` by the stable `assets.id`; imports fast-skip known phone
+  identities or dedup onto the existing row, previews upgrade in place, and
+  album ids are stable. No code change was needed; four new tests in
+  `tests/test_trip.py` prove re-import, insertion by import (split), preview
+  upgrade and album-scope persistence (18 cases, all pass). Identity is lost
+  only when the bytes change (phone-side edit; evicted shared original
+  re-imported as a preview); the phone's `ZUUID` is not captured — new
+  follow-up `phone-asset-uuid`. Docs: `readme-user.md` (map: importing again
+  keeps modes), `specifications.md` §16.4 (persistence across imports),
+  `unit-tests.md`, `todos.md`.
+
 - 2026-10-12 — **Trip map: travel modes between pins.** New `core/trip.py`:
   `TRIP_MODES` (`car`, `plane`, `foot`, `bike`, `tuktuk`, `bus`, `taxi`,
   `boat`), `TripSegment(from_asset_id, to_asset_id, mode)`,

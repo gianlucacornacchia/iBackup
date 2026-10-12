@@ -150,3 +150,125 @@ def test_reconcile_rejects_malformed_asset_lists(service):
 
 def test_every_required_mode_is_offered():
     assert trip.TRIP_MODES == ("car", "plane", "foot", "bike", "tuktuk", "bus", "taxi", "boat")
+
+
+def helper_device(names, times, previews=()):
+    """A fake phone holding located photos; ``previews`` are offloaded thumbnails.
+
+    names: photo letters, e.g. "ABC".
+    times: capture day per letter (controls the trip order).
+    previews: letters whose original is not on the phone yet.
+    """
+    from iphone_archive.catalog.models import PhoneItem
+
+    class Phone(FakeDevice):
+        def device_enumerate(self):
+            for item in super().device_enumerate():
+                letter = item.phone_path.split("/DCIM/")[1][0]
+                if letter in previews:
+                    item.is_offloaded_preview = True
+                    item.offloaded_original_path = f"/DCIM/{letter}.JPG"
+                    item.original_name = f"{letter} (offloaded preview).JPG"
+                yield item
+
+    files = {}
+    for letter in names:
+        path = (
+            f"/PhotoData/Thumbnails/V2/DCIM/{letter}.JPG/5005.JPG"
+            if letter in previews
+            else f"/DCIM/{letter}.JPG"
+        )
+        files[path] = (b"thumb-" if letter in previews else b"full-") + letter.encode()
+    device = Phone(
+        files,
+        album_map={path: ["Trip"] for path in files},
+        locations={path: (40.0 + ord(path[-5]) % 10, 7.0) for path in files},
+    )
+    for path in files:
+        letter = path.split("/DCIM/")[1][0]
+        device.metadata[path] = {"captured_at": f"2024-01-{times[letter]:02d}T10:00:00"}
+    assert all(isinstance(item, PhoneItem) for item in device.device_enumerate())
+    return device
+
+
+def helper_trip(service, scope="all", album_id=None):
+    """Open the map's data the way the GUI does and return ``{"AB": mode}``."""
+    located = service.app_service_list_locations(album_id=album_id)
+    names = {asset.asset_id: asset.original_name[0] for asset in located}
+    segments = service.app_service_trip_modes(scope, [asset.asset_id for asset in located])
+    return {names[s.from_asset_id] + names[s.to_asset_id]: s.mode for s in segments}, {
+        name: asset_id for asset_id, name in names.items()
+    }
+
+
+@pytest.fixture
+def empty_service(tmp_path):
+    """An open, empty archive."""
+    service = AppService(tmp_path / "archive")
+    service.app_service_initialize()
+    yield service
+    service.app_service_close()
+
+
+def test_modes_survive_reimporting_the_same_photos(empty_service):
+    """The same bytes are the same catalog asset, so a re-import changes nothing."""
+    service = empty_service
+    days = {"A": 1, "B": 2, "C": 3}
+    service.app_service_import(helper_device("ABC", days))
+    _, ids = helper_trip(service)
+    service.app_service_set_trip_mode("all", ids["A"], ids["B"], "car")
+    service.app_service_set_trip_mode("all", ids["B"], ids["C"], "plane")
+
+    result = service.app_service_import(helper_device("ABC", days))
+
+    assert result.added_count == 0
+    modes, after = helper_trip(service)
+    assert after == ids
+    assert modes == {"AB": "car", "BC": "plane"}
+
+
+def test_a_newly_imported_photo_in_the_middle_splits_the_leg(empty_service):
+    """An import that adds X between B and C gives B→X and X→C the B→C mode."""
+    service = empty_service
+    service.app_service_import(helper_device("ABC", {"A": 1, "B": 2, "C": 4}))
+    _, ids = helper_trip(service)
+    service.app_service_set_trip_mode("all", ids["A"], ids["B"], "car")
+    service.app_service_set_trip_mode("all", ids["B"], ids["C"], "boat")
+
+    service.app_service_import(helper_device("ABXC", {"A": 1, "B": 2, "X": 3, "C": 4}))
+
+    modes, _ = helper_trip(service)
+    assert modes == {"AB": "car", "BX": "boat", "XC": "boat"}
+
+
+def test_modes_survive_an_offloaded_preview_being_upgraded(empty_service):
+    """When B's original comes back, its preview row is upgraded in place: same asset."""
+    service = empty_service
+    days = {"A": 1, "B": 2, "C": 3}
+    service.app_service_import(helper_device("ABC", days, previews="B"))
+    _, ids = helper_trip(service)
+    service.app_service_set_trip_mode("all", ids["A"], ids["B"], "tuktuk")
+    service.app_service_set_trip_mode("all", ids["B"], ids["C"], "bus")
+
+    result = service.app_service_import(helper_device("ABC", days))
+
+    assert result.upgraded_count == 1
+    modes, after = helper_trip(service)
+    assert after["B"] == ids["B"]
+    assert modes == {"AB": "tuktuk", "BC": "bus"}
+
+
+def test_album_map_modes_survive_reimport(empty_service):
+    """An album keeps its catalog id across imports, so its map keeps its modes."""
+    service = empty_service
+    days = {"A": 1, "B": 2}
+    service.app_service_import(helper_device("AB", days))
+    album_id = service.app_service_list_albums()[0].album_id
+    scope = f"album:{album_id}"
+    _, ids = helper_trip(service, scope, album_id)
+    service.app_service_set_trip_mode(scope, ids["A"], ids["B"], "foot")
+
+    service.app_service_import(helper_device("AB", days))
+
+    assert service.app_service_list_albums()[0].album_id == album_id
+    assert helper_trip(service, scope, album_id)[0] == {"AB": "foot"}
