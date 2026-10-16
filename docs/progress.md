@@ -5,7 +5,7 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-13 (the trip map is now a real, zoomable Leaflet/
+_Last updated: 2026-10-16 (map: ignore a point, Previous/Next point; previously 2026-10-13: the trip map is now a real, zoomable Leaflet/
 OpenStreetMap map embedded via Qt WebEngine, replacing the offline hand-drawn
 canvas, after the user explicitly asked for a Google-Maps-like experience with
 zoom)._
@@ -358,6 +358,29 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-16 — **Map: ignore a point; Previous/Next point buttons.** Two
+  requested features, tracked as todos `map-ignore-point` and `map-prev-next`.
+  *Ignore:* the point popup has **Ignore this point** / **Include this
+  point**; an ignored point is greyed and left out of the legs, arrows,
+  Start/End pins and stepping, but stays on the map so it can be included
+  again. Persisted per view in new table `trip_ignored_points` (**schema v8**,
+  `CREATE TABLE IF NOT EXISTS` migration, cascade on asset delete);
+  `core/trip.py` `trip_ignored()` / `trip_set_ignored()`; service
+  `app_service_trip_ignored` / `app_service_set_trip_ignored` (parity map,
+  operation titles/summaries); window chain Map → list_locations →
+  trip_modes → trip_ignored → `MapDialog(ignored=…, on_point_ignored=…)`.
+  Travel modes are not touched by ignoring: reconciliation still sees every
+  located photo, a leg across an ignored point shows the mode of its first
+  part and saves a mode for every pair it spans. The page now redraws from
+  `mapRedraw()` (legs carry `fromIndex`/`toIndex`; `fitBounds` must precede
+  it). *Prev/Next:* `WebMapWidget` header buttons call page `mapStep(±1)`
+  (pan + open popup, skip ignored, wrap). Tests: 7 new in
+  `tests/test_gui_mapview.py`, 3 in `tests/test_trip.py`. Docs updated:
+  README, readme-user, specifications (§8, §16.4), plan, structure,
+  unit-tests, development, todos, user-stories (US-G11), ui-sketch §8.
+  Full suite: only the two known Windows path-separator failures in
+  `test_gui_settings.py` remain.
 
 - 2026-10-16 — **Fixed: GUI crashed while zooming a map with many points.**
   Access violation in `Qt6WebEngineCore.dll` (PySide6/Qt 6.11.2, GPU path);

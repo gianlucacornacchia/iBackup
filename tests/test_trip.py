@@ -272,3 +272,51 @@ def test_album_map_modes_survive_reimport(empty_service):
 
     assert service.app_service_list_albums()[0].album_id == album_id
     assert helper_trip(service, scope, album_id)[0] == {"AB": "foot"}
+
+
+def test_ignored_points_are_saved_per_view_and_survive_reopening(service):
+    """Ignoring is stored in the catalog, per view, and never touches the modes."""
+    ids = helper_ids(service)
+    order = [ids[name] for name in "ABCDE"]
+    service.app_service_set_trip_mode("all", ids["A"], ids["B"], "car")
+    assert service.app_service_set_trip_ignored("all", ids["B"], True) is True
+    service.app_service_set_trip_ignored("all", ids["D"], True)
+    service.app_service_set_trip_ignored("album:1", ids["C"], True)
+    service.app_service_close()
+
+    service.app_service_open()
+    assert service.app_service_trip_ignored("all", order) == [ids["B"], ids["D"]]
+    assert service.app_service_trip_ignored("album:1", order) == [ids["C"]]
+    assert service.app_service_trip_ignored("unsorted", order) == []
+    assert helper_modes(service, "all", order) == {"AB": "car"}
+
+    service.app_service_set_trip_ignored("all", ids["B"], False)
+    service.app_service_set_trip_ignored("all", ids["B"], False)  # idempotent
+    assert service.app_service_trip_ignored("all", order) == [ids["D"]]
+    assert service.app_service_trip_ignored("all", [ids["A"], ids["B"]]) == []
+
+
+def test_ignoring_twice_is_harmless_and_input_is_validated(service):
+    ids = helper_ids(service)
+    service.app_service_set_trip_ignored("all", ids["A"], True)
+    service.app_service_set_trip_ignored("all", ids["A"], True)
+    assert service.app_service_trip_ignored("all", [ids["A"]]) == [ids["A"]]
+    with pytest.raises(ValueError):
+        service.app_service_set_trip_ignored("all", 99999, True)
+    with pytest.raises(ValueError):
+        service.app_service_set_trip_ignored("", ids["A"], True)
+    with pytest.raises(ValueError):
+        service.app_service_set_trip_ignored("all", ids["A"], "yes")
+    with pytest.raises(ValueError):
+        service.app_service_trip_ignored("all", [1, 1])
+
+
+def test_ignored_flag_goes_away_with_the_asset(service):
+    """The table cascades, so a purged photo leaves no orphan row behind."""
+    ids = helper_ids(service)
+    service.app_service_set_trip_ignored("all", ids["A"], True)
+    connection, _ = service.app_service_require()
+    connection.execute("DELETE FROM assets WHERE id = ?", (ids["A"],))
+    connection.commit()
+    count = connection.execute("SELECT COUNT(*) FROM trip_ignored_points").fetchone()[0]
+    assert count == 0

@@ -299,6 +299,33 @@ class AppService:
             raise
         return segment
 
+    def app_service_trip_ignored(self, scope: str, asset_ids: list[int]) -> list[int]:
+        """Return which plotted photos the user ignores on one view's map.
+
+        scope: the map's view key.
+        asset_ids: the plotted photos, in capture order.
+        Returns the ignored ids among them, in the same order.
+        """
+        connection, _ = self.app_service_require()
+        return trip.trip_ignored(connection, scope, list(asset_ids))
+
+    def app_service_set_trip_ignored(self, scope: str, asset_id: int, ignored: bool) -> bool:
+        """Ignore (or include again) one photo on a view's map.
+
+        scope: the map's view key.
+        asset_id: the photo.
+        ignored: True to skip it on that map, False to plot it again.
+        Returns ``ignored``. The photo itself is never changed.
+        """
+        connection, _ = self.app_service_require()
+        try:
+            result = trip.trip_set_ignored(connection, scope, asset_id, ignored)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        return result
+
     def app_service_scan_phone(self, source: MediaSource) -> None:
         """Refresh present-on-phone state from a metadata-only device scan.
 

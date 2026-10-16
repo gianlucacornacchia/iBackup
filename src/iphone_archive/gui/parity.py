@@ -57,6 +57,8 @@ ACTION_SURFACES = {
     ),
     "app_service_trip_modes": "Map: travel modes drawn on the trip when the map opens",
     "app_service_set_trip_mode": 'Map: click a leg of the trip and pick "Car", "Plane", ...',
+    "app_service_trip_ignored": "Map: ignored points drawn greyed when the map opens",
+    "app_service_set_trip_ignored": 'Map: point popup "Ignore this point" / "Include this point"',
 }
 
 # Capabilities the GUI covers by another route than calling the method. Each one

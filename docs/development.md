@@ -557,6 +557,15 @@ renders. Rules worth keeping:
   asset ids before emitting `mode_changed`. The page never learns asset ids.
   Saving goes through the window (`main_window_open_map`'s callback →
   `app_service_set_trip_mode` on the worker), never from the dialog directly.
+- **Ignoring uses the same bridge.** The page logs `ibackup-ignore:<index>:<0|1>`
+  (`mapview_parse_ignore_change` validates it); the widget maps the index to
+  an asset id and the window saves it with `app_service_set_trip_ignored`.
+  The page redraws everything derived from the active points in
+  `mapRedraw()` (legs, pins, marker colours); change that one function, not
+  the initial drawing. Legs carry `fromIndex`/`toIndex` into `points` because
+  they can span ignored points. `mapStep(±1)` drives the Previous/Next
+  buttons. `mapRedraw` must run after `fitBounds` (Leaflet cannot restyle
+  canvas markers before the map has a view).
 - **Adding a mode** means adding it to `core.trip.TRIP_MODES` *and*
   `mapview.MODE_STYLES` in the same order; an import-time assert and a test
   fail otherwise. Stored values are the keys (`foot`, `tuktuk`), not labels.

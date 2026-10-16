@@ -477,6 +477,8 @@ declaration it checks, so this table and the code cannot drift apart silently.
 | Trip map | — (GUI only) | Page header **Map** on gallery-backed views (Start/End pins, direction arrows, photo popups) | `app_service_list_locations` |
 | Trip travel modes (read) | — (GUI only) | Map: modes drawn on the trip legs when the map opens | `app_service_trip_modes` |
 | Set travel mode | — (GUI only) | Map: click a leg and pick Car, Plane, On foot, Bike, Tuk-tuk, Bus, Taxi, Boat or Clear | `app_service_set_trip_mode` |
+| Trip ignored points (read) | — (GUI only) | Map: ignored points drawn greyed when the map opens | `app_service_trip_ignored` |
+| Ignore / include a point | — (GUI only) | Map: point popup "Ignore this point" / "Include this point"; header buttons "Previous point" / "Next point" step through the trip | `app_service_set_trip_ignored` |
 
 Two capabilities are reached indirectly rather than by their own button, and
 `gui/parity.py` records the reason beside each: `config set` is served by the

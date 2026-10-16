@@ -389,6 +389,27 @@ Acceptance criteria:
 - Given any of this, then no photo file and nothing outside the archive's
   catalog is changed, and no network request is made beyond map tiles.
 _(Added 2026-10-12. GUI-only; there is no CLI command.)_
+
+### US-G11 — Ignore a wrong point and step through the trip
+**As** a user, **I want** to ignore a photo with a bad location and to step
+from point to point **so that** the trip line stays right and I can review
+every photo without hunting for the dots.
+
+Acceptance criteria:
+- Given a trip map, when I open a point and choose **Ignore this point**, then
+  it turns grey, the trip line, arrows and Start/End skip it, and the caption
+  counts it as ignored; **Include this point** on the grey dot undoes it.
+- Given I close and reopen the map or restart the app, then the same points
+  are still ignored, in that view only.
+- Given I ignore a point between two tagged legs and include it again, then
+  the travel modes are as they were.
+- Given I click **Next point** / **Previous point**, then the map moves to the
+  next / previous photo of the trip and shows its popup; ignored photos are
+  skipped and stepping wraps around the ends.
+- Given every point is ignored, then the stepping buttons are disabled.
+- Given ignored points cannot be read, then the map still opens without them.
+- Given any of this, then no photo file is changed, moved or hidden.
+_(Added 2026-10-16. GUI-only; there is no CLI command.)_
 ---
 
 ## Epic H — Review of Photos Deleted from the Phone

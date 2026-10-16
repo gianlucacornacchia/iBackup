@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 # Current catalog schema version. Bump when adding a migration step.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA_STATEMENTS = [
     """
@@ -124,6 +124,15 @@ SCHEMA_STATEMENTS = [
         to_asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
         mode TEXT NOT NULL,
         PRIMARY KEY (scope, from_asset_id, to_asset_id)
+    )
+    """,
+    # Photos the user chose to ignore on one map view (a wrong GPS fix, say).
+    # They stay in the archive and the album; only that map skips them.
+    """
+    CREATE TABLE IF NOT EXISTS trip_ignored_points (
+        scope TEXT NOT NULL,
+        asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        PRIMARY KEY (scope, asset_id)
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_assets_sha256 ON assets(sha256)",
@@ -256,6 +265,7 @@ def database_apply_migrations(connection: sqlite3.Connection, from_version: int)
             connection.execute("ALTER TABLE assets ADD COLUMN aperture REAL")
         if "focal_length_mm" not in existing_columns:
             connection.execute("ALTER TABLE assets ADD COLUMN focal_length_mm REAL")
-    # V7 adds the trip_segments table only; SCHEMA_STATEMENTS above already
-    # created it (CREATE TABLE IF NOT EXISTS), so no column changes are needed.
+    # V7 adds the trip_segments table and V8 the trip_ignored_points table;
+    # SCHEMA_STATEMENTS above already created them (CREATE TABLE IF NOT
+    # EXISTS), so no column changes are needed.
     database_write_version(connection, SCHEMA_VERSION)

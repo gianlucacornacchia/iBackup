@@ -135,6 +135,21 @@ Deleted-from-phone pages have no map. How to read it:
     the same photo too, and keeps its modes. A photo you edit so its bytes
     change becomes a new photo in the archive (the old version stays) and
     starts without modes.
+- **Ignoring a point.** If one photo has a wrong location (a GPS glitch far
+  from the rest of the trip), click its dot and choose **Ignore this point**.
+  It turns grey, is left out of the trip line (the line joins the photos
+  either side of it) and of Start/End, and the caption says how many are
+  ignored. Click the grey dot and choose **Include this point** to bring it
+  back. The choice is saved in the archive **per view**, so it is there next
+  time; the photo itself is never changed, moved or hidden anywhere else.
+  Ignoring does not lose travel modes: a line that now skips the ignored
+  photo shows the mode of its first part, and setting a mode on it tags every
+  part, so including the photo again shows the trip as before.
+- **Previous / Next point.** The buttons above the map move to the previous or
+  next photo of the trip: the map pans to it and opens its popup. Ignored
+  photos are skipped, and stepping wraps around from the last to the first.
+  With nothing open yet, **Next point** goes to the first photo and
+  **Previous point** to the last.
 The map needs an internet connection for the map imagery; without one, the
 dots, line, labels, arrows and photo popups still work over a blank
 background. Viewed map tiles are cached (up to 200 MB) so revisiting an area
@@ -658,7 +673,7 @@ is run from a source installation; there is no downloadable build yet.
   not trust old unscoped identities; rerun import/content validation for the
   selected device before relying on incremental matching. Later migrations
   (v3-v6: offloaded-preview flags, location, camera details; v7: map travel
-  modes) only add empty columns or tables, run automatically when the archive is opened, and cannot be undone;
+  modes; v8: ignored map points) only add empty columns or tables, run automatically when the archive is opened, and cannot be undone;
   an older build refuses to open an upgraded archive.
 - A fresh integrity error or missing copy blocks destructive work. Restore
   from an independent backup rather than overwriting a known-good original.

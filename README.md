@@ -59,7 +59,9 @@ albums work; see `docs/progress.md`):
   its located photos in capture order, with Start/End labels, direction
   arrows and a photo popup (rendered from the archive) on every point. Click a
   leg to record how you travelled (car, plane, on foot, bike, tuk-tuk, bus,
-  taxi, boat); modes are saved per view in the catalog (schema v7). **This
+  taxi, boat); modes are saved per view in the catalog (schema v7). A point
+  can be **ignored** (greyed, left out of the trip line; schema v8) and
+  **Previous/Next point** buttons step through the rest. **This
   is the only feature that uses
   the network:** it downloads map tiles from `tile.openstreetmap.org` while
   the map is open. Everything else, including import, stays local.

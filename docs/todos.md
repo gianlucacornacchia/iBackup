@@ -316,7 +316,14 @@ Recorded in `progress.md`; docs reconciled 2026-10-11.
   Plane / On foot / Bike / Tuk-tuk / Bus / Taxi / Boat (or clear it); styled
   per mode, stored per view in `trip_segments` (schema v7, cascade on asset
   delete) and reconciled on every map open (`core/trip.py`); service
-  `app_service_trip_modes` / `app_service_set_trip_mode`; GUI-only.- [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
+  `app_service_trip_modes` / `app_service_set_trip_mode`; GUI-only.
+- [x] **map-ignore-point** (2026-10-16) — ignore one point on a map: greyed,
+  left out of the trip line/pins/stepping, stored per view in
+  `trip_ignored_points` (schema v8); service `app_service_trip_ignored` /
+  `app_service_set_trip_ignored`; GUI-only.
+- [x] **map-prev-next** (2026-10-16) — **Previous point** / **Next point**
+  buttons pan to and open the previous/next non-ignored point (wrapping).
+- [x] **exif-camera-metadata** (`549556c`, `77ec30a`) — schema v6 camera/lens/
   ISO/aperture/focal length from EXIF; backfill onto existing assets.
 - [x] **gui-sizing-review-pages** (`66420ac`, `9cc2bb1`, `3827515`) — larger
   tiles/buttons/icons; Marked and Deleted-from-phone pages laid out correctly

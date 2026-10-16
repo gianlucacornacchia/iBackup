@@ -274,8 +274,10 @@ tests/
 - Schemas v3-v6 add `assets` columns:
   `is_offloaded_preview`, `offloaded_original_path`, `latitude`, `longitude`,
   `camera_model`, `lens_model`, `iso`, `aperture`, `focal_length_mm`. Schema v7
-  (current `SCHEMA_VERSION = 7`) adds `trip_segments(scope, from_asset_id,
+  (`SCHEMA_VERSION = 7`) adds `trip_segments(scope, from_asset_id,
   to_asset_id, mode)` for trip-map travel modes, cascading on asset delete.
+  Schema v8 (current `SCHEMA_VERSION = 8`) adds `trip_ignored_points(scope,
+  asset_id)` for points the user ignores on one map view.
   See `specifications.md` §8.
 
 ## 6. CLI commands (first release)

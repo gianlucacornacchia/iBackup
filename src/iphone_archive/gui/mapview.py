@@ -24,7 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -34,6 +34,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QDialog,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
@@ -62,6 +63,8 @@ USER_AGENT = "ibackup-photo-archive/1.0 (personal desktop app; non-commercial)"
 PHOTO_REQUEST_PREFIX = "ibackup-photo:"
 # Console messages with this prefix are travel-mode edits: ``<leg>:<mode|none>``.
 MODE_CHANGE_PREFIX = "ibackup-mode:"
+# Console messages with this prefix ignore or re-include a point: ``<index>:<0|1>``.
+IGNORE_CHANGE_PREFIX = "ibackup-ignore:"
 POPUP_PHOTO_SIZE = 320
 # How each travel mode is drawn: the leg's colour and dash pattern, plus a badge.
 # Plane and boat legs are dashed because the straight line is not the route.
@@ -89,6 +92,8 @@ class MapPoint:
     note: str | None = None
     # How the user travelled from this point to the next one, when known.
     mode: str | None = None
+    # The user chose to leave this photo out of the trip (greyed, not connected).
+    ignored: bool = False
 
 
 def mapview_note(asset: AssetView) -> str | None:
@@ -110,16 +115,20 @@ def mapview_located(assets: list[AssetView]) -> list[AssetView]:
 
 
 def mapview_points(
-    assets: list[AssetView], segments: list[TripSegment] | None = None
+    assets: list[AssetView],
+    segments: list[TripSegment] | None = None,
+    ignored: Collection[int] | None = None,
 ) -> list[MapPoint]:
     """Extract plottable points from asset views, preserving their order.
 
     assets: ``AssetView`` rows, expected ordered oldest capture first.
     segments: stored travel modes; a mode applies only to the exact
         consecutive pair it was saved for.
+    ignored: asset ids the user left out of this view's trip.
     Returns one ``MapPoint`` per asset that actually carries coordinates.
     """
     modes = {(item.from_asset_id, item.to_asset_id): item.mode for item in segments or []}
+    skipped = set(ignored or ())
     located = mapview_located(assets)
     points: list[MapPoint] = []
     for index, asset in enumerate(located):
@@ -134,6 +143,7 @@ def mapview_points(
                 when,
                 mapview_note(asset),
                 modes.get((asset.asset_id, following)) if following is not None else None,
+                asset.asset_id in skipped,
             )
         )
     return points
@@ -167,6 +177,7 @@ def mapview_points_json(points: list[MapPoint]) -> str:
             "when": point.captured_at,
             "note": point.note,
             "mode": point.mode,
+            "ignored": point.ignored,
         }
         for point in points
     ]
@@ -207,6 +218,11 @@ MAP_CSS = """
   .trip-photo img { max-width: 320px; max-height: 320px; display: block; }
   .trip-name { font-weight: 600; margin-top: 6px; word-break: break-all; }
   .trip-meta, .trip-note { color: #666; margin-top: 2px; }
+  .trip-ignore-button {
+    font: 12px "Segoe UI", sans-serif; margin-top: 6px; padding: 4px 8px; border: 1px solid #ccc;
+    border-radius: 4px; background: #fafafa; cursor: pointer;
+  }
+  .trip-ignore-button:hover { background: #eef3fb; }
 """
 
 # The page script. Plain string (not an f-string) so the JavaScript braces stay
@@ -266,13 +282,26 @@ MAP_SCRIPT = """
       note.textContent = p.note;
       box.appendChild(note);
     }
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'trip-ignore-button';
+    toggle.textContent = p.ignored ? 'Include this point' : 'Ignore this point';
+    toggle.onclick = function () {
+      mapSetIgnored(i, !points[i].ignored, true);
+      map.closePopup();
+    };
+    box.appendChild(toggle);
     return box;
   }
 
   var markers = [];
   var segments = [];
+  var pins = [];
+  var current = null;
   var arrowLayer = L.layerGroup().addTo(map);
   var modes = __MODES__;
+  var latlngs = points.map(function (p) { return L.latLng(p.lat, p.lon); });
+  var crs = L.CRS.EPSG3857;
 
   function mapLineStyle(mode) {
     var style = mode ? modes[mode] : null;
@@ -293,13 +322,17 @@ MAP_SCRIPT = """
     });
   }
 
-  // Applies a mode locally; ``report`` tells Python to save it.
+  // Applies a mode locally; ``report`` tells Python to save it. A leg can span
+  // ignored photos, so the mode is saved for every consecutive pair it covers.
   function mapSetMode(leg, mode, report) {
     leg.mode = mode;
     leg.line.setStyle(mapLineStyle(mode));
     leg.marker.setIcon(mapArrowIcon(leg.angle, mode));
     leg.hit.setTooltipContent(mapLegTooltip(leg));
-    if (report) { console.log(__MODE_PREFIX__ + leg.index + ':' + (mode || 'none')); }
+    for (var k = leg.fromIndex; k < leg.toIndex; k++) {
+      points[k].mode = mode;
+      if (report) { console.log(__MODE_PREFIX__ + k + ':' + (mode || 'none')); }
+    }
   }
 
   function mapLegTooltip(leg) {
@@ -313,8 +346,8 @@ MAP_SCRIPT = """
     box.className = 'trip-legs';
     var title = document.createElement('div');
     title.className = 'trip-name';
-    title.textContent = 'How did you travel from photo ' + (leg.index + 1) + ' to ' +
-      (leg.index + 2) + '?';
+    title.textContent = 'How did you travel from photo ' + (leg.fromIndex + 1) + ' to ' +
+      (leg.toIndex + 1) + '?';
     box.appendChild(title);
     var grid = document.createElement('div');
     grid.className = 'trip-mode-grid';
@@ -366,12 +399,40 @@ MAP_SCRIPT = """
     }).addTo(map);
   }
 
-  if (points.length > 0) {
-    var latlngs = points.map(function (p) { return L.latLng(p.lat, p.lon); });
-    var crs = L.CRS.EPSG3857;
-    for (var s = 1; s < latlngs.length; s++) {
-      var pa = crs.latLngToPoint(latlngs[s - 1], 0);
-      var pb = crs.latLngToPoint(latlngs[s], 0);
+  // Ignored photos stay on the map, greyed, but are not part of the trip.
+  function mapActive() {
+    var active = [];
+    points.forEach(function (p, i) { if (!p.ignored) { active.push(i); } });
+    return active;
+  }
+
+  function mapMarkerStyle(i, first, last) {
+    if (points[i].ignored) {
+      return {radius: 5, color: '#777', weight: 1, fillColor: '#ccc', fillOpacity: 0.6,
+              dashArray: '2 3'};
+    }
+    var isStart = i === first;
+    var isEnd = i === last;
+    return {
+      radius: (isStart || isEnd) ? 8 : 5, color: '#28508f', weight: 1, dashArray: null,
+      fillColor: isStart ? '#3cbe5a' : (isEnd ? '#dc4646' : '#3c78dc'), fillOpacity: 0.9
+    };
+  }
+
+  // Draws the trip line, pins and marker colours from the photos not ignored.
+  function mapRedraw() {
+    segments.forEach(function (s) { map.removeLayer(s.line); map.removeLayer(s.hit); });
+    segments.length = 0;
+    pins.forEach(function (pin) { map.removeLayer(pin); });
+    pins.length = 0;
+    var active = mapActive();
+    var first = active.length ? active[0] : -1;
+    var last = active.length ? active[active.length - 1] : -1;
+    for (var k = 1; k < active.length; k++) {
+      var a = active[k - 1];
+      var b = active[k];
+      var pa = crs.latLngToPoint(latlngs[a], 0);
+      var pb = crs.latLngToPoint(latlngs[b], 0);
       // Consecutive photos at the same spot have no leg to draw or tag.
       if (pa.distanceTo(pb) === 0) { continue; }
       // Web Mercator is conformal, so the on-screen angle is the same at every
@@ -379,8 +440,8 @@ MAP_SCRIPT = """
       var angle = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
       var mid = crs.pointToLatLng(pa.add(pb).divideBy(2), 0);
       var leg = {
-        index: s - 1, from: latlngs[s - 1], to: latlngs[s], angle: angle,
-        mode: points[s - 1].mode || null
+        fromIndex: a, toIndex: b, from: latlngs[a], to: latlngs[b], angle: angle,
+        mode: points[a].mode || null
       };
       leg.line = L.polyline([leg.from, leg.to], mapLineStyle(leg.mode)).addTo(map);
       leg.marker = L.marker(mid, {icon: mapArrowIcon(angle, leg.mode), interactive: false,
@@ -390,34 +451,74 @@ MAP_SCRIPT = """
       mapBindLeg(leg);
       segments.push(leg);
     }
+    markers.forEach(function (marker, i) {
+      marker.setStyle(mapMarkerStyle(i, first, last));
+      marker.bringToFront();
+    });
+    if (active.length > 0) {
+      pins.push(mapEndpoint(latlngs[first], active.length === 1 ? 'Start / End' : 'Start', 'start')
+        .on('click', function () { markers[first].openPopup(); }));
+    }
+    if (active.length > 1) {
+      pins.push(mapEndpoint(latlngs[last], 'End', 'end')
+        .on('click', function () { markers[last].openPopup(); }));
+    }
+    mapUpdateArrows();
+  }
+
+  // Applies the choice locally; ``report`` tells Python to save it.
+  function mapSetIgnored(i, ignored, report) {
+    points[i].ignored = ignored;
+    if (boxes[i]) {
+      var toggle = boxes[i].querySelector('.trip-ignore-button');
+      if (toggle) { toggle.textContent = ignored ? 'Include this point' : 'Ignore this point'; }
+    }
+    mapRedraw();
+    if (report) { console.log(__IGNORE_PREFIX__ + i + ':' + (ignored ? 1 : 0)); }
+  }
+
+  function mapGoTo(i) {
+    current = i;
+    map.panTo(latlngs[i]);
+    markers[i].openPopup();
+  }
+
+  // Moves to the next (step > 0) or previous point that is not ignored,
+  // wrapping around at the ends. Called from the Previous/Next buttons.
+  function mapStep(step) {
+    var active = mapActive();
+    if (active.length === 0) { return; }
+    var target;
+    if (current === null) {
+      target = step > 0 ? active[0] : active[active.length - 1];
+    } else if (step > 0) {
+      target = active.find(function (i) { return i > current; });
+      if (target === undefined) { target = active[0]; }
+    } else {
+      for (var k = active.length - 1; k >= 0; k--) {
+        if (active[k] < current) { target = active[k]; break; }
+      }
+      if (target === undefined) { target = active[active.length - 1]; }
+    }
+    mapGoTo(target);
+  }
+
+  if (points.length > 0) {
     points.forEach(function (p, i) {
-      var isStart = i === 0;
-      var isEnd = i === points.length - 1;
-      var fill = isStart ? '#3cbe5a' : (isEnd ? '#dc4646' : '#3c78dc');
-      var marker = L.circleMarker(latlngs[i], {
-        radius: (isStart || isEnd) ? 8 : 5,
-        color: '#28508f', weight: 1, fillColor: fill, fillOpacity: 0.9
-      }).addTo(map);
+      var marker = L.circleMarker(latlngs[i], {radius: 5}).addTo(map);
       marker.bindPopup(function () {
         if (!boxes[i]) { boxes[i] = mapPopup(p, i); }
         return boxes[i];
       }, {maxWidth: 340, minWidth: 320});
       marker.on('popupopen', function () {
+        current = i;
         if (photos[i]) { mapRenderPhoto(i); } else { console.log(__PREFIX__ + i); }
       });
       markers.push(marker);
     });
-    var startPin = mapEndpoint(latlngs[0], points.length === 1 ? 'Start / End' : 'Start', 'start');
-    startPin.on('click', function () { markers[0].openPopup(); });
-    if (points.length > 1) {
-      var last = points.length - 1;
-      mapEndpoint(latlngs[last], 'End', 'end').on('click', function () {
-        markers[last].openPopup();
-      });
-    }
     map.on('zoomend', mapUpdateArrows);
     map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
-    mapUpdateArrows();
+    mapRedraw();
   } else {
     map.setView([20, 0], 2);
   }
@@ -439,6 +540,7 @@ def mapview_build_html(points: list[MapPoint]) -> str:
         .replace("__ATTRIBUTION__", json.dumps(TILE_ATTRIBUTION).replace("</", "<\\/"))
         .replace("__PREFIX__", json.dumps(PHOTO_REQUEST_PREFIX))
         .replace("__MODE_PREFIX__", json.dumps(MODE_CHANGE_PREFIX))
+        .replace("__IGNORE_PREFIX__", json.dumps(IGNORE_CHANGE_PREFIX))
         .replace("__MODES__", json.dumps(MODE_STYLES))
         .replace("__POINTS__", mapview_points_json(points))
     )
@@ -499,6 +601,22 @@ def mapview_parse_mode_change(message: str, count: int) -> tuple[int, str | None
     if mode_text not in TRIP_MODES:
         return None
     return int(leg_text), mode_text
+
+
+def mapview_parse_ignore_change(message: str, count: int) -> tuple[int, bool] | None:
+    """Decode an ignore/include edit logged by the page.
+
+    message: one JavaScript console message, ``ibackup-ignore:<index>:<0|1>``.
+    count: how many points the page plots.
+    Returns ``(index, ignored)``, or None for any other message or an
+    out-of-range index.
+    """
+    if not message.startswith(IGNORE_CHANGE_PREFIX):
+        return None
+    index_text, _, flag = message[len(IGNORE_CHANGE_PREFIX) :].partition(":")
+    if not index_text.isdigit() or int(index_text) >= count or flag not in ("0", "1"):
+        return None
+    return int(index_text), flag == "1"
 
 
 def mapview_render_photo(archive_root: Path, asset: AssetView, size: int) -> tuple[str | None, str]:
@@ -562,6 +680,7 @@ class MapPage(QWebEnginePage):
 
     photo_requested = Signal(str)
     mode_changed = Signal(str)
+    ignore_changed = Signal(str)
 
     def javaScriptConsoleMessage(
         self,
@@ -570,11 +689,13 @@ class MapPage(QWebEnginePage):
         line_number: int,
         source_id: str,
     ) -> None:
-        """Forward photo requests and travel-mode edits; ignore other messages."""
+        """Forward photo requests and map edits; ignore other messages."""
         if message.startswith(PHOTO_REQUEST_PREFIX):
             self.photo_requested.emit(message)
         elif message.startswith(MODE_CHANGE_PREFIX):
             self.mode_changed.emit(message)
+        elif message.startswith(IGNORE_CHANGE_PREFIX):
+            self.ignore_changed.emit(message)
 
 
 @lru_cache(maxsize=1)
@@ -598,6 +719,8 @@ class WebMapWidget(QWidget):
 
     # A leg's travel mode was edited: (from_asset_id, to_asset_id, mode or None).
     mode_changed = Signal(int, int, object)
+    # A point was ignored or included again: (asset_id, ignored).
+    ignore_changed = Signal(int, bool)
 
     def __init__(self, parent: QWidget | None = None, archive_root: Path | None = None) -> None:
         """Build the caption label above the embedded map view.
@@ -616,14 +739,25 @@ class WebMapWidget(QWidget):
         self.caption = QLabel("", self)
         self.caption.setFont(theme_font("caption"))
         self.caption.setProperty("role", "secondary")
+        self.previous_button = QPushButton("\u25c0 Previous point", self)
+        self.next_button = QPushButton("Next point \u25b6", self)
+        self.previous_button.clicked.connect(lambda: self.mapview_step(-1))
+        self.next_button.clicked.connect(lambda: self.mapview_step(1))
+        header = QHBoxLayout()
+        header.setSpacing(GROUP_GAP)
+        header.addWidget(self.caption, 1)
+        header.addWidget(self.previous_button)
+        header.addWidget(self.next_button)
+        self.ignored: set[int] = set()
         self.view = QWebEngineView(self)
         self.page = MapPage(mapview_tile_profile(), self.view)
         self.page.photo_requested.connect(self.mapview_photo_requested)
         self.page.mode_changed.connect(self.mapview_mode_message)
+        self.page.ignore_changed.connect(self.mapview_ignore_message)
         self.view.setPage(self.page)
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumSize(320, 240)
-        layout.addWidget(self.caption)
+        layout.addLayout(header)
         layout.addWidget(self.view, 1)
         self.bridge = MapPhotoBridge(self)
         self.bridge.finished.connect(self.mapview_photo_ready)
@@ -631,27 +765,71 @@ class WebMapWidget(QWidget):
         self.pool.setMaxThreadCount(2)
 
     def mapview_set_assets(
-        self, assets: list[AssetView], segments: list[TripSegment] | None = None
+        self,
+        assets: list[AssetView],
+        segments: list[TripSegment] | None = None,
+        ignored: Collection[int] | None = None,
     ) -> None:
         """Plot every located asset, oldest first, as the trip path.
 
         assets: ``AssetView`` rows, already ordered by capture time.
         segments: saved travel modes for the legs between them.
+        ignored: asset ids the user left out of this view's trip.
         Returns None.
         """
         self.located = mapview_located(assets)
         self.requested.clear()
-        points = mapview_points(assets, segments)
-        if not points:
+        self.ignored = {asset.asset_id for asset in self.located} & set(ignored or ())
+        points = mapview_points(assets, segments, self.ignored)
+        self.mapview_update_caption()
+        self.view.setHtml(mapview_build_html(points), QUrl("https://tile.openstreetmap.org/"))
+
+    def mapview_update_caption(self) -> None:
+        """Describe the plotted trip and enable stepping when a point is left to visit."""
+        total = len(self.located)
+        active = total - len(self.ignored)
+        skipped = f" ({len(self.ignored)} ignored)" if self.ignored else ""
+        if not total:
             self.caption.setText("No photos in this view have location data.")
-        elif len(points) == 1:
-            self.caption.setText("1 located photo (no trip path to draw). Click it to see it.")
+        elif total == 1:
+            self.caption.setText(
+                f"1 located photo{skipped} (no trip path to draw). Click it to see it."
+            )
         else:
             self.caption.setText(
-                f"{len(points)} located photos, plotted in capture order from Start to End. "
+                f"{total} located photos{skipped}, plotted in capture order from Start to End. "
                 "Click a point to see its photo, or a line to set how you travelled."
             )
-        self.view.setHtml(mapview_build_html(points), QUrl("https://tile.openstreetmap.org/"))
+        self.previous_button.setEnabled(active > 0)
+        self.next_button.setEnabled(active > 0)
+
+    @Slot(int)
+    def mapview_step(self, step: int) -> None:
+        """Move to the next (1) or previous (-1) point that is not ignored.
+
+        step: 1 or -1. Returns None. The page pans to the point and opens its
+        photo popup, wrapping around at either end.
+        """
+        self.page.runJavaScript(f"mapStep({1 if step > 0 else -1});")
+
+    @Slot(str)
+    def mapview_ignore_message(self, message: str) -> None:
+        """Turn a page edit into ``ignore_changed`` with the photo's asset id.
+
+        message: the page's ``ibackup-ignore:<index>:<0|1>`` console message.
+        Returns None. Malformed or out-of-range edits are ignored.
+        """
+        change = mapview_parse_ignore_change(message, len(self.located))
+        if change is None:
+            return
+        index, ignored = change
+        asset_id = self.located[index].asset_id
+        if ignored:
+            self.ignored.add(asset_id)
+        else:
+            self.ignored.discard(asset_id)
+        self.mapview_update_caption()
+        self.ignore_changed.emit(asset_id, ignored)
 
     @Slot(str)
     def mapview_photo_requested(self, message: str) -> None:
@@ -713,6 +891,8 @@ class MapDialog(QDialog):
         archive_root: Path | None = None,
         segments: list[TripSegment] | None = None,
         on_mode_changed: Callable[[int, int, str | None], None] | None = None,
+        ignored: Collection[int] | None = None,
+        on_point_ignored: Callable[[int, bool], None] | None = None,
     ) -> None:
         """Build the dialog and plot ``assets`` immediately.
 
@@ -723,6 +903,9 @@ class MapDialog(QDialog):
         segments: saved travel modes for the legs between the assets.
         on_mode_changed: called with ``(from_asset_id, to_asset_id, mode)``
             whenever the user sets or clears a leg's travel mode, to save it.
+        ignored: asset ids the user left out of this view's trip.
+        on_point_ignored: called with ``(asset_id, ignored)`` whenever the
+            user ignores or includes a point, to save it.
         """
         super().__init__(parent)
         self.setWindowTitle(f"Map — {title}")
@@ -734,7 +917,9 @@ class MapDialog(QDialog):
         self.widget = WebMapWidget(self, archive_root)
         if on_mode_changed is not None:
             self.widget.mode_changed.connect(on_mode_changed)
-        self.widget.mapview_set_assets(assets, segments)
+        if on_point_ignored is not None:
+            self.widget.ignore_changed.connect(on_point_ignored)
+        self.widget.mapview_set_assets(assets, segments, ignored)
         layout.addWidget(self.widget, 1)
         close_button = QPushButton("Close", self)
         close_button.clicked.connect(self.close)

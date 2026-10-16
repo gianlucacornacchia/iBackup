@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         # The view key travel modes are stored under, per location request, and
         # the map waiting for its travel modes, per trip-modes request.
         self.map_scopes: dict[int, str] = {}
-        self.map_pending: dict[int, tuple[str, str | None, list[AssetView]]] = {}
+        self.map_pending: dict[int, tuple[str, str | None, list[AssetView], list[object]]] = {}
         # Preference reads and writes are routed separately: they are the only
         # operations that work with no archive open, and their replies drive the
         # settings dialog rather than the status bar alone.
@@ -1112,7 +1112,8 @@ class MainWindow(QMainWindow):
         map_title = self.map_titles.pop(reply.request_id, None)
         pending_map = self.map_pending.pop(reply.request_id, None)
         if pending_map is not None and (isinstance(reply, WorkerFailure) or reply.cancelled):
-            # The travel modes could not be read; the map is still useful.
+            # The travel modes or ignored points could not be read; the map is
+            # still useful with what was read so far.
             self.main_window_open_map(*pending_map, [])
             return
         if operation is None or isinstance(reply, WorkerFailure):
@@ -1133,25 +1134,48 @@ class MainWindow(QMainWindow):
                     {"scope": scope, "asset_ids": [asset.asset_id for asset in located]},
                 )
             if request_id is None:
-                self.main_window_open_map(title, scope, assets, [])
+                self.main_window_open_map(title, scope, assets, [], [])
             else:
-                self.map_pending[request_id] = (title, scope, assets)
+                self.map_pending[request_id] = (title, scope, assets, [])
             return
         if operation == "app_service_trip_modes" and pending_map is not None:
+            title, scope, assets, _ = pending_map
             segments = reply.value if isinstance(reply.value, list) else []
-            self.main_window_open_map(*pending_map, segments)
+            request_id = None
+            if scope is not None:
+                request_id = self.main_window_start_quiet(
+                    "app_service_trip_ignored",
+                    {
+                        "scope": scope,
+                        "asset_ids": [asset.asset_id for asset in mapview_located(assets)],
+                    },
+                )
+            if request_id is None:
+                self.main_window_open_map(title, scope, assets, segments, [])
+            else:
+                self.map_pending[request_id] = (title, scope, assets, segments)
+            return
+        if operation == "app_service_trip_ignored" and pending_map is not None:
+            ignored = reply.value if isinstance(reply.value, list) else []
+            self.main_window_open_map(*pending_map, ignored)
             return
         self.main_window_completed(operation, reply.value)
 
     def main_window_open_map(
-        self, title: str, scope: str | None, assets: list[AssetView], segments: list[object]
+        self,
+        title: str,
+        scope: str | None,
+        assets: list[AssetView],
+        segments: list[object],
+        ignored: list[object],
     ) -> None:
-        """Open one view's trip map, wired to save travel-mode edits.
+        """Open one view's trip map, wired to save travel-mode and ignore edits.
 
         title: the dialog title.
         scope: the view key travel modes are stored under, or None.
         assets: the located assets, oldest first.
         segments: the reconciled ``TripSegment`` rows for those assets.
+        ignored: the asset ids the user left out of this view's trip.
         Returns None.
         """
 
@@ -1167,6 +1191,13 @@ class MainWindow(QMainWindow):
                     },
                 )
 
+        def save_ignored(asset_id: int, is_ignored: bool) -> None:
+            if scope is not None:
+                self.main_window_start_quiet(
+                    "app_service_set_trip_ignored",
+                    {"scope": scope, "asset_id": asset_id, "ignored": is_ignored},
+                )
+
         MapDialog(
             title,
             assets,
@@ -1174,6 +1205,8 @@ class MainWindow(QMainWindow):
             archive_root=self.worker.archive_root,
             segments=[segment for segment in segments if isinstance(segment, TripSegment)],
             on_mode_changed=save_mode if scope is not None else None,
+            ignored=[value for value in ignored if isinstance(value, int)],
+            on_point_ignored=save_ignored if scope is not None else None,
         ).show()
 
     @Slot(str, object)

@@ -102,6 +102,8 @@ OPERATION_TITLES = {
     "app_service_list_locations": "Finding located photos",
     "app_service_trip_modes": "Reading travel modes",
     "app_service_set_trip_mode": "Saving travel mode",
+    "app_service_trip_ignored": "Reading ignored map points",
+    "app_service_set_trip_ignored": "Saving ignored map point",
 }
 
 
@@ -369,6 +371,12 @@ SUMMARY_BUILDERS: dict[str, Callable[[object], str]] = {
     ),
     "app_service_set_trip_mode": lambda value: (
         "Travel mode saved." if value is not None else "Travel mode cleared."
+    ),
+    "app_service_trip_ignored": lambda value: (
+        f"Map ready: {len(value) if isinstance(value, list) else 0} points are ignored."
+    ),
+    "app_service_set_trip_ignored": lambda value: (
+        "Point ignored on this map." if value is True else "Point included on this map again."
     ),
     "app_service_mark": lambda value: "Marked for delete. Nothing has been deleted.",
     "app_service_mark_many": lambda value: (

@@ -12,6 +12,11 @@ reconciled every time the map is opened against the photos actually plotted:
 - when a photo is removed (deleted, recycled, moved out of the album, or no
   longer located), every segment touching it loses its mode, and the segment
   that now joins its neighbours starts untagged.
+
+The user can also *ignore* a photo on one view (``trip_ignored_points``): the
+map keeps it visible but greyed, and leaves it out of the trip line and the
+previous/next navigation. Ignoring never changes the stored modes, so including
+the photo again restores the trip exactly as it was.
 """
 
 from __future__ import annotations
@@ -108,6 +113,53 @@ def trip_reconcile(
         for from_id, to_id in zip(ids, ids[1:], strict=False)
         if (from_id, to_id) in result
     ]
+
+
+def trip_ignored(connection: sqlite3.Connection, scope: str, asset_ids: list[int]) -> list[int]:
+    """Return which of a view's plotted photos the user chose to ignore.
+
+    connection: an open catalog connection.
+    scope: the view key.
+    asset_ids: the plotted photos, in capture order.
+    Returns the ignored ids among them, in the same order. Ignoring is a
+    per-view choice about the map only; it never touches the photo itself.
+    """
+    scope = trip_check_scope(scope)
+    ids = trip_check_ids(asset_ids)
+    rows = connection.execute(
+        "SELECT asset_id FROM trip_ignored_points WHERE scope = ?", (scope,)
+    ).fetchall()
+    stored = {int(row[0]) for row in rows}
+    return [asset_id for asset_id in ids if asset_id in stored]
+
+
+def trip_set_ignored(
+    connection: sqlite3.Connection, scope: str, asset_id: int, ignored: bool
+) -> bool:
+    """Ignore (or include again) one photo on a view's map.
+
+    connection: an open catalog connection; the caller commits.
+    scope: the view key.
+    asset_id: the photo.
+    ignored: True to skip it on that map, False to plot it again.
+    Returns ``ignored``. Raises ``ValueError`` for an unknown photo.
+    """
+    scope = trip_check_scope(scope)
+    trip_check_ids([asset_id])
+    if not isinstance(ignored, bool):
+        raise ValueError("ignored must be True or False")
+    if connection.execute("SELECT 1 FROM assets WHERE id = ?", (asset_id,)).fetchone() is None:
+        raise ValueError(f"Unknown asset: {asset_id}")
+    if ignored:
+        connection.execute(
+            "INSERT OR IGNORE INTO trip_ignored_points(scope, asset_id) VALUES (?, ?)",
+            (scope, asset_id),
+        )
+    else:
+        connection.execute(
+            "DELETE FROM trip_ignored_points WHERE scope = ? AND asset_id = ?", (scope, asset_id)
+        )
+    return ignored
 
 
 def trip_set_mode(

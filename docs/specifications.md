@@ -181,8 +181,8 @@ reusing an existing catalog.
   phone_asset_id, phone_size, phone_modified_at, present, last_seen_at)`, keyed
   by device/path/asset, and `import_commits(journal_id)`. Edit commit markers
   live in `meta`. Legacy asset phone fields are not trusted device provenance.
-- Schemas v3-v6 add nullable/defaulted `assets` columns and v7 adds a table;
-  the current `SCHEMA_VERSION` is **7**. Each migration is forward-only,
+- Schemas v3-v6 add nullable/defaulted `assets` columns and v7 and v8 add a table;
+  the current `SCHEMA_VERSION` is **8**. Each migration is forward-only,
   idempotent against a column that already exists, and leaves existing rows'
   new columns empty:
   - v3 `is_offloaded_preview` (0/1): the copy is the phone's cached
@@ -200,6 +200,10 @@ reusing an existing catalog.
   `PRAGMA foreign_keys`). The migration from v6 is the `CREATE TABLE IF NOT
   EXISTS` in the schema statements; no column changes. Travel modes for the
   trip map (§16.4).
+- Schema v8 adds `trip_ignored_points(scope, asset_id, PRIMARY KEY(scope,
+  asset_id))`; `asset_id` references `assets(id) ON DELETE CASCADE`. Photos
+  the user left out of one view's trip map (§16.4). The migration from v7 is
+  the `CREATE TABLE IF NOT EXISTS`; no column changes.
 - Indexes on `assets.sha256`, `assets.present_on_phone`, `asset_albums.album_id`,
   `asset_files.path`, `deletion_marks.committed_at`.
 - Location is also tracked per copy: an asset with both active and recycled
@@ -657,6 +661,43 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
     is not captured; `assets.phone_asset_id` stays NULL. Covered by
     `tests/test_trip.py` (re-import, insertion by import, preview upgrade,
     album scope).
+- **Ignored points and Previous/Next (2026-10-16).**
+  - **Ignoring.** The point popup has **Ignore this point** / **Include this
+    point**. An ignored point stays on the map, greyed (grey dashed dot), but
+    is not part of the trip: legs, direction arrows and the Start/End pins
+    are drawn from the other points only, so the line joins the neighbours
+    of an ignored point. The page logs `ibackup-ignore:<index>:<0|1>`;
+    `MapPage.ignore_changed` forwards it, `mapview_parse_ignore_change`
+    accepts only in-range indices and `0`/`1`, and
+    `WebMapWidget.ignore_changed(asset_id, ignored)` reaches `MapDialog`'s
+    `on_point_ignored`, which the window wires to
+    `app_service_set_trip_ignored`. `MapPoint.ignored` and
+    `mapview_points(assets, segments, ignored)` carry the saved state in;
+    the caption appends "(N ignored)".
+  - **Modes across ignored points.** Ignoring never changes `trip_segments`
+    and reconciliation still runs on every located photo. A leg joining two
+    non-adjacent points shows the mode of the pair starting at its first
+    point; setting a mode on it logs `ibackup-mode` for **every** consecutive
+    pair it spans, so including the point again restores a consistent trip.
+  - **Storage and service.** `trip_ignored_points` (§8), per view `scope`
+    (same keys as modes). `trip_set_ignored` validates scope, a positive id,
+    a real `bool` and that the asset exists; `trip_ignored` returns the
+    ignored ids among the plotted ones. `app_service_trip_ignored(scope,
+    asset_ids)` → `list[int]` and `app_service_set_trip_ignored(scope,
+    asset_id, ignored)` → `bool`, committing and rolling back on error;
+    GUI-only, declared in `gui/parity.py`. Window flow: **Map** →
+    `app_service_list_locations` → (≥ 2 located) `app_service_trip_modes` →
+    `app_service_trip_ignored` → `MapDialog(segments=…, ignored=…)`; if
+    either read fails the map opens with what was read. Status lines: "Map
+    ready: N points are ignored.", "Point ignored on this map.", "Point
+    included on this map again.".
+  - **Previous / Next.** `WebMapWidget` has **Previous point** / **Next
+    point** buttons above the map. They call the page's `mapStep(±1)`, which
+    pans to the next/previous point that is not ignored (in capture order,
+    wrapping at the ends) and opens its popup; with no popup yet, Next goes to
+    the first and Previous to the last point. The page tracks the last opened
+    point in `current`, so stepping continues from it even after it is
+    ignored. Both buttons are disabled when no point is left to visit.
 - Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (max zoom
   19, © OpenStreetMap contributors attribution) through one named, persistent
   `QWebEngineProfile` `ibackup-map-tiles` with a 200 MB disk HTTP cache and a

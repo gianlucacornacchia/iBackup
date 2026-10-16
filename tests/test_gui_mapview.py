@@ -21,6 +21,7 @@ from iphone_archive.gui.mapview import (  # noqa: E402
     MapPoint,
     WebMapWidget,
     mapview_build_html,
+    mapview_parse_ignore_change,
     mapview_parse_mode_change,
     mapview_parse_request,
     mapview_points,
@@ -106,6 +107,134 @@ def test_points_carry_the_saved_mode_of_the_leg_they_start():
     segments = [TripSegment(1, 2, "plane"), TripSegment(1, 3, "car")]
     assert [point.mode for point in mapview_points(assets, segments)] == ["plane", None, None]
     assert '"mode": "plane"' in mapview_build_html(mapview_points(assets, segments))
+
+
+def test_parse_ignore_change_accepts_only_real_points_and_flags():
+    """Page messages can only ignore or include one of the plotted points."""
+    assert mapview_parse_ignore_change("ibackup-ignore:1:1", 3) == (1, True)
+    assert mapview_parse_ignore_change("ibackup-ignore:0:0", 3) == (0, False)
+    assert mapview_parse_ignore_change("ibackup-ignore:3:1", 3) is None
+    assert mapview_parse_ignore_change("ibackup-ignore:1:2", 3) is None
+    assert mapview_parse_ignore_change("ibackup-ignore:x:1", 3) is None
+    assert mapview_parse_ignore_change("ibackup-mode:0:car", 3) is None
+
+
+def test_points_carry_the_ignored_flag():
+    """Ignored photos are still plotted, flagged so the page greys them out."""
+    assets = [
+        make_asset_view(asset_id=index, latitude=float(index), longitude=1.0) for index in (1, 2, 3)
+    ]
+    points = mapview_points(assets, None, {2})
+    assert [point.ignored for point in points] == [False, True, False]
+    assert '"ignored": true' in mapview_build_html(points)
+
+
+def make_trip_assets():
+    """Four located photos A..D with distinct places."""
+    return [
+        make_asset_view(asset_id=11 + i, original_name=name, latitude=45.0 + i, longitude=7.0 + i)
+        for i, name in enumerate("ABCD")
+    ]
+
+
+def helper_js(qtbot, page, script):
+    """Run ``script`` in the page and return its (JSON string) result."""
+    result = []
+    page.runJavaScript(script, 0, result.append)
+    qtbot.waitUntil(lambda: bool(result), timeout=10000)
+    return result[0]
+
+
+def test_ignoring_a_point_redraws_the_trip_without_it(qapp, qtbot):
+    """The ignored point is greyed and skipped: the legs join its neighbours."""
+    widget = WebMapWidget()
+    widget.resize(800, 600)
+    qtbot.addWidget(widget)
+    assets = make_trip_assets()
+    with qtbot.waitSignal(widget.view.loadFinished, timeout=20000):
+        widget.mapview_set_assets(assets, [TripSegment(11, 12, "car")])
+    page = widget.page
+    legs = "JSON.stringify(segments.map(function (s) { return [s.fromIndex, s.toIndex, s.mode]; }))"
+    assert helper_js(qtbot, page, legs) == '[[0,1,"car"],[1,2,null],[2,3,null]]'
+
+    changes = []
+    widget.ignore_changed.connect(lambda *change: changes.append(change))
+    page.runJavaScript("markers[1].openPopup();")
+    qtbot.waitUntil(
+        lambda: helper_js(qtbot, page, "!!document.querySelector('.trip-ignore-button')") is True,
+        timeout=10000,
+    )
+    page.runJavaScript("document.querySelector('.trip-ignore-button').click();")
+    qtbot.waitUntil(lambda: changes == [(12, True)], timeout=10000)
+    assert widget.ignored == {12}
+    assert "1 ignored" in widget.caption.text()
+    assert helper_js(qtbot, page, legs) == '[[0,2,"car"],[2,3,null]]'
+    assert helper_js(qtbot, page, "document.querySelectorAll('.trip-pin').length") == 2
+
+    page.runJavaScript("mapSetIgnored(1, false, true);")
+    qtbot.waitUntil(lambda: changes[-1] == (12, False), timeout=10000)
+    assert widget.ignored == set()
+    assert helper_js(qtbot, page, legs) == '[[0,1,"car"],[1,2,null],[2,3,null]]'
+
+
+def test_initially_ignored_points_start_greyed_and_unconnected(qapp, qtbot):
+    """Reopening a map restores which points were ignored."""
+    widget = WebMapWidget()
+    widget.resize(800, 600)
+    qtbot.addWidget(widget)
+    with qtbot.waitSignal(widget.view.loadFinished, timeout=20000):
+        widget.mapview_set_assets(make_trip_assets(), None, [12, 14, 999])
+    assert widget.ignored == {12, 14}
+    legs = "JSON.stringify(segments.map(function (s) { return [s.fromIndex, s.toIndex]; }))"
+    assert helper_js(qtbot, widget.page, legs) == "[[0,2]]"
+    fill = "JSON.stringify(markers.map(function (m) { return m.options.fillColor; }))"
+    assert helper_js(qtbot, widget.page, fill) == '["#3cbe5a","#ccc","#dc4646","#ccc"]'
+
+
+def test_a_leg_spanning_an_ignored_point_saves_every_pair(qapp, qtbot):
+    """Setting a mode on A→C (B ignored) tags A→B and B→C, so nothing is lost."""
+    saved = []
+    widget = WebMapWidget()
+    widget.resize(800, 600)
+    qtbot.addWidget(widget)
+    widget.mode_changed.connect(lambda *change: saved.append(change))
+    with qtbot.waitSignal(widget.view.loadFinished, timeout=20000):
+        widget.mapview_set_assets(make_trip_assets(), None, [12])
+    widget.page.runJavaScript("mapSetMode(segments[0], 'boat', true);")
+    qtbot.waitUntil(lambda: saved == [(11, 12, "boat"), (12, 13, "boat")], timeout=10000)
+
+
+def test_next_and_previous_visit_points_and_skip_ignored_ones(qapp, qtbot):
+    """Stepping opens each non-ignored point's popup in order, wrapping at the ends."""
+    widget = WebMapWidget()
+    widget.resize(800, 600)
+    qtbot.addWidget(widget)
+    with qtbot.waitSignal(widget.view.loadFinished, timeout=20000):
+        widget.mapview_set_assets(make_trip_assets(), None, [13])
+
+    def visit(step):
+        before = helper_js(qtbot, widget.page, "current")
+        widget.next_button.click() if step > 0 else widget.previous_button.click()
+        qtbot.waitUntil(lambda: helper_js(qtbot, widget.page, "current") != before, timeout=10000)
+        return helper_js(qtbot, widget.page, "current")
+
+    # Nothing open yet: Next starts at the first point, Previous at the last.
+    assert [visit(1), visit(1), visit(1), visit(1)] == [0, 1, 3, 0]
+    assert visit(-1) == 3
+    assert visit(-1) == 1
+    assert helper_js(qtbot, widget.page, "!!map._popup") is True
+
+
+def test_stepping_is_disabled_when_every_point_is_ignored(qapp, qtbot):
+    """With nothing left to visit the buttons are disabled; no points disables them too."""
+    widget = WebMapWidget()
+    qtbot.addWidget(widget)
+    widget.mapview_set_assets(make_trip_assets(), None, [11, 12, 13, 14])
+    assert not widget.next_button.isEnabled() and not widget.previous_button.isEnabled()
+    widget.mapview_set_assets(make_trip_assets())
+    assert widget.next_button.isEnabled() and widget.previous_button.isEnabled()
+    widget.mapview_set_assets([])
+    assert not widget.next_button.isEnabled()
 
 
 def test_every_trip_mode_has_a_map_style():
