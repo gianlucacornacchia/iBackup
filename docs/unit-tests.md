@@ -65,7 +65,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_recycle.py` | Partial recycle/restore/purge, invalid paths, missing copies, sidecar-failure recovery and committed-operation restart finalization. |
 | `test_cli.py` | Command parsing, errors, confirmation and service wiring. |
 | `test_e2e.py` | Offline pipeline and selected crash/resume scenarios; album reconciliation end to end (first album replaces the `_Unsorted` copy, multi-album growth keeps both copies, a phone-side move leaves no duplicate). |
-| `test_gui.py` | Offscreen window shell, entry point/style selection and Qt-free package/bootstrap imports in a fresh process. |
+| `test_gui.py` | Offscreen window shell, entry point/style selection, WebEngine software-rendering flag and Qt-free package/bootstrap imports in a fresh process. |
 | `test_gui_theme.py` | Exact color/alpha/type tokens, scoped QSS, persisted theme bootstrap, live system/accent changes, high-contrast precedence, Qt 6.7 fallback and rendered solid opacity. |
 | `test_gui_worker.py` | Real QThread service/device ownership, queued GUI delivery, archive-lock release, fake-device import/verify, detached request/result data, FIFO/overflow, coalesced progress, direct and queued cancellation, failure cleanup/restart without replay and window/application shutdown. |
 | `test_gui_models.py` | Lazy 1 297-asset paging on the worker, roles and bounded queries, Qt model contracts/reentrant notifications, stale replies/indexes, persistent proxy selections, mutation barriers and exact-copy recycle/restore isolation. |

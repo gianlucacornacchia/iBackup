@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,7 @@ ORGANIZATION_NAME = "ibackup"
 WINDOWS_STYLE = "windows11"
 WINDOWS_LEGACY_STYLE = "windowsvista"
 FALLBACK_STYLE = "Fusion"
+WEBENGINE_SOFTWARE_FLAG = "--disable-gpu"
 
 
 def application_style_name(platform_name: str, windows_build: int | None = None) -> str:
@@ -73,6 +75,18 @@ def application_configure(application: QApplication, platform_name: str = sys.pl
             application.setStyle(FALLBACK_STYLE)
 
 
+def application_webengine_flags_set() -> None:
+    """Make Qt WebEngine render in software before it initialises.
+
+    Rapid zooming of a map with many points crashes Chromium's GPU path
+    (access violation in Qt6WebEngineCore.dll, Qt 6.11.2); software rendering
+    is stable. Existing user flags are preserved. Returns None.
+    """
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if WEBENGINE_SOFTWARE_FLAG not in flags.split():
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = f"{flags} {WEBENGINE_SOFTWARE_FLAG}".strip()
+
+
 def application_create() -> QApplication:
     """Return the running QApplication, creating it when absent.
 
@@ -84,6 +98,7 @@ def application_create() -> QApplication:
     existing = QApplication.instance()
     if isinstance(existing, QApplication):
         return existing
+    application_webengine_flags_set()
     application = QApplication(sys.argv)
     application_configure(application)
     return application

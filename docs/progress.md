@@ -359,6 +359,13 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-16 — **Fixed: GUI crashed while zooming a map with many points.**
+  Access violation in `Qt6WebEngineCore.dll` (PySide6/Qt 6.11.2, GPU path);
+  reproduced headless with 500/3000 points and rapid wheel events, gone with
+  `--disable-gpu`. `application_create` now adds that flag to
+  `QTWEBENGINE_CHROMIUM_FLAGS` before Qt starts (user flags kept). Test added
+  in `tests/test_gui.py`; `docs/unit-tests.md` updated.
+
 - 2026-10-12 — **Verified: travel modes persist across imports.** Question:
   can a photo be uniquely identified so its modes survive re-import? Yes:
   catalog assets are keyed by content SHA-256 (`assets.sha256` UNIQUE) and

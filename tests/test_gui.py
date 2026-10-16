@@ -51,6 +51,17 @@ def test_style_is_native_on_windows_and_neutral_elsewhere():
     assert application.application_style_name("win32", 22000) == application.WINDOWS_STYLE
 
 
+def test_webengine_flags_force_software_rendering(monkeypatch):
+    """Map zooming crashes Chromium's GPU path, so the flag is added once, keeping user flags."""
+    monkeypatch.delenv("QTWEBENGINE_CHROMIUM_FLAGS", raising=False)
+    application.application_webengine_flags_set()
+    application.application_webengine_flags_set()
+    assert os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] == "--disable-gpu"
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--foo")
+    application.application_webengine_flags_set()
+    assert os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] == "--foo --disable-gpu"
+
+
 def test_create_reuses_the_running_application(qapp):
     """A second call must not build a second QApplication, which Qt forbids."""
     assert application.application_create() is qapp
