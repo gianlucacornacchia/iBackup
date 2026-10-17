@@ -359,6 +359,8 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-17 — **Map window maximizable.** `MapDialog` now has Maximize/Minimize buttons and a size grip, so the map can fill the screen and be resized freely.
+
 - 2026-10-16 — **Map: ignore a point; Previous/Next point buttons.** Two
   requested features, tracked as todos `map-ignore-point` and `map-prev-next`.
   *Ignore:* the point popup has **Ignore this point** / **Include this
