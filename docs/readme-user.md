@@ -137,14 +137,13 @@ Deleted-from-phone pages have no map. How to read it:
     starts without modes.
 - **Ignoring a point.** If one photo has a wrong location (a GPS glitch far
   from the rest of the trip), click its dot and choose **Ignore this point**.
-  It turns grey, is left out of the trip line (the line joins the photos
-  either side of it) and of Start/End, and the caption says how many are
+  It turns grey, is left out of the trip line (the line is broken there; it
+  does not jump across to the next photo) and of Start/End, and the caption says how many are
   ignored. Click the grey dot and choose **Include this point** to bring it
   back. The choice is saved in the archive **per view**, so it is there next
   time; the photo itself is never changed, moved or hidden anywhere else.
-  Ignoring does not lose travel modes: a line that now skips the ignored
-  photo shows the mode of its first part, and setting a mode on it tags every
-  part, so including the photo again shows the trip as before.
+  Ignoring does not lose travel modes: the lines either side of the grey dot
+  keep theirs.
 - **Previous / Next point.** The buttons above the map move to the previous or
   next photo of the trip: the map pans to it and opens its popup. Ignored
   photos are skipped, and stepping wraps around from the last to the first.

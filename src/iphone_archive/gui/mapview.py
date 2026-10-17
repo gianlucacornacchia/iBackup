@@ -433,6 +433,8 @@ MAP_SCRIPT = """
       var b = active[k];
       var pa = crs.latLngToPoint(latlngs[a], 0);
       var pb = crs.latLngToPoint(latlngs[b], 0);
+      // An ignored photo between the two breaks the line: no leg bridges it.
+      if (b - a > 1) { continue; }
       // Consecutive photos at the same spot have no leg to draw or tag.
       if (pa.distanceTo(pb) === 0) { continue; }
       // Web Mercator is conformal, so the on-screen angle is the same at every

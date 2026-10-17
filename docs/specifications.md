@@ -665,8 +665,8 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   - **Ignoring.** The point popup has **Ignore this point** / **Include this
     point**. An ignored point stays on the map, greyed (grey dashed dot), but
     is not part of the trip: legs, direction arrows and the Start/End pins
-    are drawn from the other points only, so the line joins the neighbours
-    of an ignored point. The page logs `ibackup-ignore:<index>:<0|1>`;
+    are drawn from the other points only, and no line joins the neighbours
+    of an ignored point (the line is simply broken there). The page logs `ibackup-ignore:<index>:<0|1>`;
     `MapPage.ignore_changed` forwards it, `mapview_parse_ignore_change`
     accepts only in-range indices and `0`/`1`, and
     `WebMapWidget.ignore_changed(asset_id, ignored)` reaches `MapDialog`'s
@@ -675,10 +675,9 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
     `mapview_points(assets, segments, ignored)` carry the saved state in;
     the caption appends "(N ignored)".
   - **Modes across ignored points.** Ignoring never changes `trip_segments`
-    and reconciliation still runs on every located photo. A leg joining two
-    non-adjacent points shows the mode of the pair starting at its first
-    point; setting a mode on it logs `ibackup-mode` for **every** consecutive
-    pair it spans, so including the point again restores a consistent trip.
+    and reconciliation still runs on every located photo. Only legs between
+    adjacent photos are drawn, so every drawn leg is one saved pair and the
+    modes around an ignored point are kept untouched.
   - **Storage and service.** `trip_ignored_points` (§8), per view `scope`
     (same keys as modes). `trip_set_ignored` validates scope, a positive id,
     a real `bool` and that the asset exists; `trip_ignored` returns the

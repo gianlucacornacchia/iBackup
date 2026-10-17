@@ -397,7 +397,7 @@ every photo without hunting for the dots.
 
 Acceptance criteria:
 - Given a trip map, when I open a point and choose **Ignore this point**, then
-  it turns grey, the trip line, arrows and Start/End skip it, and the caption
+  it turns grey, the trip line is broken at it (no line bridges its neighbours), arrows and Start/End skip it, and the caption
   counts it as ignored; **Include this point** on the grey dot undoes it.
 - Given I close and reopen the map or restart the app, then the same points
   are still ignored, in that view only.

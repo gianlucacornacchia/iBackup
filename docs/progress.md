@@ -359,6 +359,7 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-17 — **Ignored point no longer bridged.** Ignoring a map point keeps it (greyed) and now just removes the line across it: no leg joins its previous/next points any more (mapRedraw skips non-adjacent pairs). Tests updated (	est_gui_mapview.py); specifications §16.4, readme-user, user-stories US-G11, unit-tests adjusted.
 - 2026-10-17 — **Map window maximizable.** `MapDialog` now has Maximize/Minimize buttons and a size grip, so the map can fill the screen and be resized freely.
 
 - 2026-10-16 — **Map: ignore a point; Previous/Next point buttons.** Two

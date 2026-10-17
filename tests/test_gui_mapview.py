@@ -146,7 +146,7 @@ def helper_js(qtbot, page, script):
 
 
 def test_ignoring_a_point_redraws_the_trip_without_it(qapp, qtbot):
-    """The ignored point is greyed and skipped: the legs join its neighbours."""
+    """The ignored point stays, greyed; the legs touching it vanish and none bridges it."""
     widget = WebMapWidget()
     widget.resize(800, 600)
     qtbot.addWidget(widget)
@@ -168,7 +168,7 @@ def test_ignoring_a_point_redraws_the_trip_without_it(qapp, qtbot):
     qtbot.waitUntil(lambda: changes == [(12, True)], timeout=10000)
     assert widget.ignored == {12}
     assert "1 ignored" in widget.caption.text()
-    assert helper_js(qtbot, page, legs) == '[[0,2,"car"],[2,3,null]]'
+    assert helper_js(qtbot, page, legs) == "[[2,3,null]]"
     assert helper_js(qtbot, page, "document.querySelectorAll('.trip-pin').length") == 2
 
     page.runJavaScript("mapSetIgnored(1, false, true);")
@@ -186,22 +186,20 @@ def test_initially_ignored_points_start_greyed_and_unconnected(qapp, qtbot):
         widget.mapview_set_assets(make_trip_assets(), None, [12, 14, 999])
     assert widget.ignored == {12, 14}
     legs = "JSON.stringify(segments.map(function (s) { return [s.fromIndex, s.toIndex]; }))"
-    assert helper_js(qtbot, widget.page, legs) == "[[0,2]]"
+    assert helper_js(qtbot, widget.page, legs) == "[]"
     fill = "JSON.stringify(markers.map(function (m) { return m.options.fillColor; }))"
     assert helper_js(qtbot, widget.page, fill) == '["#3cbe5a","#ccc","#dc4646","#ccc"]'
 
 
-def test_a_leg_spanning_an_ignored_point_saves_every_pair(qapp, qtbot):
-    """Setting a mode on A→C (B ignored) tags A→B and B→C, so nothing is lost."""
-    saved = []
+def test_no_leg_bridges_an_ignored_point(qapp, qtbot):
+    """With B ignored, A and C are not joined; the legs after C still are."""
     widget = WebMapWidget()
     widget.resize(800, 600)
     qtbot.addWidget(widget)
-    widget.mode_changed.connect(lambda *change: saved.append(change))
     with qtbot.waitSignal(widget.view.loadFinished, timeout=20000):
         widget.mapview_set_assets(make_trip_assets(), None, [12])
-    widget.page.runJavaScript("mapSetMode(segments[0], 'boat', true);")
-    qtbot.waitUntil(lambda: saved == [(11, 12, "boat"), (12, 13, "boat")], timeout=10000)
+    legs = "JSON.stringify(segments.map(function (s) { return [s.fromIndex, s.toIndex]; }))"
+    assert helper_js(qtbot, widget.page, legs) == "[[2,3]]"
 
 
 def test_next_and_previous_visit_points_and_skip_ignored_ones(qapp, qtbot):
