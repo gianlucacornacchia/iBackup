@@ -15,6 +15,7 @@ one.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -208,7 +209,7 @@ def test_reset_asks_once_and_forget_names_the_archive(qtbot):
     assert dialog.forget_button.isEnabled() is True
     dialog.forget_button.click()
     assert requests[0][0] == "app_service_forget_archive"
-    assert str(requests[0][1]["archive_root"]) == "/archives/main"
+    assert requests[0][1]["archive_root"] == Path("/archives/main")
     assert "files are untouched" in dialog.message_label.text()
 
 
@@ -237,7 +238,7 @@ def test_cache_and_folder_buttons_need_something_to_act_on(qtbot, tmp_path, monk
     settings_file.write_text("{}", encoding="utf-8")
     dialog.settings_file = settings_file
     dialog.settings_dialog_show_file()
-    assert opened == [str(tmp_path)]
+    assert [Path(path) for path in opened] == [tmp_path]
 
     with_archive = SettingsDialog(Settings(), archive_open=True, logs_dir=tmp_path)
     qtbot.addWidget(with_archive)

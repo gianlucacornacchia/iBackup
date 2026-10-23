@@ -64,7 +64,7 @@ def exif_register_heif() -> None:
     try:
         import pillow_heif
 
-        pillow_heif.register_heif_opener()
+        pillow_heif.register_heif_opener()  # type: ignore[attr-defined]
     except ImportError:
         logger.debug("pillow-heif is not installed; HEIC EXIF reading is unavailable")
     _heif_registered = True
@@ -156,7 +156,7 @@ def exif_to_int(value: object) -> int | None:
     if isinstance(value, (tuple, list)):
         value = value[0] if value else None
     try:
-        return int(value)  # type: ignore[call-overload]
+        return int(value)  # type: ignore[call-overload, no-any-return]
     except (TypeError, ValueError):
         return None
 

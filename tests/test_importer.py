@@ -124,9 +124,7 @@ def test_album_move_removes_stale_copy(archive):
     first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
     importer.importer_run(connection, paths, first)
 
-    second = FakeDevice(
-        {"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Favorites"]}
-    )
+    second = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Favorites"]})
     importer.importer_run(connection, paths, second)
 
     files = repository.repository_all_asset_files(connection)
@@ -825,9 +823,7 @@ def test_offloaded_preview_upgraded_in_place_once_original_reappears(archive):
 def test_new_asset_stores_location_from_phone_item(archive):
     """A phone item's GPS coordinates are copied onto the new catalog asset."""
     paths, connection = archive
-    device = FakeDevice(
-        {"/DCIM/A.HEIC": b"a"}, locations={"/DCIM/A.HEIC": (45.07, 7.69)}
-    )
+    device = FakeDevice({"/DCIM/A.HEIC": b"a"}, locations={"/DCIM/A.HEIC": (45.07, 7.69)})
 
     importer.importer_run(connection, paths, device)
 
@@ -864,9 +860,7 @@ def test_exif_gps_used_only_when_phone_gps_absent(archive):
     device = FakeDevice(
         {
             "/DCIM/A.JPG": make_jpeg_with_exif(latitude=10.0, longitude=20.0),
-            "/DCIM/B.JPG": make_jpeg_with_exif(
-                latitude=10.0, longitude=20.0, iso=100
-            ),
+            "/DCIM/B.JPG": make_jpeg_with_exif(latitude=10.0, longitude=20.0, iso=100),
         },
         locations={"/DCIM/A.JPG": (45.07, 7.69)},
     )
@@ -960,4 +954,3 @@ def test_offloaded_preview_upgrade_replaces_location(archive):
 
     upgraded_asset = repository.repository_get_asset(connection, asset_id)
     assert (upgraded_asset.latitude, upgraded_asset.longitude) == (48.85, 2.35)
-

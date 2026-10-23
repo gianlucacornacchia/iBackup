@@ -12,12 +12,12 @@ zoom)._
 
 ## Current status
 
-- **Open quality items (2026-10-12):** `ruff format --check` flags only
-  `tests/test_importer.py` (`gui/review.py`/`gui/shell.py` resolved);
-  `mypy --strict` reports 2 errors in `core/exif.py`; two
-  `test_gui_settings.py` Windows path-separator failures; flaky
-  `test_recycle.py::test_restart_finalizes_catalog_committed_before_cleanup[restore]`
-  and `test_gui_worker.py::test_close_then_open_serializes_archive_switches`.
+- **Open quality items (2026-10-23):** `ruff check`, `ruff format --check`
+  and `mypy --strict` are clean again, and the two `test_gui_settings.py`
+  Windows path-separator failures are fixed. Still flaky:
+  `test_recycle.py` sidecar replacement (`WinError 5` when another process
+  briefly holds the file) and
+  `test_gui_worker.py::test_close_then_open_serializes_archive_switches`.
 - **Trip-map travel modes (2026-10-12):** legs can be tagged with how the
   user travelled; stored per view in `trip_segments` (schema v7).
 
@@ -359,7 +359,13 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
-- 2026-10-17 — **Ignored point no longer bridged.** Ignoring a map point keeps it (greyed) and now just removes the line across it: no leg joins its previous/next points any more (mapRedraw skips non-adjacent pairs). Tests updated (	est_gui_mapview.py); specifications §16.4, readme-user, user-stories US-G11, unit-tests adjusted.
+- 2026-10-23 — **Quality gates green again.** `tests/test_importer.py`
+  reformatted; `core/exif.py` mypy errors fixed (`pillow_heif` does not
+  re-export `register_heif_opener`; `int()` on an `object` returns `Any`);
+  `test_gui_settings.py` now compares `Path` objects, so it passes with
+  Windows separators. No behaviour change.
+
+- 2026-10-17 — **Ignored point no longer bridged.** Ignoring a map point keeps it (greyed) and now just removes the line across it: no leg joins its previous/next points any more (mapRedraw skips non-adjacent pairs). Tests updated (`test_gui_mapview.py`); specifications §16.4, readme-user, user-stories US-G11, unit-tests adjusted.
 - 2026-10-17 — **Map window maximizable.** `MapDialog` now has Maximize/Minimize buttons and a size grip, so the map can fill the screen and be resized freely.
 
 - 2026-10-16 — **Map: ignore a point; Previous/Next point buttons.** Two
