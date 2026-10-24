@@ -241,7 +241,7 @@ Just open a folder and view the pictures like any other files.
 | `ibackup init <path>` | Create and initialize a new archive. |
 | `ibackup device-info` | Show the device identifier (UDID) and full enumerated media count; no name/model/iOS fields. |
 | `ibackup import` | Import new photos/videos and organize them by album. |
-| `ibackup verify` | Re-check that archived files are intact. |
+| `ibackup verify` | Re-check that archived files are intact (`--limit N` spot-checks only the first N files). |
 | `ibackup dedup` | Show duplicate and storage statistics. |
 | `ibackup albums` | List albums and their photo counts; iCloud Shared Albums end with `(shared)`. |
 | `ibackup albums --shared` | List only iCloud Shared Albums (`No shared albums yet.` when there are none). |

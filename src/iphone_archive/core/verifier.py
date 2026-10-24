@@ -61,7 +61,8 @@ def verifier_run(
     connection: an open catalog connection.
     paths: resolved archive paths.
     progress: optional progress/cancellation handle.
-    limit: when set, verify at most this many files (rolling subset).
+    limit: when set, verify only the first this-many copies in catalog order
+        (a quick spot check; the same copies every run, not a rolling subset).
     Returns a ``VerifyResult`` describing what was checked and any issues.
     """
     handle = progress if progress is not None else ProgressHandle()

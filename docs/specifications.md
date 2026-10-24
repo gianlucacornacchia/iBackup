@@ -326,7 +326,10 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
 - `ibackup verify` re-hashes on-disk copies (every `asset_files` row) and
   compares against the catalog, reporting any mismatches or missing files.
 - `verify` checks all cataloged copies, including recycled files. There is no
-  `--full` option or rolling-subset mode.
+  `--full` option or rolling-subset mode. `ibackup verify --limit N` (service
+  `app_service_verify(limit=N)`) checks only the first N copies in catalog
+  order, a quick spot check that covers the same copies on every run; the GUI
+  always verifies everything.
 
 ## 12. Album Preservation
 

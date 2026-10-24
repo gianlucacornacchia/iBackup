@@ -361,6 +361,12 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-24 — **Docs: `verify --limit` described correctly.** The option
+  existed but was undocumented, and the verifier docstring called it a
+  "rolling subset" although it always checks the first N copies in catalog
+  order. Docstrings (`core/verifier.py`, `AppService`), specifications §11
+  and the readme-user command table now say so. No behaviour change.
+
 - 2026-10-24 — **Layering: `ProgressHandle` moved to `core/progress.py`.**
   `core/importer.py`, `reclaim.py` and `verifier.py` imported
   `service.progress`, so the core depended on the layer above it. The module

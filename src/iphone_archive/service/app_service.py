@@ -179,7 +179,7 @@ class AppService:
         """Verify archived files against their recorded hashes.
 
         progress: optional progress/cancellation handle.
-        limit: when set, verify at most this many files.
+        limit: when set, verify only the first this-many copies in catalog order.
         Returns the ``VerifyResult``.
         """
         connection, paths = self.app_service_require()
