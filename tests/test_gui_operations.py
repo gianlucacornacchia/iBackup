@@ -522,7 +522,7 @@ def test_progress_updates_move_the_bar(window, qtbot):
     assert dialog is not None
     assert dialog.bar.minimum() == 0 and dialog.bar.maximum() == 0
 
-    from iphone_archive.service.progress import ProgressEvent
+    from iphone_archive.core.progress import ProgressEvent
 
     dialog.operation_progress(dialog.request_id, ProgressEvent("import", 1, 4, "IMG_0001.png"))
 

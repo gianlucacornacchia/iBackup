@@ -30,9 +30,9 @@ from ..catalog.models import (
 from ..catalog.sidecar import sidecar_from_catalog, sidecar_path_for, sidecar_write
 from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
-from ..service.progress import ProgressHandle
 from . import archive_layout, exif, hashing
 from .file_operations import file_operations_path, file_operations_write_journal
+from .progress import ProgressHandle
 
 OPERATION_NAME = "import"
 

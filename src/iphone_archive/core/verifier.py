@@ -13,8 +13,8 @@ from datetime import datetime
 
 from ..catalog import repository
 from ..config import ArchivePaths
-from ..service.progress import ProgressHandle
 from . import hashing
+from .progress import ProgressHandle
 
 OPERATION_NAME = "verify"
 

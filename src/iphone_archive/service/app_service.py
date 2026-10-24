@@ -29,6 +29,7 @@ from ..core import (
     trip,
     verifier,
 )
+from ..core.progress import ProgressHandle
 from ..device.fake_device import FakeDevice
 from ..device.interface import MediaSource
 from ..settings import (
@@ -45,7 +46,6 @@ from ..settings import (
 )
 from . import marks, selection
 from .archive_lock import ArchiveLock
-from .progress import ProgressHandle
 
 
 class ArchiveNotFoundError(RuntimeError):

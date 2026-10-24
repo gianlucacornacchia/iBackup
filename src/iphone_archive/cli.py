@@ -19,13 +19,13 @@ import typer
 from typer.core import TyperGroup
 
 from .core.albums import ALBUM_KIND_SHARED
+from .core.progress import ProgressEvent, ProgressHandle
 from .device.afc_device import AfcDevice
 from .device.fake_device import FakeDevice
 from .device.interface import DeviceError, MediaSource
 from .logging_setup import logging_setup_close, logging_setup_configure, logging_setup_get_logger
 from .service.app_service import AppService, ArchiveNotFoundError
 from .service.marks import TARGET_ALBUM, TARGET_ASSET
-from .service.progress import ProgressEvent, ProgressHandle
 from .settings import (
     SettingsError,
     settings_field_names,

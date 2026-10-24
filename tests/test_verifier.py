@@ -7,8 +7,8 @@ import pytest
 from iphone_archive import config
 from iphone_archive.catalog import database, repository
 from iphone_archive.core import importer, verifier
+from iphone_archive.core.progress import ProgressHandle
 from iphone_archive.device.fake_device import FakeDevice
-from iphone_archive.service.progress import ProgressHandle
 
 
 @pytest.fixture

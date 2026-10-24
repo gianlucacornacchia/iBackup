@@ -361,6 +361,14 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-24 — **Layering: `ProgressHandle` moved to `core/progress.py`.**
+  `core/importer.py`, `reclaim.py` and `verifier.py` imported
+  `service.progress`, so the core depended on the layer above it. The module
+  moved unchanged (`git mv`); every import, including the CLI, GUI and tests,
+  now uses `iphone_archive.core.progress`. New `tests/test_layering.py`
+  fails the build if `core`, `catalog` or `device` import `service`, `browse`,
+  `gui` or `cli`. Docs: structure (module table, §2), plan, unit-tests.
+
 - 2026-10-24 — **Fixed: large trip maps were blank.** `setHtml()` shows
   nothing for a page over 2 MB, which the inlined points reached at about
   13,000 located photos (~140 bytes each on top of ~176 KB of Leaflet).

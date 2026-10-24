@@ -37,11 +37,11 @@ from PySide6.QtWidgets import (
 from ..config import ArchivePaths
 from ..core.dedup import DedupResult
 from ..core.importer import ImportResult
+from ..core.progress import ProgressEvent
 from ..core.reclaim import ReclaimResult
 from ..core.recycle import RecycleResult
 from ..core.verifier import VerifyResult
 from ..service.app_service import AppService, DeviceInfo
-from ..service.progress import ProgressEvent
 from ..service.selection import SelectionResult
 from .gallery import gallery_format_size
 from .theme import CONTROL_HEIGHT, GROUP_GAP, PAGE_MARGIN, theme_font

@@ -23,9 +23,9 @@ from typing import Literal
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
 from ..config import ArchivePaths
+from ..core.progress import ProgressEvent, ProgressHandle
 from ..device.interface import MediaSource
 from ..service.app_service import ARCHIVE_FREE_OPERATIONS, AppService, app_service_preferences
-from ..service.progress import ProgressEvent, ProgressHandle
 
 LOGGER = logging.getLogger(__name__)
 MAX_PENDING_REQUESTS = 32

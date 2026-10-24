@@ -14,9 +14,9 @@ from ..catalog import repository
 from ..catalog.models import ArchiveState
 from ..config import ArchivePaths
 from ..device.interface import DeviceError, MediaSource
-from ..service.progress import ProgressHandle
 from . import hashing, verifier
 from .albums import albums_is_shared_path
+from .progress import ProgressHandle
 
 OPERATION_NAME = "reclaim"
 

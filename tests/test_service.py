@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from iphone_archive.core.progress import ProgressHandle
 from iphone_archive.device.fake_device import FakeDevice
 from iphone_archive.service.app_service import AppService, ArchiveNotFoundError
-from iphone_archive.service.progress import ProgressHandle
 
 
 @pytest.fixture

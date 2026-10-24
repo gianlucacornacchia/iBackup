@@ -17,7 +17,6 @@ All paths below are relative to `src/iphone_archive/`.
 | `logging_setup.py` | Rotating CLI command start/completion/error log, configured level and handler cleanup. |
 | `service/app_service.py` | Headless `AppService` facade; `app_service_device_info(source)` returns `DeviceInfo(udid, media_count)` after full enumeration; `app_service_list_locations(album_id, only_unsorted, include_deleted)` feeds the trip map; `app_service_trip_modes(scope, asset_ids)` and `app_service_set_trip_mode(scope, from_asset_id, to_asset_id, mode)` read/reconcile and save travel modes, and `app_service_trip_ignored(scope, asset_ids)` / `app_service_set_trip_ignored(scope, asset_id, ignored)` read and save ignored map points, committing or rolling back. |
 | `service/archive_lock.py` | Exclusive archive-session/process lock. |
-| `service/progress.py` | `ProgressEvent`, `ProgressHandle`, Event cancellation and bounded last-256 history snapshots. |
 | `service/selection.py` | Batch archive moves and `SelectionResult`; a move target name matching both a user and a shared album resolves to the user album. |
 | `service/marks.py` | Staged deletion queue, `MarkSummary` (with an optional `sha256`/`relative_path` thumbnail source), `MarkCommitResult`; `marks_preview_source()` resolves an asset/file/album mark to one stored copy. |
 | `device/interface.py` | Injectable `MediaSource` protocol. |
@@ -28,6 +27,7 @@ All paths below are relative to `src/iphone_archive/`.
 | `catalog/repository.py` | Catalog queries, identities, membership, scan state; preview lookup/upgrade (`repository_find_offloaded_preview_by_original_path`, `repository_upgrade_offloaded_asset`), `repository_backfill_asset_metadata`, `repository_unlink_asset_album`. |
 | `catalog/sidecar.py` | JSON metadata serialization and `SidecarData` (no GPS/camera fields). |
 | `core/hashing.py` | Chunked SHA-256. |
+| `core/progress.py` | `ProgressEvent`, `ProgressHandle`, Event cancellation and bounded last-256 history snapshots (moved from `service/` 2026-10-24 so `core` never imports the service layer). |
 | `core/atomic.py` | `atomic_replace()` / `atomic_rename()`: atomic file publication that retries Windows' transient `PermissionError` (a file briefly held by antivirus, the indexer or Explorer) for about 1.5 s; `FileExistsError` is never retried. Used by sidecars, settings and `file_operations` journals/publication. |
 | `core/name_safety.py` | Windows-safe names and collision handling. |
 | `core/archive_layout.py` | Copy/hardlink placement and `PlacedFile`; album folders via `archive_layout_album_safe_name(name, kind)` / `archive_layout_album_dir(paths, name, kind)`, with shared albums under `SHARED_ALBUMS_DIR_NAME` (`Photos/_Shared Albums/`). |
@@ -85,6 +85,11 @@ CLI / GUI worker
               |
        AfcDevice / FakeDevice
 ```
+
+Imports only point down this stack: `core`, `catalog` and `device` never
+import `service`, `browse`, `gui` or `cli` (enforced by
+`tests/test_layering.py`). `device` may read `settings` for its per-user
+cache folder.
 
 The trip map is the one GUI path outside this stack's locality: its data
 comes through the worker like any listing, but `gui/mapview.py` then fetches

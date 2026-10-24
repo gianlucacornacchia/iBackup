@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-from iphone_archive.service.progress import ProgressHandle
+from iphone_archive.core.progress import ProgressHandle
 
 
 def test_progress_history_is_bounded_and_snapshots_are_isolated():
