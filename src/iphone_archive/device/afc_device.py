@@ -137,6 +137,8 @@ class AfcDevice:
         # Filled by afc_device_photo_metadata from the same Photos.sqlite copy,
         # so iCloud Shared Albums never cost a second 1 GB database transfer.
         self.shared_album_membership: dict[str, list[str]] = {}
+        # Cleared by afc_device_photo_metadata when Photos.sqlite is unreadable.
+        self.album_metadata_read = True
         self.preview_cache: dict[str, Any] | None = None
         self.preview_cache_dirty = False
         self.owner_lock = Lock()
@@ -253,6 +255,7 @@ class AfcDevice:
         client = self.afc_device_require_client()
         items = [item for root in MEDIA_ROOTS for item in self.afc_device_walk(client, root)]
         self.shared_album_membership = {}
+        self.album_metadata_read = True
         albums, capture_times, locations = self.afc_device_photo_metadata()
         shared_items = self.afc_device_shared_items(
             client, self.shared_album_membership, capture_times, locations
@@ -264,6 +267,7 @@ class AfcDevice:
             # Bare keys exist only for legacy databases without ZDIRECTORY.
             # Never strip the directory from a modern metadata key.
             item.album_names = list(albums.get(item.phone_path, []))
+            item.album_membership_known = self.album_metadata_read
             item.captured_at = capture_times.get(item.phone_path)
             location = locations.get(item.phone_path)
             if counts[item.original_name] == 1:
@@ -624,6 +628,7 @@ class AfcDevice:
             finally:
                 connection.close()
         except (DeviceError, OSError, sqlite3.Error, OverflowError, ValueError) as error:
+            self.album_metadata_read = False
             logger.warning("Photos metadata unavailable; continuing without it: %s", error)
         finally:
             if directory.exists():

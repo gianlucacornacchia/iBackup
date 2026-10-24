@@ -808,6 +808,11 @@ def importer_sync_albums(
     the catalog has committed, so neither a crash nor a rolled-back item can
     drop the asset below one valid, on-disk copy.
     """
+    if not item.album_membership_known:
+        # The phone's album database was unreadable for this scan, so an empty
+        # album list is "unknown": reconciling would move every album copy
+        # into _Unsorted. Leave placement as it is until membership is known.
+        return
     existing_files = [
         stored
         for stored in repository.repository_list_asset_files(connection, asset_id)

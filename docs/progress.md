@@ -361,6 +361,16 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-24 — **Guard: no reconciliation without album data.** When
+  `Photos.sqlite` cannot be read for an import, `AfcDevice` now marks every
+  item `PhoneItem.album_membership_known = False` (`FakeDevice(...,
+  album_membership_known=False)` mirrors it) and `importer_sync_albums`
+  leaves existing placement alone, instead of moving every album copy into
+  `_Unsorted` (the former spec §12 known limitation). New assets in such an
+  import still go to `_Unsorted` and move on the next readable import.
+  Tests: 1 new each in `tests/test_importer.py` and `tests/test_device.py`.
+  Docs: specifications §12, readme-user, structure, unit-tests.
+
 - 2026-10-24 — **Fixed: `WinError 5` on atomic replace.** New
   `core/atomic.py` (`atomic_replace`, `atomic_rename`) retries a Windows
   `PermissionError` for about 1.5 s, so a sidecar, settings file or

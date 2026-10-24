@@ -659,3 +659,26 @@ def test_device_cache_never_uses_the_working_directory(tmp_path, monkeypatch):
 
     assert cache.parent == settings_cache_directory() / PREVIEW_CACHE_DIR_NAME
     assert not cache.is_relative_to(work)
+
+
+def test_unreadable_photos_database_marks_album_membership_unknown():
+    """An unreadable Photos.sqlite flags items so import keeps their album copies."""
+
+    class Client:
+        def listdir(self, path):
+            return ["A.JPG"]
+
+        def stat(self, path):
+            return {"st_ifmt": "S_IFREG", "st_size": 1, "st_mtime": "timestamp"}
+
+    def device_open(path):
+        raise DeviceError(f"cannot read {path}")
+
+    device = AfcDevice()
+    device.afc_client = Client()
+    device.device_open = device_open
+    item = list(device.device_enumerate())[0]
+
+    assert item.album_names == []
+    assert item.album_membership_known is False
+    device.device_close()

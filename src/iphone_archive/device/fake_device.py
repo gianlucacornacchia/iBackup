@@ -25,6 +25,7 @@ class FakeDevice:
         album_map: dict[str, list[str]] | None = None,
         locations: dict[str, tuple[float, float]] | None = None,
         shared_album_map: dict[str, list[str]] | None = None,
+        album_membership_known: bool = True,
     ) -> None:
         """Create a fake device.
 
@@ -33,12 +34,14 @@ class FakeDevice:
         album_map: optional mapping of phone path to album names.
         locations: optional mapping of phone path to ``(latitude, longitude)``.
         shared_album_map: optional mapping of phone path to iCloud Shared Album names.
+        album_membership_known: False simulates an unreadable Photos.sqlite.
         """
         self.items: dict[str, bytes] = dict(items or {})
         self.udid = udid
         self.albums: dict[str, list[str]] = dict(album_map or {})
         self.shared_albums: dict[str, list[str]] = dict(shared_album_map or {})
         self.locations: dict[str, tuple[float, float]] = dict(locations or {})
+        self.album_membership_known = album_membership_known
         self.deleted_paths: list[str] = []
         self.metadata: dict[str, dict[str, str]] = {}
 
@@ -64,6 +67,7 @@ class FakeDevice:
                 shared_album_names=list(self.shared_albums.get(phone_path, [])),
                 latitude=location[0] if location is not None else None,
                 longitude=location[1] if location is not None else None,
+                album_membership_known=self.album_membership_known,
             )
 
     def device_open(self, phone_path: str) -> BinaryIO:

@@ -123,3 +123,7 @@ class PhoneItem:
     offloaded_original_path: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    # False when the phone's album database could not be read for this scan:
+    # an empty album list then means "unknown", not "in no album", so import
+    # must not reconcile (and remove) the asset's existing album copies.
+    album_membership_known: bool = True

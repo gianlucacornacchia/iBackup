@@ -391,12 +391,12 @@ Because the phone's albums win, an album change you made **in the archive**
 is undone by the next import if the phone's albums differ. To keep a
 different arrangement, change the album on the phone as well.
 
-> **Caution:** if the phone's photo database cannot be read during an import
-> (the log says "Photos metadata unavailable"), every photo looks album-less,
-> and the import currently moves the album copies of photos still on the phone
-> into `_Unsorted`. No photo is lost (one copy always remains), and the next
-> import that can read the database puts the copies back in their albums, so
-> if you see that warning, fix the connection and import again.
+> **Note:** if the phone's photo database cannot be read during an import
+> (the log says "Photos metadata unavailable"), photos already in the archive
+> stay in their album folders; only photos new in that import go to
+> `_Unsorted`. The next import that can read the database moves those into
+> their albums, so if you see that warning, fix the connection and import
+> again.
 
 ### iCloud Shared Albums
 

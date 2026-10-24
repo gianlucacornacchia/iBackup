@@ -354,14 +354,16 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
   reverted by the next import when the phone's albums differ; the phone's
   albums win. Earlier wrong (filename-matched) album copies are corrected
   the same way.
-- **Known limitation:** when `Photos.sqlite` is unavailable for a whole import
-  (logged as "Photos metadata unavailable"), every item reports no albums, so
-  reconciliation moves the album copies of still-present assets into
-  `_Unsorted`. No asset loses its last copy, and the next import with readable
-  metadata restores the album copies, but the folder churn is real. A guard
-  that skips reconciliation when membership could not be read is not
-  implemented. Shared-album items are simply not enumerated in that case, so
-  their archived copies are left where they are.
+- **Unreadable album data (guarded since 2026-10-24).** When `Photos.sqlite`
+  cannot be read for a whole import (logged as "Photos metadata
+  unavailable"), `AfcDevice` sets `PhoneItem.album_membership_known = False`
+  on every item, and `importer_sync_albums` then leaves the asset's placement
+  untouched: an empty album list means *unknown*, not *in no album*. New
+  assets in such an import are still filed under `_Unsorted/YYYY/MM/` and
+  move to their albums on the next import that can read the database.
+  Before this guard, every album copy of a still-present asset was moved
+  into `_Unsorted`. Shared-album items are simply not enumerated in that
+  case, so their archived copies are left where they are.
 
 ### 12.1 iCloud Shared Albums (2026-10-11)
 

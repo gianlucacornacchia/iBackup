@@ -196,6 +196,32 @@ def test_stale_copy_removed_by_recovery_after_commit(archive, monkeypatch):
     assert not list((paths.internal_dir / "import-journals").glob("*.json"))
 
 
+def test_unreadable_album_metadata_keeps_album_copies(archive):
+    """Without readable album data an empty list is unknown, not "no album".
+
+    Reconciling would otherwise move every album copy into _Unsorted.
+    """
+    paths, connection = archive
+    first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
+    importer.importer_run(connection, paths, first)
+
+    blind = FakeDevice(
+        {"/DCIM/IMG.HEIC": b"x", "/DCIM/NEW.HEIC": b"y"}, album_membership_known=False
+    )
+    result = importer.importer_run(connection, paths, blind)
+
+    assert result.error_count == 0
+    stored = {f.path for f in repository.repository_all_asset_files(connection)}
+    assert "Photos/Trip/IMG.heic" in stored
+    assert not any(path.endswith("IMG.heic") and "_Unsorted" in path for path in stored)
+    # A new asset still lands in _Unsorted, as before.
+    assert any(
+        path.startswith("Photos/_Unsorted/") and path.endswith("NEW.heic") for path in stored
+    )
+    assert len(stored) == 2
+    assert (paths.photos_dir / "Trip" / "IMG.heic").is_file()
+
+
 def test_sidecar_written_for_each_asset(archive):
     """Every imported asset gets a sidecar JSON file."""
     paths, connection = archive
