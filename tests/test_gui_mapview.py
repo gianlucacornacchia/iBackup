@@ -483,7 +483,7 @@ def test_map_dialog_opens_with_located_assets(qapp, qtbot):
 def test_a_map_larger_than_set_html_limit_still_plots_every_point(qapp, qtbot):
     """Qt's setHtml() caps a page at 2 MB; a big library must still draw its trip.
 
-    20,000 located photos make a page of about 3 MB with the points inlined.
+    15,000 located photos make a page of about 2.3 MB with the points inlined.
     """
     widget = WebMapWidget()
     widget.resize(800, 600)
@@ -496,15 +496,14 @@ def test_a_map_larger_than_set_html_limit_still_plots_every_point(qapp, qtbot):
             latitude=45.0 + index * 1e-5,
             longitude=7.0 + index * 1e-5,
         )
-        for index in range(20000)
+        for index in range(15000)
     ]
     assert len(mapview_build_html(mapview_points(assets)).encode()) > 2 * 1024 * 1024
     with qtbot.waitSignal(widget.view.loadFinished, timeout=60000):
         widget.mapview_set_assets(assets)
-    plotted = -1
-    for _ in range(60):
-        plotted = helper_js(qtbot, widget.page, "markers.length")
-        if plotted == 20000:
-            break
-        qtbot.wait(1000)
-    assert plotted == 20000
+    # runJavaScript calls run in order, so this query answers only after the
+    # pushed mapLoad() has finished; plotting can take a while on a busy machine.
+    result = []
+    widget.page.runJavaScript("markers.length", 0, result.append)
+    qtbot.waitUntil(lambda: bool(result), timeout=120000)
+    assert result[0] == 15000

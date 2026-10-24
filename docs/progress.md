@@ -15,14 +15,20 @@ zoom)._
 
 ## Current status
 
-- **Open quality items (2026-10-23):** `ruff check`, `ruff format --check`
-  and `mypy --strict` are clean again, and the two `test_gui_settings.py`
-  Windows path-separator failures are fixed. Still flaky:
-  a Qt access violation that hangs
+- **Open quality items (2026-10-24):** `ruff check`, `ruff format --check`,
+  `mypy --strict` and the full test suite pass. The `WinError 5` flakes are
+  fixed (`core/atomic.py`). Not reproduced since, but not root-caused: one
+  full run on 2026-10-24 hung in
   `test_gui_settings.py::test_the_window_saves_and_applies_what_was_edited`
-  in `waitUntil` (run with `-p no:faulthandler` and a timeout, or the dump
-  log grows without bound); and
-  `test_gui_worker.py::test_close_then_open_serializes_archive_switches`.
+  with pytest's faulthandler printing "Windows fatal exception: access
+  violation" in a loop (a 4 GB log). It then passed 6/6 alone, 2/2 after
+  `test_gui_mapview.py`, and in a full GUI run with faulthandler on, with
+  no access violation logged. The symptom fits faulthandler logging
+  first-chance access violations that Chromium/Qt WebEngine handles itself,
+  each dump slowing the event loop. If it recurs, run with
+  `-p no:faulthandler` and a `timeout`. `test_gui_worker.py::
+  test_close_then_open_serializes_archive_switches` passed 10/10; opening
+  an archive saves `settings.json`, so it was likely the same `WinError 5`.
 - **Trip-map travel modes (2026-10-12):** legs can be tagged with how the
   user travelled; stored per view in `trip_segments` (schema v7).
 
@@ -363,6 +369,13 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-24 — **Test: big-map test made robust.** The 20,000-point test
+  polled with `helper_js` (10 s per call) and timed out on a busy machine
+  while `mapLoad` was still plotting. It now plots 15,000 points (still
+  ~2.3 MB inlined) and issues one `runJavaScript("markers.length")` query,
+  which runs after the queued `mapLoad`, with a 120 s wait. Investigation of
+  the open GUI flakes is recorded under Current status. Docs: unit-tests.
 
 - 2026-10-24 — **Docs catch-up.** The 2026-10-17 resizable/maximizable map
   window (`87bfc13`) is now in readme-user, specifications §16.4 and the
