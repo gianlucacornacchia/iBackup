@@ -361,6 +361,19 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-24 — **Import reads each unchanged asset once, not twice.** The
+  fast-skip check (`importer_valid_copy`, which still byte-verifies so
+  same-size corruption forces a re-import) now hands the copy it verified to
+  `importer_sync_albums(..., source_path=...)`; reconciliation hashes a source
+  only when it must place a copy. Also fixed: with nothing placed,
+  reconciliation now requires a byte-valid *kept* copy before removing stale
+  ones (before, a valid stale copy could be removed while the kept one was
+  corrupt). The remaining one read per archived asset per import is the
+  price of that byte check; switching the fast path to size-only, leaving
+  bit-rot to `verify`, would be a separate decision. Tests: 2 new in
+  `tests/test_importer.py`, both failing on the old code. Docs:
+  specifications §9 step 3 and §12, unit-tests.
+
 - 2026-10-24 — **Guard: no reconciliation without album data.** When
   `Photos.sqlite` cannot be read for an import, `AfcDevice` now marks every
   item `PhoneItem.album_membership_known = False` (`FakeDevice(...,

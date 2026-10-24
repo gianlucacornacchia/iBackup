@@ -222,6 +222,49 @@ def test_unreadable_album_metadata_keeps_album_copies(archive):
     assert (paths.photos_dir / "Trip" / "IMG.heic").is_file()
 
 
+def test_fast_skip_reads_each_unchanged_asset_once(archive, monkeypatch):
+    """A known, unchanged item is byte-verified once, not again for reconciliation."""
+    from iphone_archive.core import hashing
+
+    paths, connection = archive
+    device = FakeDevice({"/DCIM/A.JPG": b"content"}, album_map={"/DCIM/A.JPG": ["Trip"]})
+    device.metadata["/DCIM/A.JPG"] = {"modified_at": "known"}
+    importer.importer_run(connection, paths, device)
+
+    hashed = []
+    real_hash = hashing.hashing_sha256_file
+
+    def counting(path, *args, **kwargs):
+        if "Photos" in str(path):
+            hashed.append(path)
+        return real_hash(path, *args, **kwargs)
+
+    monkeypatch.setattr(hashing, "hashing_sha256_file", counting)
+    result = importer.importer_run(connection, paths, device)
+
+    assert result.skipped_count == 1
+    assert len(hashed) == 1
+
+
+def test_reconciliation_never_removes_the_only_valid_copy(archive):
+    """When the copy that would be kept is corrupt, the stale valid copy stays."""
+    paths, connection = archive
+    both = FakeDevice({"/DCIM/A.JPG": b"original"}, album_map={"/DCIM/A.JPG": ["Trip", "Fav"]})
+    both.metadata["/DCIM/A.JPG"] = {"modified_at": "known"}
+    importer.importer_run(connection, paths, both)
+    (paths.photos_dir / "Fav" / "A.jpg").write_bytes(b"damaged!")
+
+    only_fav = FakeDevice({"/DCIM/A.JPG": b"original"}, album_map={"/DCIM/A.JPG": ["Fav"]})
+    only_fav.metadata["/DCIM/A.JPG"] = {"modified_at": "known"}
+    result = importer.importer_run(connection, paths, only_fav)
+
+    assert result.error_count == 1
+    assert (paths.photos_dir / "Trip" / "A.jpg").read_bytes() == b"original"
+    assert "Photos/Trip/A.jpg" in {
+        f.path for f in repository.repository_all_asset_files(connection)
+    }
+
+
 def test_sidecar_written_for_each_asset(archive):
     """Every imported asset gets a sidecar JSON file."""
     paths, connection = archive

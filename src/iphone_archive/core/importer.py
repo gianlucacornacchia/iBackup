@@ -358,15 +358,19 @@ def importer_process_item(
         source.device_udid(),
         item.modified_at,
     )
-    if (
-        known is not None
-        and known.asset_id is not None
-        and importer_has_valid_copy(connection, paths, known)
-    ):
+    valid_copy = (
+        importer_valid_copy(connection, paths, known)
+        if known is not None and known.asset_id is not None
+        else None
+    )
+    if known is not None and known.asset_id is not None and valid_copy is not None:
         # Fast-skip pass: identity match means the bytes are already archived, so
         # nothing is transferred; only newly discovered albums are reconciled.
+        # The copy just verified is reused so reconciliation never hashes again.
         importer_backfill_metadata(connection, paths, known, item)
-        importer_sync_albums(connection, paths, known.asset_id, item, link_mode, journal)
+        importer_sync_albums(
+            connection, paths, known.asset_id, item, link_mode, journal, source_path=valid_copy
+        )
         importer_update_sidecar(connection, paths, known.asset_id, journal)
         result.seen_sources.append((item.phone_path, known.asset_id))
         result.skipped_count += 1
@@ -584,14 +588,35 @@ def importer_has_valid_copy(
     connection: sqlite3.Connection, paths: ArchivePaths, asset: Asset
 ) -> bool:
     """Require a present, byte-valid archive copy before trusting an import shortcut."""
+    return importer_valid_copy(connection, paths, asset) is not None
+
+
+def importer_valid_copy(
+    connection: sqlite3.Connection,
+    paths: ArchivePaths,
+    asset: Asset,
+    location: FileLocation | None = None,
+) -> Path | None:
+    """Return the first present, byte-valid archive copy of an asset.
+
+    connection: an open catalog connection.
+    paths: resolved archive paths.
+    asset: the cataloged asset whose copies to check.
+    location: only consider copies in this location (e.g. ``Photos/``).
+    Returns the copy's path, or None when no copy matches the catalog's size
+    and SHA-256. Copies are hashed one at a time and the search stops at the
+    first valid one, so a healthy asset costs a single read.
+    """
     if asset.asset_id is None:
-        return False
+        return None
     for stored in repository.repository_list_asset_files(connection, asset.asset_id):
+        if location is not None and stored.location != location:
+            continue
         target = file_operations_path(paths, stored.path)
         if target.is_file() and target.stat().st_size == asset.size:
             if hashing.hashing_sha256_file(target) == asset.sha256:
-                return True
-    return False
+                return target
+    return None
 
 
 def importer_backfill_metadata(
@@ -787,6 +812,7 @@ def importer_sync_albums(
     item: PhoneItem,
     link_mode: str,
     journal: ImportJournal | None = None,
+    source_path: Path | None = None,
 ) -> None:
     """Make an asset's archived copies match its current phone album membership.
 
@@ -797,6 +823,9 @@ def importer_sync_albums(
     link_mode: ``copy`` or ``hardlink``.
     journal: the item's import journal; stale copies are retired through it,
         so their files are deleted only after the catalog commit.
+    source_path: a copy the caller has already byte-verified this item, used
+        as the source of new album copies. When None, a valid ``Photos/`` copy
+        is found (hashed) only if a copy actually has to be placed.
     Returns None. Adds a copy for every album newly discovered on the phone
     (a photo can belong to several albums at once, and each keeps its own
     copy), and removes any existing copy for an album the asset no longer
@@ -822,20 +851,25 @@ def importer_sync_albums(
         return
     existing_album_ids = {stored.album_id for stored in existing_files}
     asset = repository.repository_get_asset(connection, asset_id)
-    source_path: Path | None = None
-    for stored in existing_files:
-        candidate = file_operations_path(paths, stored.path)
-        if candidate.is_file() and asset is not None:
-            if hashing.hashing_sha256_file(candidate) == asset.sha256:
-                source_path = candidate
-                break
-    if source_path is None:
-        raise OSError(f"no valid archive copy for album reconciliation: {asset_id}")
+    verified_source = source_path
+    placed_any = False
+
+    def valid_source() -> Path:
+        nonlocal verified_source
+        if verified_source is None and asset is not None:
+            verified_source = importer_valid_copy(
+                connection, paths, asset, location=FileLocation.PHOTOS
+            )
+        if verified_source is None:
+            raise OSError(f"no valid archive copy for album reconciliation: {asset_id}")
+        return verified_source
 
     def place_copy(target_dir: Path, album_id: int | None) -> None:
+        nonlocal placed_any
         duplicate = archive_layout.archive_layout_duplicate_file(
-            source_path, target_dir, link_mode=link_mode
+            valid_source(), target_dir, link_mode=link_mode
         )
+        placed_any = True
         repository.repository_insert_asset_file(
             connection,
             AssetFile(
@@ -867,13 +901,25 @@ def importer_sync_albums(
         if None not in existing_album_ids:
             place_copy(archive_layout.archive_layout_unsorted_dir(paths, item.captured_at), None)
 
-    for stored in existing_files:
-        if stored.album_id in desired_album_ids:
-            continue
+    stale = [stored for stored in existing_files if stored.album_id not in desired_album_ids]
+    if stale and not placed_any:
+        # Nothing new was placed, so only a kept copy can remain once the stale
+        # ones go: require one of them to be byte-valid first.
+        kept = [stored for stored in existing_files if stored.album_id in desired_album_ids]
+        kept_paths = {file_operations_path(paths, stored.path) for stored in kept}
+        if verified_source not in kept_paths and not any(
+            asset is not None
+            and target.is_file()
+            and target.stat().st_size == asset.size
+            and hashing.hashing_sha256_file(target) == asset.sha256
+            for target in kept_paths
+        ):
+            raise OSError(f"no valid archive copy would remain for asset {asset_id}")
+    for stored in stale:
         # This copy's album is no longer part of the phone's current
         # membership (or the asset gained its first real album, retiring its
-        # old _Unsorted placeholder): remove it now that a desired copy is
-        # already guaranteed to exist.
+        # old _Unsorted placeholder): remove it now that a valid desired copy
+        # is guaranteed to exist.
         importer_retire_file(paths, file_operations_path(paths, stored.path), journal)
         repository.repository_delete_asset_file(connection, stored.file_id)
         if stored.album_id is not None:

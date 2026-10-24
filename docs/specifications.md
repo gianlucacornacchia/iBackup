@@ -261,7 +261,13 @@ paths, locations, album IDs/names and link modes; older sidecars remain readable
    and if `camera_model` is empty the archived copy's EXIF is read locally;
    existing values are never overwritten; and (b) album-reconciled (§12).
    This keeps re-runs on large libraries fast, since unchanged items are never
-   re-copied.
+   re-copied. "A valid copy" is checked by hashing archived copies until the
+   first one matches the catalog's size and SHA-256 (`importer_valid_copy`),
+   so a healthy asset costs one local read per import; that copy is then the
+   source for any new album copy, so reconciliation does not hash it again
+   (until 2026-10-24 it did, reading every archived asset twice). The local
+   read is deliberate: a same-size corrupted copy must not be fast-skipped.
+   The phone side transfers nothing.
 4. **Import pass (new/changed items only):** for each remaining candidate:
    a. Stream it from the phone into `.ibackup/tmp` while computing SHA-256.
    b. If it is a real (non-preview) item and the catalog holds an offloaded
@@ -339,7 +345,10 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
   3. then delete each existing `Photos/` copy whose album (or `_Unsorted`) is
      no longer reported — its file, its `asset_files` row and its
      `asset_albums` link.
-  New copies are created before stale ones are removed. A stale copy's file
+  New copies are created before stale ones are removed; when nothing new was
+  placed, one of the kept copies must be byte-valid first, otherwise the
+  item fails and nothing is removed (a corrupt kept copy can never cost the
+  asset its last good one). A stale copy's file
   is only *retired* in the item's import journal (path + file identity); it
   is deleted after the item's catalog commit, by the post-commit recovery
   pass (or by the next import's recovery after a crash). An item that rolls
