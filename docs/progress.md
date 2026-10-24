@@ -15,10 +15,7 @@ zoom)._
 - **Open quality items (2026-10-23):** `ruff check`, `ruff format --check`
   and `mypy --strict` are clean again, and the two `test_gui_settings.py`
   Windows path-separator failures are fixed. Still flaky:
-  `WinError 5` on atomic replace when another process briefly holds the
-  file (seen in `test_recycle.py` sidecars and in
-  `test_cli.py::test_marks_purge_requires_typed_confirmation` on
-  `settings.json`; no retry yet); a Qt access violation that hangs
+  a Qt access violation that hangs
   `test_gui_settings.py::test_the_window_saves_and_applies_what_was_edited`
   in `waitUntil` (run with `-p no:faulthandler` and a timeout, or the dump
   log grows without bound); and
@@ -363,6 +360,17 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-24 — **Fixed: `WinError 5` on atomic replace.** New
+  `core/atomic.py` (`atomic_replace`, `atomic_rename`) retries a Windows
+  `PermissionError` for about 1.5 s, so a sidecar, settings file or
+  file-operation journal briefly held by antivirus, the indexer or Explorer
+  no longer fails an import, a recycle or a CLI command. `FileExistsError` is
+  never retried, so no-clobber publication is unchanged; a lock that outlasts
+  the retries still raises. This was the cause of the intermittent
+  `test_recycle.py` and `test_cli.py` failures. Tests: new
+  `tests/test_atomic.py`; `test_settings.py` now patches the helper. Docs:
+  structure, plan, unit-tests.
 
 - 2026-10-23 — **Fixed: device cache lived in the working directory.** The
   temporary `Photos.sqlite` copy and the offloaded-preview cache were written

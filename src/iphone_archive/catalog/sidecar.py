@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from ..core.atomic import atomic_replace
 from . import repository
 
 
@@ -62,7 +63,7 @@ def sidecar_write(sidecars_dir: Path, data: SidecarData) -> Path:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        temporary.replace(target)
+        atomic_replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
     return target

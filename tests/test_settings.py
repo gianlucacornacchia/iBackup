@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -59,10 +58,11 @@ def test_failed_publication_is_reported_and_staging_cleaned(monkeypatch, existin
         settings_save(Settings(theme="light"))
     target = settings_path()
 
-    def deny_replace(self, destination):
+    def deny_replace(source, destination):
+        # A lock that outlasts every retry in core/atomic.py.
         raise PermissionError("settings file locked")
 
-    monkeypatch.setattr(Path, "replace", deny_replace)
+    monkeypatch.setattr(settings_module, "atomic_replace", deny_replace)
     with pytest.raises(PermissionError, match="settings file locked"):
         settings_save(Settings(theme="dark"))
     assert not list(target.parent.glob("*.tmp"))

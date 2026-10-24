@@ -28,6 +28,7 @@ All paths below are relative to `src/iphone_archive/`.
 | `catalog/repository.py` | Catalog queries, identities, membership, scan state; preview lookup/upgrade (`repository_find_offloaded_preview_by_original_path`, `repository_upgrade_offloaded_asset`), `repository_backfill_asset_metadata`, `repository_unlink_asset_album`. |
 | `catalog/sidecar.py` | JSON metadata serialization and `SidecarData` (no GPS/camera fields). |
 | `core/hashing.py` | Chunked SHA-256. |
+| `core/atomic.py` | `atomic_replace()` / `atomic_rename()`: atomic file publication that retries Windows' transient `PermissionError` (a file briefly held by antivirus, the indexer or Explorer) for about 1.5 s; `FileExistsError` is never retried. Used by sidecars, settings and `file_operations` journals/publication. |
 | `core/name_safety.py` | Windows-safe names and collision handling. |
 | `core/archive_layout.py` | Copy/hardlink placement and `PlacedFile`; album folders via `archive_layout_album_safe_name(name, kind)` / `archive_layout_album_dir(paths, name, kind)`, with shared albums under `SHARED_ALBUMS_DIR_NAME` (`Photos/_Shared Albums/`). |
 | `core/file_operations.py` | Journaled archive edit preflight, placement, rollback/finalization and sidecar recovery. |

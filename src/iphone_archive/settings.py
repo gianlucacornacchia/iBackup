@@ -19,6 +19,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .core.archive_layout import LINK_MODE_COPY, LINK_MODE_HARDLINK
+from .core.atomic import atomic_replace
 
 LOGGER = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ def settings_save(settings: Settings) -> Path:
     staging = target.with_name(f"{target.name}.{unique}.tmp")
     try:
         staging.write_text(json.dumps(asdict(settings), indent=2, sort_keys=True), encoding="utf-8")
-        staging.replace(target)
+        atomic_replace(staging, target)
     finally:
         staging.unlink(missing_ok=True)
     return target

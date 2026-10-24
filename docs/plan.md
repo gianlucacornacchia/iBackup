@@ -245,7 +245,7 @@ src/iphone_archive/
     app_service.py, archive_lock.py, progress.py, selection.py, marks.py
   device/               # interface.py, afc_device.py, fake_device.py
   catalog/              # database, models, repository, sidecar
-  core/                 # hashing, name_safety, archive_layout, importer,
+  core/                 # hashing, atomic, name_safety, archive_layout, importer,
                         #   dedup, verifier, albums, reclaim,
                         #   phone_diff, recycle, file_operations, exif, trip
   browse/               # gallery (read models only) + thumbnails (cache)

@@ -43,6 +43,7 @@ scenario is covered or that the latest edited suite has passed.
 | `test_settings.py` | Settings persistence, defaults, validation, CLI config behavior; a failed publication is reported and its unique staging file cleaned up. |
 | `test_logging_setup.py` | Logging configuration and operation output. |
 | `test_hashing.py` | Streaming hashes, known inputs and property checks. |
+| `test_atomic.py` | `core/atomic.py`: a transient `PermissionError` retried with the bounded delays, a persistent one raised, `FileExistsError` never retried, no retry off Windows, and real replace/rename on disk. |
 | `test_name_safety.py` | Sanitization, reserved names, collisions and property checks. |
 | `test_archive_layout.py` | Placement, hardlink/copy behavior and safe paths. |
 | `test_catalog.py` | Schema and repository behavior; v5 (`latitude`/`longitude`) and v6 (camera fields) migrations and round trips. Upgrade coverage must track migrations. |

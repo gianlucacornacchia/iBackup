@@ -21,6 +21,7 @@ from ..catalog import repository, sidecar
 from ..catalog.models import AssetFile
 from ..config import ArchivePaths
 from . import hashing, name_safety
+from .atomic import atomic_rename, atomic_replace
 
 file_operations_claimer: ContextVar[Callable[[Path, os.stat_result], None] | None] = ContextVar(
     "file_operations_claimer", default=None
@@ -184,7 +185,7 @@ def file_operations_publish(staged: Path, destination: Path) -> None:
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
-        os.rename(staged, destination)
+        atomic_rename(staged, destination)
     else:
         os.link(staged, destination)
     file_operations_sync_directory(destination.parent)
@@ -384,7 +385,7 @@ def file_operations_write_journal(journal: Path, payload: object) -> None:
         json.dump(payload, handle)
         handle.flush()
         os.fsync(handle.fileno())
-    pending.replace(journal)
+    atomic_replace(pending, journal)
     file_operations_sync_directory(journal.parent)
 
 
