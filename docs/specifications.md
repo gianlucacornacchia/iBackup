@@ -329,8 +329,15 @@ power-loss guarantees vary; Windows lacks the same directory-fsync guarantee.
   3. then delete each existing `Photos/` copy whose album (or `_Unsorted`) is
      no longer reported — its file, its `asset_files` row and its
      `asset_albums` link.
-  New copies are created before stale ones are removed, so an interrupted
-  reconciliation never leaves the asset without a valid copy. `Deleted/`
+  New copies are created before stale ones are removed. A stale copy's file
+  is only *retired* in the item's import journal (path + file identity); it
+  is deleted after the item's catalog commit, by the post-commit recovery
+  pass (or by the next import's recovery after a crash). An item that rolls
+  back therefore keeps its old copy, and an interrupted reconciliation never
+  leaves the asset without a valid copy (fixed 2026-10-23; before that a
+  failure after reconciliation, e.g. a sidecar write error, could delete the
+  only copy). The old file(s) of an upgraded offloaded preview (§9 step 4b)
+  are retired the same way. `Deleted/`
   copies are never touched, and assets not enumerated in this import (e.g.
   deleted from the phone) keep their placement.
 - Consequences: an archive-side `move` of an asset still on the phone is

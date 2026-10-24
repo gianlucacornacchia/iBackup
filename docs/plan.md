@@ -224,7 +224,8 @@ until a Windows run.
 - Multi-album assets are placed in **each** album folder (self-contained
   browsing); `--album-link-mode copy|hardlink` (auto-fallback to copy).
   Since 2026-10-10 each import reconciles an asset's `Photos/` copies with
-  its current phone albums (stale copies removed after new ones exist).
+  its current phone albums (stale copies removed after new ones exist, and
+  only once the item's catalog commit has landed).
 - **Windows-safe names** (reserved chars/names, trailing dots/spaces,
   case-insensitive collisions, <260-char paths).
 - Import uses per-item recovery journals (stage → hash-verify → exclusive

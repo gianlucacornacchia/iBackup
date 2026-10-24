@@ -149,6 +149,53 @@ def test_album_removed_on_phone_falls_back_to_unsorted(archive):
     assert (paths.root / files[0].path).is_file()
 
 
+def test_album_move_rolled_back_keeps_the_stale_copy(archive, monkeypatch):
+    """A failure after reconciliation must not delete the asset's only archived copy.
+
+    The new album copy is rolled back, so the old one has to survive on disk.
+    """
+    paths, connection = archive
+    first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
+    importer.importer_run(connection, paths, first)
+
+    def disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(importer, "sidecar_write", disk_full)
+    second = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Favorites"]})
+    result = importer.importer_run(connection, paths, second)
+
+    assert result.error_count == 1
+    files = repository.repository_all_asset_files(connection)
+    assert [f.path for f in files] == ["Photos/Trip/IMG.heic"]
+    assert (paths.root / files[0].path).read_bytes() == b"x"
+    assert not list(paths.photos_dir.glob("Favorites/*"))
+
+
+def test_stale_copy_removed_by_recovery_after_commit(archive, monkeypatch):
+    """A stale copy retired by a committed item is deleted when recovery next runs."""
+    paths, connection = archive
+    first = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Trip"]})
+    importer.importer_run(connection, paths, first)
+    stale = paths.photos_dir / "Trip" / "IMG.heic"
+
+    real_recover = importer.importer_recover
+    monkeypatch.setattr(importer, "importer_recover", lambda connection, paths: None)
+    second = FakeDevice({"/DCIM/IMG.HEIC": b"x"}, album_map={"/DCIM/IMG.HEIC": ["Favorites"]})
+    importer.importer_run(connection, paths, second)
+    # Committed, but the process "died" before post-commit cleanup.
+    assert stale.is_file()
+    assert [f.path for f in repository.repository_all_asset_files(connection)] == [
+        "Photos/Favorites/IMG.heic"
+    ]
+
+    real_recover(connection, paths)
+
+    assert not stale.exists()
+    assert (paths.photos_dir / "Favorites" / "IMG.heic").read_bytes() == b"x"
+    assert not list((paths.internal_dir / "import-journals").glob("*.json"))
+
+
 def test_sidecar_written_for_each_asset(archive):
     """Every imported asset gets a sidecar JSON file."""
     paths, connection = archive

@@ -70,6 +70,7 @@ class ImportJournal:
         self.created: dict[str, list[int] | None] = {}
         self.records: dict[str, Path] = {}
         self.sidecars: dict[str, str | None] = {}
+        self.retired: dict[str, list[int]] = {}
         try:
             archive_layout.archive_layout_sync(paths.internal_dir)
             archive_layout.archive_layout_sync(self.staging.parent)
@@ -88,6 +89,7 @@ class ImportJournal:
             {
                 "created": {},
                 "sidecars": self.sidecars,
+                "retired": self.retired,
                 "staging": {
                     "path": self.staging.relative_to(self.paths.root).as_posix(),
                     "identity": self.staging_identity,
@@ -134,6 +136,22 @@ class ImportJournal:
             if record is not None:
                 record.unlink(missing_ok=True)
                 archive_layout.archive_layout_sync(self.staging)
+
+    def retire(self, path: Path) -> None:
+        """Schedule an archived file for removal once this item's catalog commit lands.
+
+        Deleting before the commit would lose the bytes if the item then rolled
+        back: recovery removes the item's new copies and the catalog would still
+        point at the retired one. Recovery deletes retired files only after a
+        commit, and only while they are still the inode recorded here.
+        """
+        relative = path.relative_to(self.paths.root).as_posix()
+        file_operations_path(self.paths, relative)
+        if not path.exists():
+            return
+        identity = path.stat()
+        self.retired[relative] = [identity.st_dev, identity.st_ino]
+        self.persist()
 
     def protect_sidecar(self, sha256: str) -> None:
         """Persist the original sidecar bytes before replacing its metadata."""
@@ -190,6 +208,17 @@ def importer_recover(connection: sqlite3.Connection, paths: ArchivePaths) -> Non
                         handle.flush()
                         os.fsync(handle.fileno())
                 archive_layout.archive_layout_sync(target.parent)
+        else:
+            for relative, ownership in payload.get("retired", {}).items():
+                target = file_operations_path(paths, relative)
+                if not target.exists():
+                    continue
+                info = target.stat()
+                # A different inode at this path is not the copy this item
+                # retired; keep it rather than delete bytes nobody accounted for.
+                if ownership == [info.st_dev, info.st_ino]:
+                    target.unlink()
+                    archive_layout.archive_layout_sync(target.parent)
         if staging is not None and staging.exists():
             for entry in staging.iterdir():
                 file_operations_path(paths, entry.relative_to(paths.root).as_posix())
@@ -337,7 +366,7 @@ def importer_process_item(
         # Fast-skip pass: identity match means the bytes are already archived, so
         # nothing is transferred; only newly discovered albums are reconciled.
         importer_backfill_metadata(connection, paths, known, item)
-        importer_sync_albums(connection, paths, known.asset_id, item, link_mode)
+        importer_sync_albums(connection, paths, known.asset_id, item, link_mode, journal)
         importer_update_sidecar(connection, paths, known.asset_id, journal)
         result.seen_sources.append((item.phone_path, known.asset_id))
         result.skipped_count += 1
@@ -363,7 +392,15 @@ def importer_process_item(
 
     if upgrade_target is not None and upgrade_target.asset_id is not None:
         importer_upgrade_offloaded_preview(
-            connection, paths, source, upgrade_target.asset_id, item, placed, link_mode, result
+            connection,
+            paths,
+            source,
+            upgrade_target.asset_id,
+            item,
+            placed,
+            link_mode,
+            result,
+            journal,
         )
         importer_update_sidecar(connection, paths, upgrade_target.asset_id, journal)
         return
@@ -399,7 +436,7 @@ def importer_process_item(
         repository.repository_record_source(
             connection, existing.asset_id, source.device_udid(), item
         )
-        importer_sync_albums(connection, paths, existing.asset_id, item, link_mode)
+        importer_sync_albums(connection, paths, existing.asset_id, item, link_mode, journal)
         importer_update_sidecar(connection, paths, existing.asset_id, journal)
         result.seen_sources.append((item.phone_path, existing.asset_id))
         result.duplicate_count += 1
@@ -468,6 +505,7 @@ def importer_upgrade_offloaded_preview(
     placed: archive_layout.PlacedFile,
     link_mode: str,
     result: ImportResult,
+    journal: ImportJournal | None = None,
 ) -> None:
     """Replace a previously-imported offloaded preview with its real original.
 
@@ -479,6 +517,8 @@ def importer_upgrade_offloaded_preview(
     placed: the already-stored full-resolution file.
     link_mode: ``copy`` or ``hardlink`` for extra album copies.
     result: the running result summary, updated in place.
+    journal: the item's import journal; old preview files are retired through
+        it so they are only deleted after the catalog commit.
     Returns None. Deletes the old low-resolution preview copy (never valuable
     on its own) and rewrites the asset's content/phone identity, so the
     catalog ends up with exactly one entry for the photo instead of a
@@ -486,7 +526,7 @@ def importer_upgrade_offloaded_preview(
     same asset id.
     """
     for stored in repository.repository_list_asset_files(connection, asset_id):
-        file_operations_path(paths, stored.path).unlink(missing_ok=True)
+        importer_retire_file(paths, file_operations_path(paths, stored.path), journal)
         repository.repository_delete_asset_file(connection, stored.file_id)
 
     exif_metadata = exif.exif_read_metadata(placed.path)
@@ -738,6 +778,7 @@ def importer_sync_albums(
     asset_id: int,
     item: PhoneItem,
     link_mode: str,
+    journal: ImportJournal | None = None,
 ) -> None:
     """Make an asset's archived copies match its current phone album membership.
 
@@ -746,6 +787,8 @@ def importer_sync_albums(
     asset_id: the already-archived asset.
     item: the phone item carrying current album membership.
     link_mode: ``copy`` or ``hardlink``.
+    journal: the item's import journal; stale copies are retired through it,
+        so their files are deleted only after the catalog commit.
     Returns None. Adds a copy for every album newly discovered on the phone
     (a photo can belong to several albums at once, and each keeps its own
     copy), and removes any existing copy for an album the asset no longer
@@ -753,8 +796,9 @@ def importer_sync_albums(
     its first album), so moving a photo between albums on the phone never
     leaves a duplicate behind. Recycle-bin copies are a separate, user-driven
     lifecycle and are never touched here. New copies are always created
-    before any stale ones are removed, so a crash mid-reconciliation can
-    never drop the asset below one valid, on-disk copy.
+    before any stale ones are removed, and stale files are only deleted once
+    the catalog has committed, so neither a crash nor a rolled-back item can
+    drop the asset below one valid, on-disk copy.
     """
     existing_files = [
         stored
@@ -817,7 +861,22 @@ def importer_sync_albums(
         # membership (or the asset gained its first real album, retiring its
         # old _Unsorted placeholder): remove it now that a desired copy is
         # already guaranteed to exist.
-        file_operations_path(paths, stored.path).unlink(missing_ok=True)
+        importer_retire_file(paths, file_operations_path(paths, stored.path), journal)
         repository.repository_delete_asset_file(connection, stored.file_id)
         if stored.album_id is not None:
             repository.repository_unlink_asset_album(connection, asset_id, stored.album_id)
+
+
+def importer_retire_file(paths: ArchivePaths, target: Path, journal: ImportJournal | None) -> None:
+    """Remove an archived file whose catalog row this item deletes.
+
+    paths: resolved archive paths.
+    target: the archived file being dropped.
+    journal: the item's journal; when present the deletion waits for the
+        catalog commit (see ``ImportJournal.retire``), otherwise it is immediate.
+    Returns None.
+    """
+    if journal is not None:
+        journal.retire(target)
+    else:
+        target.unlink(missing_ok=True)

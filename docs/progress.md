@@ -359,6 +359,17 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-23 — **Fixed: album reconciliation could delete an asset's only
+  copy.** `importer_sync_albums` unlinked stale album copies before the
+  item's catalog commit; if the item then failed (e.g. a sidecar write
+  error) or the process died, recovery removed the new copies and the
+  catalog rolled back to point at the deleted file. Stale copies (and an
+  upgraded preview's old files) are now retired in the item's import journal
+  (`ImportJournal.retire`, path + file identity) and deleted by
+  `importer_recover` only for committed items, and only while the path is
+  still the recorded inode. Tests: 2 new in `tests/test_importer.py`. Docs:
+  specifications §12, plan, unit-tests.
+
 - 2026-10-23 — **Quality gates green again.** `tests/test_importer.py`
   reformatted; `core/exif.py` mypy errors fixed (`pillow_heif` does not
   re-export `register_heif_opener`; `int()` on an `object` returns `Any`);
