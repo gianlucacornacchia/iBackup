@@ -174,25 +174,34 @@ def repository_find_by_phone_identity(
 
 
 def repository_find_offloaded_preview_by_original_path(
-    connection: sqlite3.Connection, original_path: str | None
+    connection: sqlite3.Connection, original_path: str | None, device_udid: str | None
 ) -> Asset | None:
     """Find a previously-imported low-resolution preview for an album path.
 
     connection: an open catalog connection.
     original_path: the real (non-thumbnail) album-member path now being
         imported, to match against a preview's remembered original path.
-    Returns the preview ``Asset`` standing in for that path, or None when the
-    path is unset or no such preview was ever imported. Used to upgrade an
-    offloaded-preview placeholder in place once the real original has been
-    downloaded back to the phone, instead of archiving it as a duplicate.
+    device_udid: the device being imported; only a preview imported from this
+        same device can be upgraded, because another phone (or a reset one)
+        can hold an unrelated photo at the same ``/DCIM`` path.
+    Returns the one preview ``Asset`` standing in for that path on that
+    device, or None when the path or device is unset, no such preview exists,
+    or the match is ambiguous. Used to upgrade an offloaded-preview
+    placeholder in place once the real original has been downloaded back to
+    the phone, instead of archiving it as a duplicate.
     """
-    if not original_path:
+    if not original_path or not device_udid:
         return None
-    row = connection.execute(
-        "SELECT * FROM assets WHERE is_offloaded_preview = 1 AND offloaded_original_path = ?",
-        (original_path,),
-    ).fetchone()
-    return repository_row_to_asset(row) if row is not None else None
+    rows = connection.execute(
+        """
+        SELECT DISTINCT assets.* FROM assets JOIN source_identities AS source
+          ON source.asset_id = assets.id
+        WHERE assets.is_offloaded_preview = 1 AND assets.offloaded_original_path = ?
+          AND source.device_udid = ?
+        """,
+        (original_path, device_udid),
+    ).fetchall()
+    return repository_row_to_asset(rows[0]) if len(rows) == 1 else None
 
 
 def repository_upgrade_offloaded_asset(

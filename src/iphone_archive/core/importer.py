@@ -379,7 +379,7 @@ def importer_process_item(
         # same album path. Upgrade that preview in place instead of archiving a
         # duplicate second copy of the same photo.
         upgrade_target = repository.repository_find_offloaded_preview_by_original_path(
-            connection, item.phone_path
+            connection, item.phone_path, source.device_udid()
         )
 
     with source.device_open(item.phone_path) as stream:
@@ -390,6 +390,14 @@ def importer_process_item(
     if placed.size != item.size:
         raise DeviceError(f"source size changed during import: {item.phone_path}")
 
+    if upgrade_target is not None and upgrade_target.asset_id is not None:
+        already_archived = repository.repository_get_asset_by_hash(connection, placed.sha256)
+        if already_archived is not None and already_archived.asset_id != upgrade_target.asset_id:
+            # The original's bytes are already a separate asset (e.g. imported
+            # from another device). Rewriting the preview onto that hash would
+            # violate UNIQUE(sha256) on every import, so keep the preview and
+            # record this item as a duplicate of the existing asset instead.
+            upgrade_target = None
     if upgrade_target is not None and upgrade_target.asset_id is not None:
         importer_upgrade_offloaded_preview(
             connection,

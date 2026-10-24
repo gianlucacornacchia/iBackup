@@ -530,8 +530,10 @@ album is still complete instead of missing that photo entirely. To get the
 full-resolution original instead, select **Download and Keep Originals** in
 the iPhone's Photos/iCloud settings (or open the photo in Photos so the phone
 downloads it), let it finish downloading with enough free storage, then
-import again. The next import recognizes the original at the same phone path
-and **upgrades the preview in place**: the low-resolution file is deleted and
+import again. The next import from the same iPhone recognizes the original at
+the same phone path and **upgrades the preview in place** (a photo from a
+different iPhone at the same path is archived separately, and an original
+that is already in the archive just keeps the preview alongside it): the low-resolution file is deleted and
 replaced by the full-resolution copy in the same album folders, keeping the
 photo's marks and album links, and the summary counts it as `upgraded`.
 iBackup does not fetch originals from iCloud itself; USB/AFC offers no way to

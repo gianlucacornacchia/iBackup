@@ -260,8 +260,13 @@ paths, locations, album IDs/names and link modes; older sidecars remain readable
 4. **Import pass (new/changed items only):** for each remaining candidate:
    a. Stream it from the phone into `.ibackup/tmp` while computing SHA-256.
    b. If it is a real (non-preview) item and the catalog holds an offloaded
-      preview whose `offloaded_original_path` equals this phone path, **upgrade
-      that asset in place**: delete every stored file of the preview (in
+      preview whose `offloaded_original_path` equals this phone path and that
+      was imported from **this same device** (a `source_identities` row with
+      this UDID; since 2026-10-23, because another or reset phone can hold an
+      unrelated photo at the same `/DCIM` path), **upgrade that asset in
+      place** — unless the new bytes' hash already belongs to a different
+      asset, in which case the preview is kept and the item takes the
+      duplicate path (step c) instead of failing on `UNIQUE(sha256)`: delete every stored file of the preview (in
       `Photos/` and `Deleted/`), rewrite the same asset
       row's content/phone identity and metadata, clear the preview flags and
       place the new copies. Asset id, album links and marks are kept; the

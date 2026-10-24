@@ -359,6 +359,16 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-23 — **Fixed: offloaded-preview upgrade matched on path only.**
+  `repository_find_offloaded_preview_by_original_path` now also requires a
+  source identity from the importing device, so a second (or reset) phone's
+  unrelated photo at the same `/DCIM` path no longer deletes and replaces
+  another phone's preview. When the original's bytes already exist as a
+  different asset, the preview is kept and the item is a duplicate; before,
+  the `UNIQUE(sha256)` update failed on every import, which also blocked
+  presence publishing. Tests: 2 new in `tests/test_importer.py`. Docs:
+  specifications §9 step 4b, readme-user, unit-tests.
+
 - 2026-10-23 — **Fixed: album reconciliation could delete an asset's only
   copy.** `importer_sync_albums` unlinked stale album copies before the
   item's catalog commit; if the item then failed (e.g. a sidecar write

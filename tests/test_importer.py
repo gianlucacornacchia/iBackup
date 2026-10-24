@@ -786,11 +786,12 @@ def test_publication_io_failure_after_create_recovers_automatically(archive, mon
 class ScriptedPreviewThenOriginalDevice:
     """A device that first reports only an offloaded preview, then the real original."""
 
-    def __init__(self) -> None:
+    def __init__(self, udid: str = "FAKE-UDID") -> None:
         self.phase = "preview"
+        self.udid = udid
 
     def device_udid(self) -> str:
-        return "FAKE-UDID"
+        return self.udid
 
     def device_enumerate(self):
         if self.phase == "preview":
@@ -1001,3 +1002,43 @@ def test_offloaded_preview_upgrade_replaces_location(archive):
 
     upgraded_asset = repository.repository_get_asset(connection, asset_id)
     assert (upgraded_asset.latitude, upgraded_asset.longitude) == (48.85, 2.35)
+
+
+def test_offloaded_preview_not_upgraded_by_another_device(archive):
+    """A different phone's photo at the same /DCIM path must not replace the preview."""
+    paths, connection = archive
+    phone_a = ScriptedPreviewThenOriginalDevice(udid="PHONE-A")
+    importer.importer_run(connection, paths, phone_a)
+    preview = repository.repository_all_asset_files(connection)[0]
+
+    phone_b = ScriptedPreviewThenOriginalDevice(udid="PHONE-B")
+    phone_b.phase = "original"
+    result = importer.importer_run(connection, paths, phone_b)
+
+    assert result.upgraded_count == 0
+    assert result.added_count == 1
+    rows = connection.execute("SELECT is_offloaded_preview FROM assets ORDER BY id").fetchall()
+    assert [bool(row[0]) for row in rows] == [True, False]
+    assert (paths.root / preview.path).read_bytes() == b"low-res-preview"
+
+
+def test_offloaded_preview_kept_when_original_already_archived(archive):
+    """An original whose bytes are already archived is a duplicate, not an upgrade.
+
+    Upgrading would hit UNIQUE(sha256) and fail on every import, which would
+    also stop presence (deleted-from-phone) from ever being published again.
+    """
+    paths, connection = archive
+    other = FakeDevice({"/DCIM/COPY.HEIC": b"full-resolution-original"}, udid="OTHER")
+    importer.importer_run(connection, paths, other)
+    device = ScriptedPreviewThenOriginalDevice()
+    importer.importer_run(connection, paths, device)
+
+    device.phase = "original"
+    result = importer.importer_run(connection, paths, device)
+
+    assert result.error_count == 0
+    assert result.upgraded_count == 0
+    assert result.duplicate_count == 1
+    rows = connection.execute("SELECT is_offloaded_preview FROM assets ORDER BY id").fetchall()
+    assert [bool(row[0]) for row in rows] == [False, True]
