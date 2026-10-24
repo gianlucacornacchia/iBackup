@@ -226,12 +226,14 @@ MAP_CSS = """
 """
 
 # The page script. Plain string (not an f-string) so the JavaScript braces stay
-# readable; the points array is spliced in where ``__POINTS__`` appears.
+# readable. ``mapLoad(data)`` plots the points; ``__LOAD__`` is either a call
+# with the points inlined or empty, when Python pushes them after the page has
+# loaded (see ``WebMapWidget``), because ``setHtml()`` caps a page at 2 MB.
 MAP_SCRIPT = """
   var map = L.map('map', {preferCanvas: true});
   L.tileLayer(__TILE_URL__, {maxZoom: 19, attribution: __ATTRIBUTION__}).addTo(map);
   L.control.scale({metric: true, imperial: true}).addTo(map);
-  var points = __POINTS__;
+  var points = [];
   var photos = {};
 
   // Leaflet re-runs a popup content function on every update(), so each
@@ -300,7 +302,7 @@ MAP_SCRIPT = """
   var current = null;
   var arrowLayer = L.layerGroup().addTo(map);
   var modes = __MODES__;
-  var latlngs = points.map(function (p) { return L.latLng(p.lat, p.lon); });
+  var latlngs = [];
   var crs = L.CRS.EPSG3857;
 
   function mapLineStyle(mode) {
@@ -505,7 +507,14 @@ MAP_SCRIPT = """
     mapGoTo(target);
   }
 
-  if (points.length > 0) {
+  // Plots the trip once; called inline or from Python with the points array.
+  function mapLoad(data) {
+    points = data;
+    latlngs = points.map(function (p) { return L.latLng(p.lat, p.lon); });
+    if (points.length === 0) {
+      map.setView([20, 0], 2);
+      return;
+    }
     points.forEach(function (p, i) {
       var marker = L.circleMarker(latlngs[i], {radius: 5}).addTo(map);
       marker.bindPopup(function () {
@@ -521,16 +530,18 @@ MAP_SCRIPT = """
     map.on('zoomend', mapUpdateArrows);
     map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
     mapRedraw();
-  } else {
-    map.setView([20, 0], 2);
   }
+  __LOAD__
 """
 
 
-def mapview_build_html(points: list[MapPoint]) -> str:
+def mapview_build_html(points: list[MapPoint], inline_points: bool = True) -> str:
     """Build the full, self-contained HTML page for the trip map.
 
     points: the locations to plot, in capture order (oldest first).
+    inline_points: when False the page plots nothing until the caller runs
+        ``mapview_load_script(points)`` in it, which keeps a large trip under
+        ``setHtml()``'s 2 MB page limit; ``points`` is then ignored here.
     Returns an HTML document with Leaflet inlined (no external file:// or
     http:// references except the OpenStreetMap tile requests themselves),
     showing a trip line with direction arrows, labelled Start/End pins and a
@@ -544,7 +555,7 @@ def mapview_build_html(points: list[MapPoint]) -> str:
         .replace("__MODE_PREFIX__", json.dumps(MODE_CHANGE_PREFIX))
         .replace("__IGNORE_PREFIX__", json.dumps(IGNORE_CHANGE_PREFIX))
         .replace("__MODES__", json.dumps(MODE_STYLES))
-        .replace("__POINTS__", mapview_points_json(points))
+        .replace("__LOAD__", mapview_load_script(points) if inline_points else "")
     )
     return f"""<!DOCTYPE html>
 <html>
@@ -566,6 +577,16 @@ def mapview_build_html(points: list[MapPoint]) -> str:
 </body>
 </html>
 """
+
+
+def mapview_load_script(points: list[MapPoint]) -> str:
+    """Return the JavaScript statement that plots ``points`` on a loaded map page.
+
+    points: the locations to plot, in capture order.
+    Returns ``mapLoad([...]);`` with script-safe JSON, for inlining or for
+    ``QWebEnginePage.runJavaScript`` (which has no page-size limit).
+    """
+    return f"mapLoad({mapview_points_json(points)});"
 
 
 def mapview_parse_request(message: str, count: int) -> int | None:
@@ -757,6 +778,9 @@ class WebMapWidget(QWidget):
         self.page.mode_changed.connect(self.mapview_mode_message)
         self.page.ignore_changed.connect(self.mapview_ignore_message)
         self.view.setPage(self.page)
+        # The points of the page being loaded; pushed once it has finished.
+        self.pending_load: str | None = None
+        self.view.loadFinished.connect(self.mapview_page_loaded)
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumSize(320, 240)
         layout.addLayout(header)
@@ -784,7 +808,24 @@ class WebMapWidget(QWidget):
         self.ignored = {asset.asset_id for asset in self.located} & set(ignored or ())
         points = mapview_points(assets, segments, self.ignored)
         self.mapview_update_caption()
-        self.view.setHtml(mapview_build_html(points), QUrl("https://tile.openstreetmap.org/"))
+        # The page carries Leaflet and the script only; the points follow via
+        # runJavaScript, so a large library never exceeds setHtml's 2 MB cap
+        # (which would leave the map blank). The tile origin stays the base URL.
+        self.pending_load = mapview_load_script(points)
+        self.view.setHtml(
+            mapview_build_html(points, inline_points=False),
+            QUrl("https://tile.openstreetmap.org/"),
+        )
+
+    def mapview_page_loaded(self, ok: bool) -> None:
+        """Plot the pending points once their page has loaded.
+
+        ok: whether the page loaded; the points are pushed only on success.
+        Returns None.
+        """
+        script, self.pending_load = self.pending_load, None
+        if ok and script is not None:
+            self.page.runJavaScript(script)
 
     def mapview_update_caption(self) -> None:
         """Describe the plotted trip and enable stepping when a point is left to visit."""

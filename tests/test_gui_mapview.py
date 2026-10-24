@@ -375,9 +375,9 @@ def test_build_html_embeds_leaflet_and_points():
 def test_build_html_falls_back_to_world_view_with_no_points():
     """With nothing to plot, the map still opens, centred on the whole world."""
     html = mapview_build_html([])
-    assert "points.length > 0" in html
+    assert "points.length === 0" in html
     assert "map.setView([20, 0], 2)" in html
-    assert "var points = []" in html
+    assert "mapLoad([]);" in html
 
 
 def test_build_html_escapes_closing_script_tags_in_labels():
@@ -478,3 +478,33 @@ def test_map_dialog_opens_with_located_assets(qapp, qtbot):
     dialog = MapDialog("Vacation", assets)
     qtbot.addWidget(dialog)
     assert "2 located photos" in dialog.widget.caption.text()
+
+
+def test_a_map_larger_than_set_html_limit_still_plots_every_point(qapp, qtbot):
+    """Qt's setHtml() caps a page at 2 MB; a big library must still draw its trip.
+
+    20,000 located photos make a page of about 3 MB with the points inlined.
+    """
+    widget = WebMapWidget()
+    widget.resize(800, 600)
+    qtbot.addWidget(widget)
+    assets = [
+        make_asset_view(
+            asset_id=index + 1,
+            original_name=f"IMG_{index:05d}.HEIC",
+            captured_at=f"2024-08-01T12:{index // 60 % 60:02d}:{index % 60:02d}",
+            latitude=45.0 + index * 1e-5,
+            longitude=7.0 + index * 1e-5,
+        )
+        for index in range(20000)
+    ]
+    assert len(mapview_build_html(mapview_points(assets)).encode()) > 2 * 1024 * 1024
+    with qtbot.waitSignal(widget.view.loadFinished, timeout=60000):
+        widget.mapview_set_assets(assets)
+    plotted = -1
+    for _ in range(60):
+        plotted = helper_js(qtbot, widget.page, "markers.length")
+        if plotted == 20000:
+            break
+        qtbot.wait(1000)
+    assert plotted == 20000

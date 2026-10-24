@@ -361,6 +361,17 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-24 — **Fixed: large trip maps were blank.** `setHtml()` shows
+  nothing for a page over 2 MB, which the inlined points reached at about
+  13,000 located photos (~140 bytes each on top of ~176 KB of Leaflet).
+  `WebMapWidget` now loads the page without points (same
+  `https://tile.openstreetmap.org/` base URL, so tile requests are unchanged)
+  and pushes `mapLoad([...])` via `runJavaScript` on `loadFinished`; the page
+  script's plotting moved into `mapLoad(data)`. 20,000 points plot in about
+  5 s offscreen. Tests: 1 new real-WebEngine test in
+  `tests/test_gui_mapview.py` (blank on the old code), 1 updated. Docs:
+  specifications §16.4, structure, unit-tests.
+
 - 2026-10-24 — **Import reads each unchanged asset once, not twice.** The
   fast-skip check (`importer_valid_copy`, which still byte-verifies so
   same-size corruption forces a re-import) now hands the copy it verified to

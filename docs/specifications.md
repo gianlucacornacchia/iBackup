@@ -586,9 +586,14 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   all active), ordered by `captured_at` (oldest first), then name and id.
 - `gui/mapview.py` `MapDialog`/`WebMapWidget` embed a `QWebEngineView` whose
   page is generated locally: vendored Leaflet (`gui/webassets/leaflet/`,
-  BSD-2-Clause) and the point list (label, capture time, note) are inlined,
-  escaped so they cannot close the script tag; with no points it shows a
-  world view. With points the page draws (enhanced 2026-10-12):
+  BSD-2-Clause) is inlined, and the point list (label, capture time, note),
+  escaped so it cannot close the script tag, is plotted by `mapLoad(points)`;
+  with no points it shows a world view. `WebMapWidget` loads the page without
+  points through `setHtml()` (base URL `https://tile.openstreetmap.org/`) and
+  pushes `mapLoad([...])` with `runJavaScript` once `loadFinished` fires,
+  because `setHtml()` silently shows nothing for a page over 2 MB (about
+  13,000 inlined points; fixed 2026-10-24). `mapview_build_html(points)`
+  still inlines the call by default. With points the page draws (enhanced 2026-10-12):
   - the trip in capture order (oldest first, from `gallery_list_located`),
     drawn since the travel-mode change as one polyline per leg styled by its
     mode (untagged: blue solid), on a Leaflet canvas renderer
