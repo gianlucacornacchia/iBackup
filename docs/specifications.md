@@ -238,8 +238,13 @@ paths, locations, album IDs/names and link modes; older sidecars remain readable
    albums, capture time and GPS. Lookup failures leave the path missing and
    never break enumeration; a warning reports recovered vs. unrecoverable
    paths. Resolved lookups are cached per device UDID in
-   `.ibackup-device-cache/offloaded-preview-cache.json` under the process
-   working directory (not the archive), so later imports skip those AFC calls.
+   `%LOCALAPPDATA%\ibackup\cache\device-cache\offloaded-preview-cache.json`
+   (`settings_cache_directory()`; under `IBACKUP_CONFIG_DIR\cache` when that is
+   set; not the archive), so later imports skip those AFC calls. The temporary
+   `Photos.sqlite` copy is made in the same folder and deleted after parsing.
+   Until 2026-10-23 both lived in `.ibackup-device-cache` under the process
+   working directory, so an unwritable start folder made the database copy
+   fail and every import treated album metadata as unavailable (§12).
    **Shared-album items** (§12.1) are enumerated last, from
    `/PhotoData/PhotoCloudSharingData`, and only when the same `Photos.sqlite`
    copy reported shared-album membership; they carry `shared_album_names`

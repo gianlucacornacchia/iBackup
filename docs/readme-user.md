@@ -629,7 +629,7 @@ is run from a source installation; there is no downloadable build yet.
   not with how many are new. If the phone has offloaded ("Optimize iPhone
   Storage") albums, resolving their low-resolution previews used to repeat an
   AFC lookup for every offloaded photo on every import; those lookups are now
-  cached on disk per device (`.ibackup-device-cache\offloaded-preview-cache.json`
+  cached on disk per device (`%LOCALAPPDATA%\ibackup\cache\device-cache\offloaded-preview-cache.json`
   in the folder the app was started from, not in the archive), so only the
   first import after this update pays that cost again. The file is safe to
   delete; it is rebuilt on the next import.

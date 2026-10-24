@@ -15,8 +15,13 @@ zoom)._
 - **Open quality items (2026-10-23):** `ruff check`, `ruff format --check`
   and `mypy --strict` are clean again, and the two `test_gui_settings.py`
   Windows path-separator failures are fixed. Still flaky:
-  `test_recycle.py` sidecar replacement (`WinError 5` when another process
-  briefly holds the file) and
+  `WinError 5` on atomic replace when another process briefly holds the
+  file (seen in `test_recycle.py` sidecars and in
+  `test_cli.py::test_marks_purge_requires_typed_confirmation` on
+  `settings.json`; no retry yet); a Qt access violation that hangs
+  `test_gui_settings.py::test_the_window_saves_and_applies_what_was_edited`
+  in `waitUntil` (run with `-p no:faulthandler` and a timeout, or the dump
+  log grows without bound); and
   `test_gui_worker.py::test_close_then_open_serializes_archive_switches`.
 - **Trip-map travel modes (2026-10-12):** legs can be tagged with how the
   user travelled; stored per view in `trip_segments` (schema v7).
@@ -358,6 +363,18 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-23 — **Fixed: device cache lived in the working directory.** The
+  temporary `Photos.sqlite` copy and the offloaded-preview cache were written
+  to `<cwd>/.ibackup-device-cache`. A GUI started from a shortcut or a frozen
+  build may have an unwritable or shared cwd; the failed copy was logged as
+  "Photos metadata unavailable", and reconciliation then moved every album
+  copy into `_Unsorted` (spec §12 known limitation). Both now use
+  `settings_cache_directory()/device-cache` (`%LOCALAPPDATA%\ibackup\cache`;
+  under `IBACKUP_CONFIG_DIR` in tests). An existing cwd cache is simply no
+  longer read (the next import re-resolves previews once). Tests:
+  `tests/test_device.py` paths updated, 1 new. Docs: README, readme-user,
+  specifications §9, structure, unit-tests.
 
 - 2026-10-23 — **Fixed: offloaded-preview upgrade matched on path only.**
   `repository_find_offloaded_preview_by_original_path` now also requires a

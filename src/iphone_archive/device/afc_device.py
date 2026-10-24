@@ -31,6 +31,7 @@ from ..core.albums import (
     albums_parse_photos_database,
     albums_parse_shared_albums,
 )
+from ..settings import settings_cache_directory
 from .interface import DeviceError
 
 MEDIA_ROOTS = ("/DCIM",)
@@ -42,8 +43,9 @@ PREVIEW_NAME_MARKER = " (offloaded preview)"
 # Resolving a thumbnail costs two AFC round-trips (listdir + stat). Offloaded
 # albums are typically thousands of paths deep and do not change between
 # imports, so a resolved path is cached on disk and re-imports skip the AFC
-# calls entirely for anything already resolved once.
-PREVIEW_CACHE_DIR_NAME = ".ibackup-device-cache"
+# calls entirely for anything already resolved once. Lives under the per-user
+# cache folder (settings_cache_directory), never the process working directory.
+PREVIEW_CACHE_DIR_NAME = "device-cache"
 PREVIEW_CACHE_FILE_NAME = "offloaded-preview-cache.json"
 IMAGE_EXTENSIONS = {".heic", ".heif", ".jpg", ".jpeg", ".png", ".gif", ".dng", ".tiff"}
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi"}
@@ -388,7 +390,7 @@ class AfcDevice:
 
     def afc_device_preview_cache_path(self) -> Path:
         """Return the on-disk location of the resolved-thumbnail cache."""
-        return Path.cwd() / PREVIEW_CACHE_DIR_NAME / PREVIEW_CACHE_FILE_NAME
+        return settings_cache_directory() / PREVIEW_CACHE_DIR_NAME / PREVIEW_CACHE_FILE_NAME
 
     def afc_device_load_preview_cache(self) -> dict[str, Any]:
         """Load the resolved-thumbnail cache once per device instance.
@@ -584,7 +586,7 @@ class AfcDevice:
         self,
     ) -> tuple[dict[str, list[str]], dict[str, str], dict[str, tuple[float, float]]]:
         """Copy accessible Photos database/WAL and parse supported schemas best-effort."""
-        directory = Path.cwd() / ".ibackup-device-cache" / uuid4().hex
+        directory = settings_cache_directory() / PREVIEW_CACHE_DIR_NAME / uuid4().hex
         database_path = directory / "Photos.sqlite"
         membership: dict[str, list[str]] = {}
         capture_times: dict[str, str] = {}

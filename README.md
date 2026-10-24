@@ -46,7 +46,7 @@ albums work; see `docs/progress.md`):
   flagged in the catalog. When the original returns to the phone, the next
   import upgrades that asset in place (`upgraded` count) instead of adding a
   duplicate. Resolved preview paths are cached per device in
-  `.ibackup-device-cache/offloaded-preview-cache.json`.
+  `%LOCALAPPDATA%\ibackup\cache\device-cache\offloaded-preview-cache.json`.
 - **Album reconciliation.** Each import makes an asset's `Photos/` copies match
   its *current* phone album membership: new album copies are added and copies
   for albums the phone no longer reports (including a stale `_Unsorted` copy)

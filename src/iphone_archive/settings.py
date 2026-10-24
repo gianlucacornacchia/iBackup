@@ -69,6 +69,23 @@ def settings_directory() -> Path:
     return root / SETTINGS_DIR_NAME
 
 
+def settings_cache_directory() -> Path:
+    """Resolve the per-user, machine-local folder for disposable caches.
+
+    Returns ``%LOCALAPPDATA%\\ibackup\\cache`` on Windows (the settings folder's
+    ``cache`` subfolder elsewhere). ``IBACKUP_CONFIG_DIR`` moves it under that
+    folder, keeping tests and portable installs isolated. Never the working
+    directory, which may be unwritable or shared (e.g. a shortcut's start folder).
+    """
+    override = os.environ.get(SETTINGS_DIR_ENV_VAR)
+    if override:
+        return Path(override) / "cache"
+    base = os.environ.get("LOCALAPPDATA")
+    if base:
+        return Path(base) / SETTINGS_DIR_NAME / "cache"
+    return settings_directory() / "cache"
+
+
 def settings_path() -> Path:
     """Resolve the full path of the settings file.
 

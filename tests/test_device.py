@@ -6,9 +6,14 @@ import json
 
 import pytest
 
-from iphone_archive.device.afc_device import AfcDevice, afc_device_classify
+from iphone_archive.device.afc_device import (
+    PREVIEW_CACHE_DIR_NAME,
+    AfcDevice,
+    afc_device_classify,
+)
 from iphone_archive.device.fake_device import FakeDevice, fake_device_media_type
 from iphone_archive.device.interface import DeviceError, MediaSource
+from iphone_archive.settings import settings_cache_directory
 
 
 def test_fake_device_satisfies_protocol():
@@ -259,7 +264,7 @@ def test_afc_legacy_photos_metadata_requires_unique_database_filename(
     assert item.album_names == ([] if ambiguous else ["Trip"])
     assert item.captured_at == (None if ambiguous else "2001-01-01T00:00:00+00:00")
     assert device.device_album_map() == ({} if ambiguous else {"/DCIM/A.JPG": ["Trip"]})
-    assert not list((tmp_path / ".ibackup-device-cache").iterdir())
+    assert not list((settings_cache_directory() / PREVIEW_CACHE_DIR_NAME).iterdir())
     device.device_close()
 
 
@@ -432,7 +437,7 @@ def test_offloaded_member_cannot_label_unassigned_local_photo(tmp_path, monkeypa
     finally:
         service.app_service_close()
         device.device_close()
-    assert not list((tmp_path / ".ibackup-device-cache").iterdir())
+    assert not list((settings_cache_directory() / PREVIEW_CACHE_DIR_NAME).iterdir())
 
 
 def test_offloaded_photo_falls_back_to_cached_thumbnail_preview(tmp_path, monkeypatch, caplog):
@@ -523,7 +528,7 @@ def test_offloaded_photo_falls_back_to_cached_thumbnail_preview(tmp_path, monkey
         device.device_close()
     # The resolved thumbnail path is cached on disk so a later import of the
     # same still-offloaded photo can skip the AFC listdir/stat round-trips.
-    cache_dir = tmp_path / ".ibackup-device-cache"
+    cache_dir = settings_cache_directory() / PREVIEW_CACHE_DIR_NAME
     assert [p.name for p in cache_dir.iterdir()] == ["offloaded-preview-cache.json"]
     cached = json.loads((cache_dir / "offloaded-preview-cache.json").read_text())
     assert cached["unknown"]["/DCIM/100APPLE/MISSING.JPG"]["path"] == thumb_file
@@ -638,3 +643,19 @@ def test_afc_rejects_cross_thread_use():
         with pytest.raises(DeviceError, match="owning worker thread"):
             future.result()
     device.device_close()
+
+
+def test_device_cache_never_uses_the_working_directory(tmp_path, monkeypatch):
+    """The Photos.sqlite copy and preview cache stay out of the cwd.
+
+    A shortcut or frozen app may start in an unwritable folder; a failed copy
+    there used to make every import treat album metadata as unavailable.
+    """
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+
+    cache = AfcDevice().afc_device_preview_cache_path()
+
+    assert cache.parent == settings_cache_directory() / PREVIEW_CACHE_DIR_NAME
+    assert not cache.is_relative_to(work)
