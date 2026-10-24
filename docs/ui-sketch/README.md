@@ -474,7 +474,7 @@ declaration it checks, so this table and the code cannot drift apart silently.
 | Reset settings | `config reset` | §7b **Reset settings** | `app_service_reset_settings` |
 | Settings location | `config path` | §7b **Show settings file** | `app_service_settings_path` |
 | Forget recent archive | `config forget <path>` | §7b **Forget** | `app_service_forget_archive` |
-| Trip map | — (GUI only) | Page header **Map** on gallery-backed views (Start/End pins, direction arrows, photo popups) | `app_service_list_locations` |
+| Trip map | — (GUI only) | Page header **Map** on gallery-backed views opens a resizable, maximizable window (Start/End pins, direction arrows, photo popups) | `app_service_list_locations` |
 | Trip travel modes (read) | — (GUI only) | Map: modes drawn on the trip legs when the map opens | `app_service_trip_modes` |
 | Set travel mode | — (GUI only) | Map: click a leg and pick Car, Plane, On foot, Bike, Tuk-tuk, Bus, Taxi, Boat or Clear | `app_service_set_trip_mode` |
 | Trip ignored points (read) | — (GUI only) | Map: ignored points drawn greyed when the map opens | `app_service_trip_ignored` |

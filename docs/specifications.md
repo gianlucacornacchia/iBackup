@@ -631,7 +631,8 @@ and remains behind approval. See `ui-sketch/README.md` §0 and ADR-0010/0011.
   once per plot, then cached in the page. Without an open archive the popup
   says "No archive open"; without a stored copy "No archived copy"; on a
   render failure "No preview available (…)".
-- `MapDialog` opens at 900×640, deletes itself on close and waits for
+- `MapDialog` opens at 900×640 and is resizable, with Minimize/Maximize
+  buttons and a size grip (since 2026-10-17); it deletes itself on close and waits for
   in-flight renders (`mapview_shutdown`). Caption: "N located photos, plotted
   in capture order from Start to End. Click a point to see its photo, or a
   line to set how you travelled." The window passes `archive_root` from the

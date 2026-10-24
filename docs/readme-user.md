@@ -93,7 +93,8 @@ reclamation cannot yet free space on a real iPhone.
 
 **Map.** Every photo view (All photos, Unsorted, Recycle bin and each album)
 has a **Map** button in its header. It opens a zoomable OpenStreetMap map of
-the photos in that view that have a location. The Marked and
+the photos in that view that have a location, in its own window that you can
+resize or maximize. The Marked and
 Deleted-from-phone pages have no map. How to read it:
 
 - **The route.** A blue line joins the photos in the order they were taken,

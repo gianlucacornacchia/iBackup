@@ -27,7 +27,7 @@ The GUI worker foundation serializes archive work off the UI thread, with
 cooperative cancellation and safe shutdown. Paged asset/album models,
 copy-scoped selection, a background preview pipeline, the application shell, the
 photo gallery, the safe and destructive operations and the settings dialog are
-implemented (Phase 2 steps 1-11). Import, verify, scan, the duplicate report and
+implemented (Phase 2 steps 1-11; step 12, packaging, is below). Import, verify, scan, the duplicate report and
 move-to-album run behind a progress dialog that can be cancelled where the
 backend supports it, or hidden. A parity test now fails the build if any CLI
 command or service method has no GUI surface, so the two front ends cannot drift
@@ -35,8 +35,7 @@ apart. Windows packaging (step 12) is in place: `packaging/ibackup.spec` freezes
 the GUI into `dist/ibackup-gui/ibackup-gui.exe`, which CI builds and launches as
 a smoke test. A signed, downloadable release is still a later milestone.
 
-Since then (commits of 2026-09-16 to 2026-10-10, plus the 2026-10-11 shared
-albums work; see `docs/progress.md`):
+Since then (commits of 2026-09-16 to 2026-10-24; see `docs/progress.md`):
 
 - **Exact album paths.** Album membership and capture dates are keyed by the
   phone's `ZDIRECTORY` + filename; a reused filename never assigns albums.
@@ -65,6 +64,14 @@ albums work; see `docs/progress.md`):
   is the only feature that uses
   the network:** it downloads map tiles from `tile.openstreetmap.org` while
   the map is open. Everything else, including import, stays local.
+- **Safety fixes (2026-10-23/24).** Album reconciliation deletes stale copies
+  only after the item's catalog commit and never while the kept copy is
+  corrupt, and it is skipped when the phone's album database is unreadable;
+  an offloaded preview is only upgraded by the same device; the device cache
+  lives in `%LOCALAPPDATA%\ibackup\cache`, not the working directory;
+  atomic replaces retry Windows' transient sharing violations; maps with
+  more than ~13,000 points no longer open blank; each unchanged asset is
+  read once per import instead of twice.
 - **GUI fixes.** Larger tiles/buttons/navigation icons; the Marked and
   Deleted-from-phone pages now lay out correctly and show real thumbnails.
 - **iCloud Shared Albums (2026-10-11).** Shared albums (on iOS 26 the

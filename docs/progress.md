@@ -5,7 +5,10 @@ this whenever a todo changes state or a decision is made. The source-of-truth
 task list is the session todo DB / `todos.md`; this file is the human-readable
 resume point.
 
-_Last updated: 2026-10-16 (map: ignore a point, Previous/Next point; previously 2026-10-13: the trip map is now a real, zoomable Leaflet/
+_Last updated: 2026-10-24 (review fixes: reconciliation safety, device-scoped
+preview upgrade, device cache location, atomic-replace retries, large maps,
+single-read fast skip, layering; previously 2026-10-16: map ignore a point,
+Previous/Next point; previously 2026-10-13: the trip map is now a real, zoomable Leaflet/
 OpenStreetMap map embedded via Qt WebEngine, replacing the offline hand-drawn
 canvas, after the user explicitly asked for a Google-Maps-like experience with
 zoom)._
@@ -360,6 +363,14 @@ Do not infer Windows CI, live-device, or release qualification from this report.
       test on Windows 11; signing/installer/clean-machine test remain release work.
 
 ## Change log
+
+- 2026-10-24 — **Docs catch-up.** The 2026-10-17 resizable/maximizable map
+  window (`87bfc13`) is now in readme-user, specifications §16.4 and the
+  ui-sketch §8 parity map (that commit only updated this log). README: the
+  "steps 1-11" sentence now points at step 12, the "Since then" range runs to
+  2026-10-24 and lists the 2026-10-23/24 safety fixes. `pyproject.toml` also
+  declares the `Environment :: Win32 (MS Windows)` classifier for the GUI
+  entry point (metadata only).
 
 - 2026-10-24 — **Docs: `verify --limit` described correctly.** The option
   existed but was undocumented, and the verifier docstring called it a
