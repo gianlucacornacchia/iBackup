@@ -31,8 +31,9 @@ next to it in `_internal\`. Both `build\` and `dist\` are git-ignored.
 for executables that crash instantly on a missing DLL or hidden import, so the
 smoke test - a real launch of the real artifact under
 `QT_QPA_PLATFORM=offscreen` - is the check that answers whether packaging
-actually worked. It is wired into the `package` job in
-`.github/workflows/ci.yml`; `tests/test_packaging.py` covers the build inputs
+actually worked. It is wired into the `windows-app` job in
+`.github/workflows/build.yml`, which uploads the built app as the
+`ibackup-gui-windows` artifact; `tests/test_packaging.py` covers the build inputs
 and the smoke test's own logic, not the (minutes-long) build.
 
 ## Rules that must not be broken silently

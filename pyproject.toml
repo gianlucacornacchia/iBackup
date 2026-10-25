@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,15 +8,15 @@ version = "0.1.0"
 description = "Permanent, append-only archive of photos and videos from a USB-connected iPhone (Windows)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [{ name = "gcornacchia", email = "gianluca.cornacchia@electrolux.com" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "gianlucacornacchia", email = "c.luca74@gmail.com" }]
 keywords = ["iphone", "backup", "archive", "photos", "afc", "pymobiledevice3"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -44,6 +44,12 @@ dev = [
     "pre-commit>=3.7",
     "pyinstaller>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gianlucacornacchia/iBackup"
+Documentation = "https://github.com/gianlucacornacchia/iBackup/blob/main/docs/readme-user.md"
+Issues = "https://github.com/gianlucacornacchia/iBackup/issues"
+Changelog = "https://github.com/gianlucacornacchia/iBackup/blob/main/docs/progress.md"
 
 [project.scripts]
 ibackup = "iphone_archive.cli:main"

@@ -345,9 +345,12 @@ See `todos.md` for the full checklist with dependencies and status.
 - **Quality gates (adopted).**
   - **Pre-commit hooks** (`.pre-commit-config.yaml`): `ruff` (lint + format),
     `mypy`, and hygiene hooks run before every commit.
-  - **CI** on `windows-latest` (`.github/workflows/ci.yml`): venv + install →
-    ruff → `mypy --strict` (core/catalog) → `pytest` (GUI headless) with
-    coverage; the exact paths/threshold in configuration are authoritative.
+  - **CI** on `windows-latest`: `.github/workflows/tests.yml` runs install →
+    ruff → `mypy --strict` (core/catalog), then `pytest` (GUI headless) with
+    coverage on Python 3.11 and 3.12; `.github/workflows/build.yml` builds the
+    sdist/wheel and the smoke-tested PyInstaller app (split from one `ci.yml`
+    on 2026-10-25). The exact paths/threshold in configuration are
+    authoritative.
   - **Property-based tests** (`hypothesis`) for `name_safety` + hashing.
   - **Golden end-to-end + crash-resume test** (`tests/test_e2e.py`) over the fake
     device, asserting append-only/catalog invariants and idempotent resume.

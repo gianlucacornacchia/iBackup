@@ -370,6 +370,26 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-25 — **CI split into Tests and Build workflows.** `ci.yml` became
+  `.github/workflows/tests.yml` ("Tests": a lint/format/mypy job, then pytest
+  with the 85% coverage gate on a Python 3.11 + 3.12 matrix, uploading JUnit
+  and coverage XML and writing coverage to the job summary) and the new
+  `build.yml` ("Build": sdist + wheel with `twine check --strict`, and the
+  PyInstaller app, still smoke-tested, also on `v*` tags). Both run on
+  `windows-latest` on pushes to `main`, PRs and manual dispatch, with pip
+  caching, read-only permissions and superseded-run cancellation. Actions
+  moved to `checkout@v5`, `setup-python@v6`, `upload-artifact@v5` (the v4
+  ones ran on deprecated Node.js 20). `.github/dependabot.yml` proposes
+  monthly action and pip updates, except the pinned `pymobiledevice3`.
+  `pyproject.toml` declares the license as SPDX `"MIT"` with
+  `license-files` (`setuptools>=77`); the table form is deprecated and would
+  stop building after 2027-02-18. It also adds `[project.urls]` and
+  replaces the work author email. Checked locally with CI's dependency
+  versions: `python -m build` with no warnings, `twine check --strict`
+  passes, and the wheel carries `LICENSE`. The workflows have not yet run on
+  GitHub; Python 3.12 has never been tested. Docs: development §7/§9, plan,
+  unit-tests, packaging README.
+
 - 2026-10-25 — **Fix: CI failing on mypy.** The last four GitHub runs
   (2026-09-15 onward) failed; the two of 2026-10-25 failed at mypy. GitHub Actions
   installs the latest dependencies; pillow-heif 1.8.1 now types

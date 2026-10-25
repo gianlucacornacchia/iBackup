@@ -616,7 +616,8 @@ version kept in step with `pyproject.toml`) are in `packaging/README.md`.
 
 **A build counts only once the smoke test passes**, because PyInstaller reports
 success for executables that die instantly on a missing DLL or hidden import.
-Both steps run in the `package` CI job on `windows-latest`;
+Both steps run in the `windows-app` job of `.github/workflows/build.yml` on
+`windows-latest`;
 `tests/test_packaging.py` guards the build inputs and the smoke test's own
 logic without paying for a build.
 
@@ -660,17 +661,43 @@ Configured in `.pre-commit-config.yaml` (added during scaffold): `ruff` (lint +
 format), `mypy`, and hygiene hooks (trailing whitespace, end-of-file, large-file
 guard, merge-conflict check).
 
-**Continuous integration** runs on a **`windows-latest`** GitHub Actions runner
-(`.github/workflows/ci.yml`, added during scaffold) on every push / PR:
+**Continuous integration** runs on **`windows-latest`** GitHub Actions runners
+on every push to `main`, every pull request and on manual dispatch. It is split
+into two workflows (until 2026-10-25 both were jobs of one `ci.yml`); the
+README's **Tests** and **Build** badges show their status on `main`.
 
-1. set up Python 3.11, create the venv, `pip install -e ".[dev]"`;
-2. `ruff check` + `ruff format --check`;
-3. `mypy --strict` on the scope declared in the checked-in workflow/tool configuration;
-4. `pytest` (GUI headless via `QT_QPA_PLATFORM=offscreen`) with
+`.github/workflows/tests.yml` (**Tests**):
+
+1. `lint` job (Python 3.11): `pip install -e ".[dev]"`, then `ruff check`,
+   `ruff format --check` and `mypy --strict` on the scope declared in the
+   workflow;
+2. `test` job, a matrix over **Python 3.11 and 3.12** (`fail-fast: false`):
+   `pytest` (GUI headless via `QT_QPA_PLATFORM=offscreen`) with
    `--cov=iphone_archive`;
-5. **coverage gate:** fail the build if total coverage drops below the configured
-   threshold. Read `pyproject.toml`/workflow for the current value rather than
-   treating an old percentage as evidence.
+3. **coverage gate:** fail the build if total coverage drops below the configured
+   threshold. Read the workflow for the current value rather than treating an
+   old percentage as evidence. Each matrix leg writes its coverage percentage
+   to the job summary and uploads `test-results.xml` (JUnit) and
+   `coverage.xml` as an artifact.
+
+`.github/workflows/build.yml` (**Build**, also on `v*` tags):
+
+1. `dist` job: `python -m build` (sdist + wheel), `twine check --strict`,
+   uploaded as the `python-dist` artifact. `pyproject.toml` declares the
+   license as an SPDX string (`license = "MIT"`, `license-files`, so
+   `setuptools>=77`); the older table form and license classifier are
+   deprecated and stop building after 2027-02-18;
+2. `windows-app` job: the PyInstaller build and smoke test of §7, uploaded as
+   the `ibackup-gui-windows` artifact.
+
+CI installs the **latest** releases allowed by `pyproject.toml`, while a local
+`.venv` keeps whatever was current when it was created, so CI can fail on
+code that passes locally. On 2026-10-25, pillow-heif 1.8 started exporting
+typed `register_heif_opener`, making an existing `# type: ignore` unused under
+`warn_unused_ignores`. When CI and local results disagree, reproduce in a
+fresh venv first. `.github/dependabot.yml` proposes monthly updates for the
+workflow actions and pip dependencies, except the deliberately pinned
+`pymobiledevice3`.
 
 The workflow is configured, not proof of an observed successful Windows run.
 Record real execution results in `progress.md`. See `unit-tests.md` for device,

@@ -1,0 +1,72 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dist:
+    name: Python package (sdist + wheel)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v5
+        with:
+          name: python-dist
+          path: dist/
+
+  windows-app:
+    name: Windows GUI executable (PyInstaller)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Build ibackup-gui.exe
+        run: pyinstaller packaging\ibackup.spec --noconfirm
+
+      # PyInstaller reports success for executables that crash on a missing
+      # DLL or hidden import; only launching the artifact proves the build.
+      - name: Smoke-test the built executable
+        run: python packaging\smoke_test.py dist\ibackup-gui\ibackup-gui.exe
+
+      - name: Upload the built app
+        uses: actions/upload-artifact@v5
+        with:
+          name: ibackup-gui-windows
+          path: dist/ibackup-gui/

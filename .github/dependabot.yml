@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Keep workflow actions current (e.g. ahead of runner Node.js deprecations).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    # pymobiledevice3 is pinned on purpose: device access is validated against
+    # one exact version (see docs/development.md).
+    ignore:
+      - dependency-name: pymobiledevice3
