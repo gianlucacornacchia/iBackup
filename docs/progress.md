@@ -370,6 +370,20 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-25 — **Docs: device compatibility matrix.** New
+  `docs/compatibility.md`: tested devices (iPhone 12 `iPhone13,2`, iOS 26.4,
+  Windows 11 build 26200 and the earlier Linux run), a per-feature status
+  table drawn only from the dated hardware entries in this log, iOS
+  version notes (join table, shared-album schema, GPS columns, thumbnail
+  mirror), open known issues and the four bugs found and fixed on hardware,
+  and a non-destructive test procedure for contributors. New issue form
+  `.github/ISSUE_TEMPLATE/device_report.yml`. README gains a Compatibility
+  section with an "anyone can contribute" call to action (device reports and
+  code), and CONTRIBUTING, readme-user and unit-tests §4 link to the
+  matrix. The todos `reconcile-guard` and `preview-cache-location` were
+  stale (fixed 2026-10-24 and 2026-10-23) and are now checked. No behaviour
+  change.
+
 - 2026-10-25 — **Docs: README rewritten for GitHub; community files.** The
   root README is now a project landing page: Tests/Build workflow badges plus
   Python, platform, ruff, mypy and license badges, an alpha warning, features,

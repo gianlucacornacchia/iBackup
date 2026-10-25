@@ -1,0 +1,71 @@
+name: Device compatibility report
+description: Tell us how iPhone Archive works with your iPhone and iOS version
+title: "Device report: <iPhone model>, iOS <version>"
+labels: [device-report]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for testing! Follow the steps in
+        [docs/compatibility.md](https://github.com/gianlucacornacchia/iBackup/blob/main/docs/compatibility.md#report-your-device)
+        with a new, disposable archive. Remove your device UDID and any personal names before posting.
+  - type: input
+    id: iphone
+    attributes:
+      label: iPhone model
+      placeholder: "iPhone 15 Pro (Settings > General > About; model ID like iPhone16,1 if known)"
+    validations:
+      required: true
+  - type: input
+    id: ios
+    attributes:
+      label: iOS version
+      placeholder: "18.5 (22F76)"
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Windows version and archive drive
+      placeholder: "Windows 10 22H2, external exFAT SSD"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: iPhone Archive commit
+      description: Output of `git rev-parse --short HEAD`
+    validations:
+      required: true
+  - type: checkboxes
+    id: results
+    attributes:
+      label: What worked
+      description: Tick each item that behaved correctly.
+      options:
+        - label: "`device-info` found the phone"
+        - label: Import finished with 0 errors
+        - label: A second import added 0 items
+        - label: "`verify` reported no problems"
+        - label: Albums match the Photos app
+        - label: iCloud Shared Albums were imported
+        - label: Videos and Live Photos imported
+        - label: Map shows photo locations (GUI)
+  - type: textarea
+    id: library
+    attributes:
+      label: Library size
+      placeholder: "about 12,000 photos, 800 videos, 40 albums, Optimize iPhone Storage on/off"
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output and warnings
+      description: Output of the commands, plus any WARNING or ERROR lines from `<archive>\.ibackup\logs\`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: What went wrong, what looked odd, or import speed.

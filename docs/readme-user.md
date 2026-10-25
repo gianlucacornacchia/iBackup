@@ -5,8 +5,10 @@
 > establish general real-iPhone compatibility. The source GUI (`ibackup-gui`)
 > runs every archive operation; a Windows build recipe exists, but there is no
 > installer or published portable build.
-> See [progress](progress.md) and the [hardware gate](unit-tests.md#4-windowsiphone-validation-gate)
-> before using a real phone. Keep an independent backup.
+> See the [compatibility matrix](compatibility.md) (tested iPhones, iOS
+> versions and known bugs), [progress](progress.md) and the
+> [hardware gate](unit-tests.md#4-windowsiphone-validation-gate) before using
+> a real phone. Keep an independent backup.
 
 **iPhone Archive** (`ibackup`) copies the photos and videos from your
 USB-connected iPhone into a permanent archive on your computer or external

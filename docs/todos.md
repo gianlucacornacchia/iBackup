@@ -341,9 +341,9 @@ Recorded in `progress.md`; docs reconciled 2026-10-11.
 
 Follow-ups found while reconciling (not scheduled):
 
-- [ ] **reconcile-guard** — skip album reconciliation when `Photos.sqlite`
-  could not be read; today an unreadable database moves album copies of
-  still-present assets into `_Unsorted` until the next good import.
+- [x] **reconcile-guard** — skip album reconciliation when `Photos.sqlite`
+  could not be read. Done 2026-10-24 (`album_membership_known`; see
+  `progress.md`).
 - [ ] **map-packaging-check** — rebuild the `.exe` with Qt WebEngine and the
   web assets, open a map in it, and assert the `webassets` `datas` entry in
   `tests/test_packaging.py`.
@@ -354,9 +354,9 @@ Follow-ups found while reconciling (not scheduled):
   in the GUI or written to sidecars.
 - [ ] **review-page-map** — the Marked and Deleted-from-phone pages have no
   map.
-- [ ] **preview-cache-location** — the offloaded-preview cache and the
-  temporary `Photos.sqlite` copy live under the process working directory,
-  not a per-user or per-archive location.
+- [x] **preview-cache-location** — the offloaded-preview cache and the
+  temporary `Photos.sqlite` copy moved from the working directory to
+  `%LOCALAPPDATA%\ibackup\cache` on 2026-10-23.
 - [~] **shared-albums-hardware** — partially done 2026-10-11 on an iPhone 12
   (iOS 26.4): schema (`ZSHARE`), `PhotoCloudSharingData/<personId>/<GUID>/
   100CLOUD` layout and AFC reads validated (18 albums, 6,150 items). Still to
@@ -412,6 +412,14 @@ Follow-ups found while reconciling (not scheduled):
   tests on a hosted runner.
 - [ ] **readme-screenshot** — add a real screenshot of `ibackup-gui` (not the
   wireframe mock) to the README.
+- [x] **compatibility-matrix** (2026-10-25) — `docs/compatibility.md`: tested
+  devices, per-feature status on the iPhone 12 / iOS 26.4, iOS version notes,
+  open and fixed hardware bugs, and a non-destructive test procedure for
+  contributors; `.github/ISSUE_TEMPLATE/device_report.yml` collects reports.
+- [ ] **device-reports** — fold each device compatibility report into
+  `docs/compatibility.md` (new row plus feature results), keeping only
+  dated, reproducible runs; then retire the corresponding "untested"
+  entries in `unit-tests.md` §4.
 
 ## Future backlog (agreed, not scheduled)
 

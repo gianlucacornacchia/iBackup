@@ -134,6 +134,11 @@ atomicity. An immutable audit trail and catalog rebuild are separate work.
 
 ## 4. Windows/iPhone validation gate
 
+The user-facing summary of what has been tested on which iPhone and iOS
+version, including community reports, is
+[compatibility.md](compatibility.md). This section stays the release gate:
+a community report adds evidence, but it does not pass a matrix row by itself.
+
 **Required before enabling destructive reclaim on real phones.** All rows are
 pending until a dated report identifies Windows build, iPhone model, iOS
 version, Apple driver, dependency versions and filesystem. Use a disposable

@@ -1,7 +1,19 @@
 # Contributing
 
-Thanks for your interest in iPhone Archive. Bug reports, device compatibility
-reports and pull requests are all welcome.
+Thanks for your interest in iPhone Archive. Anyone can contribute, in two
+ways:
+
+- **Test your own iPhone.** Only one model and iOS version has been tested so
+  far ([compatibility matrix](docs/compatibility.md)). Run the short,
+  non-destructive [test procedure](docs/compatibility.md#report-your-device)
+  and file a
+  [device compatibility report](https://github.com/gianlucacornacchia/iBackup/issues/new?template=device_report.yml),
+  including when everything works.
+- **Add features or fix bugs.** You don't need an iPhone, because the test
+  suite runs against a fake device. Open work is in
+  [docs/todos.md](docs/todos.md) and the known issues in the
+  [compatibility matrix](docs/compatibility.md#known-issues-and-limitations).
+  For anything large, open an issue first to discuss the approach.
 
 ## Reporting a problem
 

@@ -119,6 +119,24 @@ ibackup-gui                                  # or do all of it from the desktop 
 Run `ibackup --help` for every option. The [user guide](docs/readme-user.md)
 covers each command, the desktop app and the map.
 
+## Compatibility
+
+| iPhone | iOS | Windows | Status |
+|---|---|---|---|
+| iPhone 12 | 26.4 | 11 | ⚠️ Import, albums, GPS, offloaded previews and verify work; shared albums are partly validated and deleting from the phone is disabled |
+| Any other model or iOS version | | | ❔ Untested; [help us test it](docs/compatibility.md#report-your-device) |
+
+The [compatibility matrix](docs/compatibility.md) has the per-feature
+results, iOS version notes, and the known bugs, both open and fixed.
+
+> [!TIP]
+> **Anyone can contribute.** Test iPhone Archive with your own iPhone model
+> and [send a device report](https://github.com/gianlucacornacchia/iBackup/issues/new?template=device_report.yml),
+> even if everything works. Each report adds a row to the matrix. Code
+> contributions are just as welcome: you don't need an iPhone to build
+> features or fix bugs, because the test suite runs against a fake device.
+> See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Safety model
 
 - Imports never overwrite or modify an archived file. Files are written to a
@@ -174,6 +192,7 @@ gui/  ──┘                  └──► device/ (AFC over USB, or a fake d
 | Document | Contents |
 |---|---|
 | [User guide](docs/readme-user.md) | Installation, commands, desktop app, map, FAQ, troubleshooting |
+| [Compatibility](docs/compatibility.md) | Tested iPhones and iOS versions, per-feature results, known bugs |
 | [Specification](docs/specifications.md) | Archive layout, catalog schema, import and safety rules |
 | [Architecture](docs/structure.md) | Module map and data flow |
 | [Development](docs/development.md) | Environment, dependencies, tests, packaging |
