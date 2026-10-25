@@ -1,142 +1,197 @@
-# iPhone Archive (`ibackup`)
+# iPhone Archive
 
-A **Windows-targeted** photo archive project (CLI and GUI implemented from
-source; no release yet) that creates a permanent,
-**append-only** archive of photos and videos from a USB-connected iPhone. Media
-is stored as **plain files in album folders**, browsable in File Explorer
-without the app. The archive — not the phone — is the source of truth.
+[![Tests](https://github.com/gianlucacornacchia/iBackup/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/gianlucacornacchia/iBackup/actions/workflows/tests.yml)
+[![Build](https://github.com/gianlucacornacchia/iBackup/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/gianlucacornacchia/iBackup/actions/workflows/build.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?logo=windows&logoColor=white)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)](https://mypy-lang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> Status: **offline core-hardening complete; Phase 2 GUI steps 1-12 done**.
-> Core and CLI implementations have offline fake-device tests; the read/import
-> path has also been exercised against a real iPhone 12 (iOS 26.4) on Windows
-> 11, which is not Windows release validation. The GUI sketch was approved on
-> 2026-09-11; `ibackup-gui` opens a
-> themed window with navigation, a command bar, live counts, a thumbnail grid
-> with multi-select and a full-size viewer, and it can now open an archive and
-> run every archive operation, including recycling, restoring, purging, marking
-> and previewing phone-space reclamation behind a typed-`DELETE` confirmation.
-> Every stored preference is editable in the settings dialog, which can never
-> weaken a confirmation. Reclamation cannot yet free space on a real
-> phone: device-side deletion remains disabled pending hardware validation.
-> Mica is an opt-in Windows probe; normal launches use solid backgrounds. No
-> downloadable Windows release is available. See
-> [`docs/progress.md`](docs/progress.md) for validation evidence and remaining
-> gates.
+**A permanent, append-only archive for the photos and videos on your iPhone.**
 
-The GUI worker foundation serializes archive work off the UI thread, with
-cooperative cancellation and safe shutdown. Paged asset/album models,
-copy-scoped selection, a background preview pipeline, the application shell, the
-photo gallery, the safe and destructive operations and the settings dialog are
-implemented (Phase 2 steps 1-11; step 12, packaging, is below). Import, verify, scan, the duplicate report and
-move-to-album run behind a progress dialog that can be cancelled where the
-backend supports it, or hidden. A parity test now fails the build if any CLI
-command or service method has no GUI surface, so the two front ends cannot drift
-apart. Windows packaging (step 12) is in place: `packaging/ibackup.spec` freezes
-the GUI into `dist/ibackup-gui/ibackup-gui.exe`, which CI builds and launches as
-a smoke test. A signed, downloadable release is still a later milestone.
+`ibackup` copies media from a USB-connected iPhone into plain files and folders
+on your PC or external drive, organised by album. Once a photo is in the
+archive it stays there, even after you delete it from the phone. The archive,
+not the phone, is the source of truth, and it stays fully browsable in File
+Explorer without this app.
 
-Since then (commits of 2026-09-16 to 2026-10-24; see `docs/progress.md`):
+> [!WARNING]
+> **Alpha software.** The CLI and GUI run from source and are covered by an
+> offline test suite. Real-device import has been exercised on an iPhone 12
+> (iOS 26.4) on Windows 11, but the full Windows/iPhone validation matrix has
+> not yet passed and there is no downloadable release. Keep an independent
+> backup and do not rely on this as your only copy.
 
-- **Exact album paths.** Album membership and capture dates are keyed by the
-  phone's `ZDIRECTORY` + filename; a reused filename never assigns albums.
-- **Offloaded previews.** Album members whose originals were offloaded
-  ("Optimize iPhone Storage") are imported from the phone's cached
-  `/PhotoData/Thumbnails/V2` JPEG, named `… (offloaded preview).jpg` and
-  flagged in the catalog. When the original returns to the phone, the next
-  import upgrades that asset in place (`upgraded` count) instead of adding a
-  duplicate. Resolved preview paths are cached per device in
-  `%LOCALAPPDATA%\ibackup\cache\device-cache\offloaded-preview-cache.json`.
-- **Album reconciliation.** Each import makes an asset's `Photos/` copies match
-  its *current* phone album membership: new album copies are added and copies
-  for albums the phone no longer reports (including a stale `_Unsorted` copy)
-  are removed. Recycle-bin copies are untouched.
-- **Location and camera metadata.** GPS from `Photos.sqlite` (EXIF GPS as a
-  fallback) and EXIF camera/lens/ISO/aperture/focal length are stored in the
-  catalog (schema v6) and backfilled onto already-archived assets on reimport.
-- **Trip map.** Every gallery view (All photos, Unsorted, Recycle bin, each
-  album) has a **Map** button opening a zoomable Leaflet/OpenStreetMap map of
-  its located photos in capture order, with Start/End labels, direction
-  arrows and a photo popup (rendered from the archive) on every point. Click a
-  leg to record how you travelled (car, plane, on foot, bike, tuk-tuk, bus,
-  taxi, boat); modes are saved per view in the catalog (schema v7). A point
-  can be **ignored** (greyed, left out of the trip line; schema v8) and
-  **Previous/Next point** buttons step through the rest. **This
-  is the only feature that uses
-  the network:** it downloads map tiles from `tile.openstreetmap.org` while
-  the map is open. Everything else, including import, stays local.
-- **Safety fixes (2026-10-23/24).** Album reconciliation deletes stale copies
-  only after the item's catalog commit and never while the kept copy is
-  corrupt, and it is skipped when the phone's album database is unreadable;
-  an offloaded preview is only upgraded by the same device; the device cache
-  lives in `%LOCALAPPDATA%\ibackup\cache`, not the working directory;
-  atomic replaces retry Windows' transient sharing violations; maps with
-  more than ~13,000 points no longer open blank; each unchanged asset is
-  read once per import instead of twice.
-- **GUI fixes.** Larger tiles/buttons/navigation icons; the Marked and
-  Deleted-from-phone pages now lay out correctly and show real thumbnails.
-- **iCloud Shared Albums (2026-10-11).** Shared albums (on iOS 26 the
-  `Photos.sqlite` `ZSHARE` table) are imported over USB into
-  `Photos/_Shared Albums/<album>/`, listed separately in the GUI ("Shared
-  albums") and by `ibackup albums --shared`. Media cached on the phone
-  (`/PhotoData/PhotoCloudSharingData`) is imported at full resolution; the
-  rest, usually most of it, as low-resolution `(offloaded preview)` copies
-  from the phone's thumbnail cache, upgraded in place once downloaded. No
-  iCloud login or network is used. Album discovery and reading validated on
-  an iPhone 12 (iOS 26.4); a full end-to-end import is not yet recorded.
+## Features
 
-## Documentation
+- **Lossless, incremental import.** Originals are copied byte-for-byte, never
+  re-encoded or modified. Each file is SHA-256-verified, and items already
+  archived are skipped on the next run.
+- **Albums as real folders.** Every phone album becomes a folder of ordinary
+  files. Album membership is reconciled with the phone on every import, and
+  iCloud Shared Albums are archived in their own `_Shared Albums` folder.
+- **Append-only by design.** Deleting something on the phone never deletes it
+  from the archive. Photos removed from the phone can be reviewed, recycled,
+  restored or purged, and anything permanent asks you to type `DELETE`.
+- **"Optimize iPhone Storage" aware.** Photos whose originals live only in
+  iCloud are imported as labelled low-resolution previews from the phone's own
+  cache, then upgraded in place once the original is back on the phone.
+- **Integrity checks.** `verify` re-hashes archived files, and a duplicate and
+  storage report shows where the space goes.
+- **Rich metadata.** Capture time, GPS and camera details (camera, lens, ISO,
+  aperture, focal length) are kept in a SQLite catalog with per-asset JSON
+  sidecars.
+- **Trip map.** An interactive OpenStreetMap view of any album's located
+  photos, in capture order. You can tag each leg with how you travelled and
+  hide GPS outliers.
+- **Two first-class front ends.** A scriptable CLI and a Qt desktop app with
+  light and dark themes. A parity test fails the build if any capability
+  exists in only one of them.
+- **Local and private.** No cloud account or iCloud login is used, and nothing
+  is uploaded. The only network traffic is map tiles while the map is open.
 
-| Doc | Purpose |
+## How it works
+
+```text
+iPhone (USB, AFC) ──► ibackup ──► <archive>/
+                                   ├── Photos/
+                                   │   ├── <Album Name>/        real files, one copy per album
+                                   │   ├── _Unsorted/YYYY/MM/   photos in no album
+                                   │   └── _Shared Albums/<Album Name>/
+                                   ├── Deleted/                 recycle bin, mirrors Photos/
+                                   └── .ibackup/                catalog.sqlite, sidecars, thumbnails, logs
+```
+
+The phone is read over Apple File Conduit with
+[`pymobiledevice3`](https://github.com/doronz88/pymobiledevice3), through the
+Apple Mobile Device driver; no drive mount or jailbreak is needed. The archive
+contains no symlinks, and every name is sanitised for NTFS and exFAT, so you
+can copy the archive to any disk and it keeps working. Full details are in the
+[specification](docs/specifications.md).
+
+## Requirements
+
+- Windows 10 or 11 (64-bit)
+- Python 3.11 or newer
+- Apple's **iTunes** or **Apple Devices** app, which installs the USB driver
+- An iPhone and a USB cable, with the computer trusted on the phone
+
+## Installation
+
+There is no packaged release yet, so install from source:
+
+```powershell
+git clone https://github.com/gianlucacornacchia/iBackup.git
+cd iBackup
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install .
+```
+
+This installs two commands: `ibackup` (CLI) and `ibackup-gui` (desktop app).
+
+## Quick start
+
+```powershell
+ibackup device-info                          # check the phone is connected and trusted
+ibackup init D:\iphone-archive               # create an archive
+ibackup import --archive D:\iphone-archive   # import new photos and videos
+ibackup verify --archive D:\iphone-archive   # re-check archived files
+ibackup-gui                                  # or do all of it from the desktop app
+```
+
+### Common commands
+
+| Command | Purpose |
 |---|---|
-| [`docs/readme-user.md`](docs/readme-user.md) | End-user guide (install, commands, browsing). |
-| [`docs/specifications.md`](docs/specifications.md) | Functional & technical specification. |
-| [`docs/structure.md`](docs/structure.md) | Architecture & module layout. |
-| [`docs/user-stories.md`](docs/user-stories.md) | User stories & acceptance criteria. |
-| [`docs/unit-tests.md`](docs/unit-tests.md) | Test plan. |
-| [`docs/development.md`](docs/development.md) | Dev environment, libraries, running tests. |
-| [`docs/plan.md`](docs/plan.md) | Consolidated implementation plan. |
-| [`docs/todos.md`](docs/todos.md) | Build checklist with dependencies/status. |
-| [`docs/progress.md`](docs/progress.md) | Resumable progress log (update as you work). |
-| [`docs/ui-sketch/`](docs/ui-sketch/README.md) | Approved GUI wireframes and clickable reference mock. |
+| `ibackup import` | Import new media and reconcile album folders |
+| `ibackup verify` | Re-hash archived files (`--limit N` for a quick spot check) |
+| `ibackup albums` / `ibackup list` / `ibackup stats` | Browse the catalog |
+| `ibackup dedup` | Duplicate and storage report |
+| `ibackup scan-phone` | Refresh which archived photos are still on the phone |
+| `ibackup deleted-on-phone …` | Review, recycle, restore or purge photos deleted from the phone |
+| `ibackup move <album> <ids…>` | Move photos to another album |
+| `ibackup marks …` | Stage deletions, then commit them in one confirmed step |
+| `ibackup reclaim` | Preview which phone files are safely archived (deletes nothing) |
+| `ibackup config …` | View and change settings |
 
-## Quick start (developers)
+Run `ibackup --help` for every option. The [user guide](docs/readme-user.md)
+covers each command, the desktop app and the map.
 
-See [`docs/development.md`](docs/development.md) for full details.
+## Safety model
+
+- Imports never overwrite or modify an archived file. Files are written to a
+  staging area, verified, then published atomically.
+- Nothing is removed from the archive unless you ask for it. Recycling is
+  reversible, and permanent deletion needs a typed `DELETE` in both the CLI
+  and the GUI.
+- `reclaim` only lists phone files that have a freshly verified archive copy.
+  **Deleting from the phone is currently disabled** until hardware validation
+  passes.
+
+## Development
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-pytest
+pre-commit install
+
+ruff check . ; ruff format --check .
+mypy --strict src/iphone_archive/core src/iphone_archive/catalog
+$env:QT_QPA_PLATFORM = "offscreen"; pytest
 ```
 
-## Quick start (users)
+The test suite has over 850 tests and runs fully offline against a fake
+device, including property-based tests (Hypothesis), a golden end-to-end and
+crash-resume test, and headless GUI tests (pytest-qt). CI runs on Windows:
 
-From a source installation (see the developer setup above). Use a disposable
-archive and non-destructive checks until the Windows/iPhone validation matrix
-passes; do not rely on this project as your only backup.
+- **[Tests](.github/workflows/tests.yml):** lint, format, strict type-checking,
+  and the test suite on Python 3.11 and 3.12 with an 85% coverage gate.
+- **[Build](.github/workflows/build.yml):** the sdist and wheel, plus the
+  PyInstaller desktop app, which is launched as a smoke test and uploaded as a
+  build artifact.
 
-```powershell
-ibackup init D:\iphone-archive
-ibackup import --archive D:\iphone-archive
-ibackup verify --archive D:\iphone-archive
+See the [development guide](docs/development.md) for the environment, tooling
+and packaging, and [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose
+changes.
+
+### Architecture
+
+The CLI ([Typer](https://typer.tiangolo.com/)) and the GUI
+([PySide6](https://doc.qt.io/qtforpython-6/)) are thin adapters over one
+headless service layer:
+
+```text
+cli.py ─┐
+        ├─► service/ ─► core/ (import, verify, recycle, reclaim, …) ─► catalog/ (SQLite + sidecars)
+gui/  ──┘                  └──► device/ (AFC over USB, or a fake device in tests)
 ```
 
-See [`docs/readme-user.md`](docs/readme-user.md) for the full command reference.
+## Documentation
 
-## Tech stack
-
-- Python 3.11+ · Typer (CLI) · PySide6 (GUI, including Qt WebEngine for the
-  map) · `pymobiledevice3` (iPhone/AFC) · SQLite · Pillow + `pillow-heif`
-  (HEIC thumbnails, EXIF) · PyAV (video poster frames) · vendored Leaflet
-  (BSD-2-Clause, `src/iphone_archive/gui/webassets/leaflet/`) ·
-  pytest / hypothesis / pytest-qt · ruff · mypy · PyInstaller.
+| Document | Contents |
+|---|---|
+| [User guide](docs/readme-user.md) | Installation, commands, desktop app, map, FAQ, troubleshooting |
+| [Specification](docs/specifications.md) | Archive layout, catalog schema, import and safety rules |
+| [Architecture](docs/structure.md) | Module map and data flow |
+| [Development](docs/development.md) | Environment, dependencies, tests, packaging |
+| [Test plan](docs/unit-tests.md) | Test inventory and the hardware validation gate |
+| [User stories](docs/user-stories.md) | Acceptance criteria |
+| [Decision records](docs/adr/README.md) | Architectural decisions (ADRs) |
+| [Progress log](docs/progress.md) | Dated change log and validation evidence |
+| [Roadmap](docs/todos.md) | Build checklist and open work |
 
 ## License
 
-MIT.
+Released under the [MIT License](LICENSE). Bundled third-party components keep
+their own licenses, including Qt/PySide6 (LGPL) and Leaflet (BSD-2-Clause).
+Map data is © OpenStreetMap contributors. See
+[ADR-0011](docs/adr/0011-licensing-and-gui-contract-addendum.md) for the
+redistribution notes.
 
-Bundled dependencies retain their own licenses. A future Qt/icon distribution
-must satisfy the notice and redistribution obligations in
-[`ADR-0011`](docs/adr/0011-licensing-and-gui-contract-addendum.md), including
-its 2026-10-11 note on Leaflet, Qt WebEngine and OpenStreetMap tiles.
+---
+
+<sub>iPhone is a trademark of Apple Inc. This project is not affiliated with or
+endorsed by Apple.</sub>

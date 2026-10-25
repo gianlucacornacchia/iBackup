@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Please do not attach personal photos or your catalog database.
+        For security or data-loss issues, use private vulnerability reporting instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ibackup init D:\test-archive
+        2. ibackup import --archive D:\test-archive
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: frontend
+    attributes:
+      label: Front end
+      options: [CLI (ibackup), Desktop app (ibackup-gui), Both]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "0.1.0 / commit abc1234"
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Windows 11 24H2, Python 3.11.9, iPhone 12, iOS 26.4"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: From `<archive>\.ibackup\logs\`. Remove any personal paths you don't want to share.
+      render: text

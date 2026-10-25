@@ -224,8 +224,8 @@ never starts before the layer beneath it is proven. Descriptions live in
   early exit or a traceback; `tests/test_packaging.py` checks the build inputs
   against the real project metadata and exercises the smoke test against real
   child processes. Built and smoke-tested on Windows 11 with PyInstaller 6.22;
-  a `package` CI job repeats both. Signing, an installer and a clean-machine
-  install test remain release work. _Depends on: gui-parity-tests._
+  the `windows-app` job of `.github/workflows/build.yml` repeats both.
+  Signing, an installer and a clean-machine install test remain release work. _Depends on: gui-parity-tests._
 
 - [~] **gui-frontend** — PySide6 `gui/` (main_window, navigation_pane,
   command_bar, picture_grid_view w/ multi-select, thumbnail_loader,
@@ -401,6 +401,17 @@ Follow-ups found while reconciling (not scheduled):
   duplicates); needs a migration that backfills it first.
 - [ ] **map-popup-timezone** — popup capture times are the stored
   `captured_at` truncated to minutes, with no local time-zone conversion.
+- [x] **repo-presentation** (2026-10-25) — CI split into
+  `.github/workflows/tests.yml` (lint/type-check, tests on Python 3.11 + 3.12)
+  and `build.yml` (sdist/wheel, smoke-tested PyInstaller app); README rewritten
+  with Tests/Build badges; `CONTRIBUTING.md`, `SECURITY.md`, issue/PR
+  templates and `dependabot.yml` added; CI's mypy failure (pillow-heif 1.8
+  typing) fixed.
+- [ ] **ci-green-on-github** — confirm the first Tests/Build runs pass on
+  GitHub, in particular the never-before-run Python 3.12 leg and the GUI
+  tests on a hosted runner.
+- [ ] **readme-screenshot** — add a real screenshot of `ibackup-gui` (not the
+  wireframe mock) to the README.
 
 ## Future backlog (agreed, not scheduled)
 
@@ -409,7 +420,9 @@ Architect recommendations captured for later — not part of the current build:
 - [ ] **future-audit-log** — structured logging + append-only operation audit log
   in `.ibackup/logs/` (distinct from implemented diagnostic operation logging).
 - [ ] **future-catalog-repair** — rebuild/repair `catalog.sqlite` from sidecars.
-- [ ] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
+- [~] **future-dep-hygiene** — pinned lockfile + `pip-audit` / Dependabot.
+  Dependabot added 2026-10-25 (`.github/dependabot.yml`); lockfile and
+  `pip-audit` still open.
 - [ ] **future-html-gallery** — US-D4 static browser gallery, explicitly
   deferred; read models do not implement HTML generation.
 - [ ] **future-expanded-previews** — additional optional dry-run previews for

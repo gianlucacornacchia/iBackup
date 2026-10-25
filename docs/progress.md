@@ -370,6 +370,18 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-25 — **Docs: README rewritten for GitHub; community files.** The
+  root README is now a project landing page: Tests/Build workflow badges plus
+  Python, platform, ruff, mypy and license badges, an alpha warning, features,
+  archive layout, requirements, install, quick start, a command summary,
+  the safety model, development and CI, architecture, a docs index and
+  licensing/trademark notes. The dated feature-by-feature history it used to
+  carry stays here and in readme-user. Added `CONTRIBUTING.md`, `SECURITY.md`
+  (private vulnerability reporting), issue forms (bug, feature, contact
+  links) and a PR checklist template. No behaviour change. Docs: todos
+  (`repo-presentation` done; `ci-green-on-github`, `readme-screenshot` open;
+  `future-dep-hygiene` partly done).
+
 - 2026-10-25 — **CI split into Tests and Build workflows.** `ci.yml` became
   `.github/workflows/tests.yml` ("Tests": a lint/format/mypy job, then pytest
   with the 85% coverage gate on a Python 3.11 + 3.12 matrix, uploading JUnit

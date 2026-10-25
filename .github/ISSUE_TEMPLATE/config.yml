@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security or data-loss issue
+    url: https://github.com/gianlucacornacchia/iBackup/security/advisories/new
+    about: Report privately, not in a public issue.
+  - name: User guide and FAQ
+    url: https://github.com/gianlucacornacchia/iBackup/blob/main/docs/readme-user.md
+    about: Check the troubleshooting and FAQ sections first.
