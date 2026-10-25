@@ -370,6 +370,17 @@ Do not infer Windows CI, live-device, or release qualification from this report.
 
 ## Change log
 
+- 2026-10-25 — **Fix: CI failing on mypy.** The last four GitHub runs
+  (2026-09-15 onward) failed; the two of 2026-10-25 failed at mypy. GitHub Actions
+  installs the latest dependencies; pillow-heif 1.8.1 now types
+  `register_heif_opener`, so the `# type: ignore[attr-defined]` in
+  `core/exif.py` was unused and `warn_unused_ignores` failed `mypy --strict`
+  (the local `.venv` has 1.7.0, where the ignore is still needed). The module
+  is now loaded through `importlib.import_module` as `Any`, which type-checks
+  on both versions. Verified in a fresh venv with CI's versions (Pillow 13.0,
+  pillow-heif 1.8.1, PySide6 6.12, mypy 2.4, ruff 0.17): ruff, format,
+  mypy and the full suite pass with 90.15% coverage. No behaviour change.
+
 - 2026-10-24 — **Test: big-map test made robust.** The 20,000-point test
   polled with `helper_js` (10 s per call) and timed out on a busy machine
   while `mapLoad` was still plotting. It now plots 15,000 points (still

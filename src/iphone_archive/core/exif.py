@@ -16,9 +16,11 @@ metadata" rather than raising.
 
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +64,11 @@ def exif_register_heif() -> None:
     if _heif_registered:
         return
     try:
-        import pillow_heif
-
-        pillow_heif.register_heif_opener()  # type: ignore[attr-defined]
+        # Typed as Any: pillow-heif only re-exports register_heif_opener in
+        # its type hints from 1.8, so a direct call (or a type: ignore for it)
+        # fails mypy --strict on one side of that version boundary.
+        pillow_heif: Any = importlib.import_module("pillow_heif")
+        pillow_heif.register_heif_opener()
     except ImportError:
         logger.debug("pillow-heif is not installed; HEIC EXIF reading is unavailable")
     _heif_registered = True
